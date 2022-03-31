@@ -11,22 +11,22 @@ This example is self contained and doesn't require any external software. The pr
 * **Client Simplicity** - Clients will need to be created on lots of platforms. We should aim to use native WebRTC features as much as possible.
 
 The SFUs themselves have no concept of conference calls/rooms etc... All of this is communicated in the Matrix room. The SFUs themselves just operate off of
-pub/sub semantics. The pub/sub streams are keyed by `foci`, `call_id`, `device_id`, `session_id` and `purpose` these keys come from [MSC3401](https://github.com/matrix-org/matrix-spec-proposals/blob/matthew/group-voip/proposals/3401-group-voip.md).
+pub/sub semantics. The pub/sub streams are keyed by `foci`, `call_id`, `device_id` and `purpose` these keys come from [MSC3401](https://github.com/matrix-org/matrix-spec-proposals/blob/matthew/group-voip/proposals/3401-group-voip.md).
 
 Lets say you have a Matrix room where user `Alice` wishes to publish a screenshare to `Bob` and `Charlie`.
 
 ```
 * `Alice` establishes a session with a SFU
-* `Alice` publishes a screenshare feed with `call_id`, `device_id`, `session_id` and `purpose`
-* `Alice` publishes to the matrix room with the values `foci`, `call_id`, `device_id`, `session_id` and `purpose`
+* `Alice` publishes a screenshare feed with `call_id`, `device_id` and `purpose`
+* `Alice` publishes to the matrix room with the values `foci`, `call_id`, `device_id` and `purpose`
 
 # Connecting directly to publishers FOCI
 * `Bob` connects directly to `foci` and establishes a session.
-* `Bob` requests a stream with values `foci`, `call_id`, `device_id`, `session_id` and `purpose`.
+* `Bob` requests a stream with values `foci`, `call_id`, `device_id` and `purpose`.
 
 # Connect to FOCI through different SFU
 * `Charlie` connects to a SFU they run on a remote host.
-* `Charlie` requests a stream with values `foci`, `call_id`, `device_id`, `session_id` and `purpose`.
+* `Charlie` requests a stream with values `foci`, `call_id`, `device_id` and `purpose`.
 * `Charlie`'s SFU connects to `foci` and requests the stream.
 * `Alice`'s stream arrives to Charlie via `Alice -> FOCI -> Charlie's SFU -> Charlie`
 ```
@@ -84,7 +84,7 @@ A user can start publish a stream by making a JSON request to publish with a new
 
 * `event` - Must be `publish`
 * `id` - Unique ID for this message. Allows server to respond with with errors
-* Stream Identification - `call_id`, `device_id`, `session_id`, `purpose`
+* Stream Identification - `call_id`, `device_id`, `purpose`
 * `sdp` - Offer frome the Peer. Any new additional tracks will belong to the stream.
 
 ```
@@ -92,7 +92,6 @@ A user can start publish a stream by making a JSON request to publish with a new
 	event: 'publish',
 	call_id: 'AAA',
 	device_id: 'BBB',
-	session_id: 'CCC',
 	purpose: 'DDD',
 	sdp: `...`,
 }
