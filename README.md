@@ -90,6 +90,7 @@ A user can start publish a stream by making a JSON request to publish with a new
 ```
 {
 	event: 'publish',
+	id: `ABC`,
 	call_id: 'AAA',
 	device_id: 'BBB',
 	purpose: 'DDD',
@@ -97,5 +98,71 @@ A user can start publish a stream by making a JSON request to publish with a new
 }
 ```
 
-### Request a Stream
+** Errors **
+* Stream already exists
+* Server over capacity
+
+
+### Subscribe to a Stream
+A user can subscribe to a stream by making a JSON request to subscribe with a new Offer. With the following keys.
+
+* `event` - Must be `subscribe`
+* `id` - Unique ID for this message. Allows server to respond with with errors
+* Stream Identification - `call_id`, `device_id`, `purpose`
+
+```
+{
+	event: 'subscribe',
+	id: `ABC`,
+	call_id: 'AAA',
+	device_id: 'BBB',
+	purpose: 'DDD',
+}
+```
+
+The server will send a `subscribe` event with an offer that contains the requested streams
+
+```
+{
+	event: 'subscribe',
+	id: `ABC`,
+	sdp: `...`,
+}
+```
+
+The client will respond to the `subscribe` with the answer.
+
+```
+{
+	event: 'subscribe',
+	id: `ABC`,
+	sdp: `...`,
+}
+```
+
+** Errors **
+* Stream doesn'texist
+* Server over capacity
+
 ### Unpublish a Stream
+```
+{
+	event: 'unpublish',
+	id: `ABC`,
+	call_id: 'AAA',
+	device_id: 'BBB',
+	purpose: 'DDD',
+}
+```
+
+### Unsubscribe to a Stream
+
+```
+{
+	event: 'unsubscribe',
+	id: `ABC`,
+	call_id: 'AAA',
+	device_id: 'BBB',
+	purpose: 'DDD',
+}
+```
