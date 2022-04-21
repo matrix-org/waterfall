@@ -21,6 +21,10 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	peerConnection.OnTrack(func(*webrtc.TrackRemote, *webrtc.RTPReceiver) {
+		fmt.Println("OnTrack Fired")
+	})
+
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		d.OnMessage(func(m webrtc.DataChannelMessage) {
 			if !m.IsString {
@@ -34,6 +38,9 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 
 			switch msg.Event {
 			case "publish":
+				if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer}); err != nil {
+					panic(err)
+				}
 			case "subscribe":
 			default:
 				log.Fatalf("Unknown msg Event type %s", msg.Event)

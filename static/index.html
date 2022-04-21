@@ -4,7 +4,9 @@
   </head>
 
   <body>
-    <input id="fociAddress" type="text" placeholder="FOCI Address">
+    <select id="fociPort">
+      {{range $val := .}}<option value="{{$val}}">{{$val}}</option>{{end}}
+    </select>
     <button id="connectToFociButton" onclick="connectToFoci()">Connect to FOCI</button>
     <hr />
 
@@ -18,7 +20,9 @@
       Do screenshare: <input id="publishScreenshare" type="checkbox" />
 
       <h3> Subscribe </h3>
-      <input id="fociSubscribe" type="text" placeholder="FOCI">
+      FOCI: <select id="fociSubscribePort">
+        {{range $val := .}}<option value="{{$val}}">{{$val}}</option>{{end}}
+      </select>
       <input id="callIdSubscribe" type="text" placeholder="Call ID">
       <input id="deviceIdSubscribe" type="text" placeholder="Device ID">
       <input id="purposeSubscribe" type="text" placeholder="Purpose">
@@ -41,7 +45,7 @@
 
       peerConnection.createOffer().then(offer => {
         peerConnection.setLocalDescription(offer)
-        fetch(`${fociAddress.value}/createSession`, {
+        fetch(`${window.location.protocol}//${window.location.hostname}:${fociPort.value}/createSession`, {
           method: 'POST',
           body: offer.sdp,
         })
@@ -59,7 +63,31 @@
         return window.alert('Not all required values are satisfied')
       }
 
-      debugger
+      let addStreamAndSendRequest = mediaStream => {
+        for (const track of mediaStream.getTracks()) {
+          peerConnection.addTrack(track)
+        }
+
+        peerConnection.createOffer().then(offer => {
+          peerConnection.setLocalDescription(offer)
+          dataChannel.send(JSON.stringify({
+            event: 'publish',
+            id: generateRandomString(),
+            call_id: callIdPublish.value,
+            device_id: deviceIdPublish.value,
+            purpose: purposePublish.value,
+            sdp: offer.sdp,
+          }))
+        })
+      }
+
+      if (publishScreenshare.checked) {
+        navigator.mediaDevices.getDisplayMedia()
+          .then(stream => addStreamAndSendRequest(stream))
+      } else {
+        navigator.mediaDevices.getUserMedia({audio: true, video: true})
+          .then(stream => addStreamAndSendRequest(stream))
+      }
     }
 
     subscribeButton.onclick = () => {
@@ -71,5 +99,7 @@
 
       debugger
     }
+
+    const generateRandomString = () => (Math.random() + 1).toString(36).substring(7)
   </script>
 </html>

@@ -2,33 +2,50 @@ package main
 
 import (
 	"flag"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"text/template"
 )
 
 func main() {
 	fociCount := flag.Int("foci-count", 4, "How many FOCI should be started")
 	flag.Parse()
 
+	fociPorts := []int{}
 	for i := 0; i < *fociCount; i++ {
-		if err := createFoci(); err != nil {
+		fociPort, err := createFoci()
+		if err != nil {
 			log.Fatal(err)
 		}
+		log.Printf("Starting FOCI on port %d ", fociPort)
+
+		fociPorts = append(fociPorts, fociPort)
 	}
 
 	log.Print("Serving HTTP on port 8080")
 	fileServer := &http.Server{
-		Addr:    ":8080",
-		Handler: http.FileServer(http.Dir("static")),
+		Addr: ":8080",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			indexHTML, err := ioutil.ReadFile("static/index.html")
+			if err != nil {
+				panic(err)
+			}
+
+			if err := template.Must(template.New("").Parse(string(indexHTML))).Execute(w, fociPorts); err != nil {
+				log.Fatal(err)
+			}
+
+		}),
 	}
 	log.Fatal(fileServer.ListenAndServe())
 }
 
-func createFoci() error {
+func createFoci() (int, error) {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	fociServer := &http.Server{
@@ -49,8 +66,7 @@ func createFoci() error {
 		log.Fatal(fociServer.Serve(listener))
 	}()
 
-	log.Printf("Starting FOCI on port %d ", listener.Addr().(*net.TCPAddr).Port)
-	return nil
+	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
 type dataChannelMessage struct {
