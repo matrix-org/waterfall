@@ -6,8 +6,20 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
+	"sync"
 
 	"github.com/pion/webrtc/v3"
+)
+
+type streamDetail struct {
+	callId, deviceId, purpose string
+	track                     webrtc.TrackLocal
+}
+
+var (
+	streamDetailsMu sync.RWMutex
+	streamDetails   []streamDetail
 )
 
 func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
@@ -21,8 +33,44 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	peerConnection.OnTrack(func(*webrtc.TrackRemote, *webrtc.RTPReceiver) {
-		fmt.Println("OnTrack Fired")
+	var (
+		publishDetailsMu          sync.RWMutex
+		callId, deviceId, purpose string
+	)
+
+	peerConnection.OnTrack(func(trackRemote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		id := "video"
+		if strings.Contains(trackRemote.Codec().MimeType, "audio") {
+			id = "audio"
+		}
+
+		publishDetailsMu.Lock()
+		streamDetailsMu.Lock()
+		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, id, fmt.Sprintf("%s-%s-%s", callId, deviceId, purpose))
+		if err != nil {
+			panic(err)
+		}
+
+		streamDetails = append(streamDetails, streamDetail{
+			callId:   callId,
+			deviceId: deviceId,
+			purpose:  purpose,
+			track:    trackLocal,
+		})
+		streamDetailsMu.Unlock()
+		publishDetailsMu.Unlock()
+
+		buff := make([]byte, 1500)
+		for {
+			i, _, err := trackRemote.Read(buff)
+			if err != nil {
+				panic(err)
+			}
+
+			if _, err = trackLocal.Write(buff[:i]); err != nil {
+				panic(err)
+			}
+		}
 	})
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
@@ -50,9 +98,15 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 					panic(err)
 				}
 
-				if err = peerConnection.SetLocalDescription(answer); err != nil {
+				if err := peerConnection.SetLocalDescription(answer); err != nil {
 					panic(err)
 				}
+
+				publishDetailsMu.Lock()
+				callId = msg.CallID
+				deviceId = msg.DeviceID
+				purpose = msg.Purpose
+				publishDetailsMu.Unlock()
 
 				msg.SDP = answer.SDP
 				marshaled, err := json.Marshal(msg)

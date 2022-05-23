@@ -8,6 +8,8 @@
       {{range $val := .}}<option value="{{$val}}">{{$val}}</option>{{end}}
     </select>
     <button id="connectToFociButton" onclick="connectToFoci()">Connect to FOCI</button>
+    Connection State:
+    <span id="connectionState">New</span>
     <hr />
 
     <div id="connectedInputs">
@@ -38,9 +40,23 @@
 
     connectToFociButton.onclick = () => {
       peerConnection = new RTCPeerConnection()
+      peerConnection.onconnectionstatechange = e => {
+        connectionState.innerText = peerConnection.connectionState
+      }
+
+
       dataChannel = peerConnection.createDataChannel('signaling')
       dataChannel.onmessage = event => {
-        console.log(event)
+        try {
+          let parsed = JSON.parse(event.data)
+          switch (parsed.event) {
+            case 'publish':
+              peerConnection.setRemoteDescription({type: 'answer', sdp: parsed.sdp})
+              return
+          }
+        } catch (error) {
+          window.alert(error)
+        }
       }
 
       peerConnection.createOffer().then(offer => {
@@ -67,6 +83,13 @@
         for (const track of mediaStream.getTracks()) {
           peerConnection.addTrack(track)
         }
+
+        const el = document.createElement('video')
+        el.srcObject = mediaStream
+        el.autoplay = true
+        el.controls = true
+        el.muted = true
+        document.getElementById('tracks').appendChild(el)
 
         peerConnection.createOffer().then(offer => {
           peerConnection.setLocalDescription(offer)
