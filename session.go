@@ -38,7 +38,29 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 
 			switch msg.Event {
 			case "publish":
-				if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer}); err != nil {
+				if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+					Type: webrtc.SDPTypeOffer,
+					SDP:  msg.SDP,
+				}); err != nil {
+					panic(err)
+				}
+
+				answer, err := peerConnection.CreateAnswer(nil)
+				if err != nil {
+					panic(err)
+				}
+
+				if err = peerConnection.SetLocalDescription(answer); err != nil {
+					panic(err)
+				}
+
+				msg.SDP = answer.SDP
+				marshaled, err := json.Marshal(msg)
+				if err != nil {
+					panic(err)
+				}
+
+				if err = d.SendText(string(marshaled)); err != nil {
 					panic(err)
 				}
 			case "subscribe":

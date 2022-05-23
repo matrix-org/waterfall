@@ -102,6 +102,19 @@ A user can start publish a stream by making a JSON request to publish with a new
 * Stream already exists
 * Server over capacity
 
+The server will respond to the `subscribe` with the answer.
+
+```
+{
+	event: 'publish',
+	id: `ABC`,
+	call_id: 'AAA',
+	device_id: 'BBB',
+	purpose: 'DDD',
+	sdp: `...`,
+}
+```
+
 
 ### Subscribe to a Stream
 A user can subscribe to a stream by making a JSON request to subscribe with a new Offer. With the following keys.

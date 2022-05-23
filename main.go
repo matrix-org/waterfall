@@ -11,6 +11,7 @@ import (
 
 func main() {
 	fociCount := flag.Int("foci-count", 4, "How many FOCI should be started")
+	httpAddress := flag.String("http-address", ":8080", "Address for frontend for FOCI cluster")
 	flag.Parse()
 
 	fociPorts := []int{}
@@ -24,9 +25,9 @@ func main() {
 		fociPorts = append(fociPorts, fociPort)
 	}
 
-	log.Print("Serving HTTP on port 8080")
+	log.Print("Serving HTTP on " + *httpAddress)
 	fileServer := &http.Server{
-		Addr: ":8080",
+		Addr: *httpAddress,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			indexHTML, err := ioutil.ReadFile("static/index.html")
 			if err != nil {
@@ -75,6 +76,7 @@ type dataChannelMessage struct {
 	CallID   string `json:"call_id"`
 	DeviceID string `json:"device_id"`
 	Purpose  string `json:"purpose"`
+	SDP      string `json:"sdp"`
 }
 
 func setCorsHeaders(w http.ResponseWriter) {
