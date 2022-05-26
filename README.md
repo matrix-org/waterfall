@@ -130,15 +130,6 @@ A user can subscribe to a stream by making a JSON request to subscribe with a ne
 	call_id: 'AAA',
 	device_id: 'BBB',
 	purpose: 'DDD',
-}
-```
-
-The server will send a `subscribe` event with an offer that contains the requested streams
-
-```
-{
-	event: 'subscribe',
-	id: `ABC`,
 	sdp: `...`,
 }
 ```
@@ -179,3 +170,9 @@ The client will respond to the `subscribe` with the answer.
 	purpose: 'DDD',
 }
 ```
+
+## Running
+
+* `go run *.go`
+* Access at http://localhost:8080
+
