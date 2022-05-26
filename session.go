@@ -8,13 +8,15 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
 type streamDetail struct {
 	callId, deviceId, purpose string
-	track                     webrtc.TrackLocal
+	track                     *webrtc.TrackLocalStaticRTP
 }
 
 var (
@@ -39,9 +41,20 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 	)
 
 	peerConnection.OnTrack(func(trackRemote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		id := "video"
-		if strings.Contains(trackRemote.Codec().MimeType, "audio") {
-			id = "audio"
+		id := "audio"
+		if strings.Contains(trackRemote.Codec().MimeType, "video") {
+			id = "video"
+
+			// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
+			go func() {
+				ticker := time.NewTicker(time.Millisecond * 200)
+				for range ticker.C {
+					if errSend := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); errSend != nil {
+						fmt.Println(errSend)
+					}
+				}
+			}()
+
 		}
 
 		publishDetailsMu.Lock()
@@ -118,6 +131,54 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 					panic(err)
 				}
 			case "subscribe":
+				var audioTrack, videoTrack webrtc.TrackLocal
+				for _, s := range streamDetails {
+					if s.callId == msg.CallID && s.deviceId == msg.DeviceID && s.purpose == msg.Purpose {
+						if s.track.Kind() == webrtc.RTPCodecTypeAudio {
+							audioTrack = s.track
+						} else {
+							videoTrack = s.track
+						}
+					}
+				}
+
+				if audioTrack == nil || videoTrack == nil {
+					panic("No Such Stream")
+				}
+
+				if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+					Type: webrtc.SDPTypeOffer,
+					SDP:  msg.SDP,
+				}); err != nil {
+					panic(err)
+				}
+
+				if _, err = peerConnection.AddTrack(audioTrack); err != nil {
+					panic(err)
+				}
+
+				if _, err = peerConnection.AddTrack(videoTrack); err != nil {
+					panic(err)
+				}
+
+				answer, err := peerConnection.CreateAnswer(nil)
+				if err != nil {
+					panic(err)
+				}
+
+				if err := peerConnection.SetLocalDescription(answer); err != nil {
+					panic(err)
+				}
+
+				msg.SDP = answer.SDP
+				marshaled, err := json.Marshal(msg)
+				if err != nil {
+					panic(err)
+				}
+
+				if err = d.SendText(string(marshaled)); err != nil {
+					panic(err)
+				}
 			default:
 				log.Fatalf("Unknown msg Event type %s", msg.Event)
 			}

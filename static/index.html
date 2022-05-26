@@ -18,7 +18,7 @@
       <input id="deviceIdPublish" type="text" placeholder="Device ID">
       <input id="purposePublish" type="text" placeholder="Purpose">
       <br />
-      <button id="publishButton" onclick="publishButton()">Publish</button>
+      <button id="publishButton">Publish</button>
       Do screenshare: <input id="publishScreenshare" type="checkbox" />
 
       <h3> Subscribe </h3>
@@ -29,7 +29,7 @@
       <input id="deviceIdSubscribe" type="text" placeholder="Device ID">
       <input id="purposeSubscribe" type="text" placeholder="Purpose">
       <br />
-      <button id="subscribeButton" onclick="subscribe()">Subscribe</button>
+      <button id="subscribeButton">Subscribe</button>
     </div>
 
     <div id="tracks"> </div>
@@ -44,6 +44,24 @@
         connectionState.innerText = peerConnection.connectionState
       }
 
+      peerConnection.ontrack = function (event) {
+        if (event.track.kind === 'audio') {
+          return
+        }
+
+        var el = document.createElement(event.track.kind)
+        el.srcObject = event.streams[0]
+        el.autoplay = true
+        el.controls = true
+        el.muted = true
+
+        event.track.onmute = function(event) {
+          el.parentNode.removeChild(el);
+        }
+
+        document.getElementById('tracks').appendChild(el)
+      }
+
 
       dataChannel = peerConnection.createDataChannel('signaling')
       dataChannel.onmessage = event => {
@@ -51,6 +69,7 @@
           let parsed = JSON.parse(event.data)
           switch (parsed.event) {
             case 'publish':
+            case 'subscribe':
               peerConnection.setRemoteDescription({type: 'answer', sdp: parsed.sdp})
               return
           }
@@ -116,11 +135,24 @@
     subscribeButton.onclick = () => {
       if (peerConnection === null) {
         return window.alert('Not connected to a FOCI')
-      } else if (fociSubscribe.value === '' || callIdSubscribe.value === '' || deviceIdSubscribe.value === '' || purposeSubscribe === '') {
+      } else if (fociSubscribePort.value === '' || callIdSubscribe.value === '' || deviceIdSubscribe.value === '' || purposeSubscribe === '') {
         return window.alert('Not all required values are satisfied')
       }
 
-      debugger
+      peerConnection.addTransceiver('audio', {direction: 'recvonly'})
+      peerConnection.addTransceiver('video', {direction: 'recvonly'})
+
+      peerConnection.createOffer().then(offer => {
+        peerConnection.setLocalDescription(offer)
+        dataChannel.send(JSON.stringify({
+          event: 'subscribe',
+          id: generateRandomString(),
+          call_id: callIdSubscribe.value,
+          device_id: deviceIdSubscribe.value,
+          purpose: purposeSubscribe.value,
+          sdp: offer.sdp,
+        }))
+      })
     }
 
     const generateRandomString = () => (Math.random() + 1).toString(36).substring(7)
