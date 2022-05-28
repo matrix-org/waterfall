@@ -157,7 +157,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 					}
 				}
 
-				if audioTrack == nil || videoTrack == nil {
+				if audioTrack == nil && videoTrack == nil {
 					sendError("No Such Stream")
 					return
 				}
@@ -169,12 +169,16 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 					panic(err)
 				}
 
-				if _, err = peerConnection.AddTrack(audioTrack); err != nil {
-					panic(err)
+				if audioTrack != nil {
+					if _, err = peerConnection.AddTrack(audioTrack); err != nil {
+						panic(err)
+					}
 				}
 
-				if _, err = peerConnection.AddTrack(videoTrack); err != nil {
-					panic(err)
+				if videoTrack != nil {
+					if _, err = peerConnection.AddTrack(videoTrack); err != nil {
+						panic(err)
+					}
 				}
 
 				answer, err := peerConnection.CreateAnswer(nil)
