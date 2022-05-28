@@ -72,6 +72,7 @@ func createFoci() (int, error) {
 
 type dataChannelMessage struct {
 	Event    string `json:"event"`
+	Message  string `json:"message,omitempty"`
 	ID       string `json:"id"`
 	CallID   string `json:"call_id"`
 	DeviceID string `json:"device_id"`

@@ -15,7 +15,7 @@ import (
 )
 
 type streamDetail struct {
-	callId, deviceId, purpose string
+	callID, deviceID, purpose string
 	track                     *webrtc.TrackLocalStaticRTP
 }
 
@@ -37,7 +37,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 
 	var (
 		publishDetailsMu          sync.RWMutex
-		callId, deviceId, purpose string
+		callID, deviceID, purpose string
 	)
 
 	peerConnection.OnTrack(func(trackRemote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
@@ -59,14 +59,14 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 
 		publishDetailsMu.Lock()
 		streamDetailsMu.Lock()
-		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, id, fmt.Sprintf("%s-%s-%s", callId, deviceId, purpose))
+		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, id, fmt.Sprintf("%s-%s-%s", callID, deviceID, purpose))
 		if err != nil {
 			panic(err)
 		}
 
 		streamDetails = append(streamDetails, streamDetail{
-			callId:   callId,
-			deviceId: deviceId,
+			callID:   callID,
+			deviceID: deviceID,
 			purpose:  purpose,
 			track:    trackLocal,
 		})
@@ -87,6 +87,21 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 	})
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
+
+		sendError := func(errMsg string) {
+			marshaled, err := json.Marshal(&dataChannelMessage{
+				Event:   "error",
+				Message: errMsg,
+			})
+			if err != nil {
+				panic(err)
+			}
+
+			if err = d.SendText(string(marshaled)); err != nil {
+				panic(err)
+			}
+		}
+
 		d.OnMessage(func(m webrtc.DataChannelMessage) {
 			if !m.IsString {
 				log.Fatal("Inbound message is not string")
@@ -116,8 +131,8 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 				}
 
 				publishDetailsMu.Lock()
-				callId = msg.CallID
-				deviceId = msg.DeviceID
+				callID = msg.CallID
+				deviceID = msg.DeviceID
 				purpose = msg.Purpose
 				publishDetailsMu.Unlock()
 
@@ -133,7 +148,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 			case "subscribe":
 				var audioTrack, videoTrack webrtc.TrackLocal
 				for _, s := range streamDetails {
-					if s.callId == msg.CallID && s.deviceId == msg.DeviceID && s.purpose == msg.Purpose {
+					if s.callID == msg.CallID && s.deviceID == msg.DeviceID && s.purpose == msg.Purpose {
 						if s.track.Kind() == webrtc.RTPCodecTypeAudio {
 							audioTrack = s.track
 						} else {
@@ -143,7 +158,8 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) error {
 				}
 
 				if audioTrack == nil || videoTrack == nil {
-					panic("No Such Stream")
+					sendError("No Such Stream")
+					return
 				}
 
 				if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{

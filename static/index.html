@@ -72,6 +72,9 @@
             case 'subscribe':
               peerConnection.setRemoteDescription({type: 'answer', sdp: parsed.sdp})
               return
+            case 'error':
+              window.alert(parsed.message)
+              return
           }
         } catch (error) {
           window.alert(error)
