@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-    "github.com/rs/zerolog/log"
+	"github.com/rs/zerolog/log"
 	yaml "gopkg.in/yaml.v3"
 	"io/ioutil"
 	"reflect"
