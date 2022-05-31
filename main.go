@@ -14,7 +14,7 @@ import (
 )
 
 func loadConfig(configFilePath string) (*config, error) {
-	log.Info().Msgf("loaded %s", configFilePath)
+	log.Info().Msgf("Loading %s", configFilePath)
 	file, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to read config")
