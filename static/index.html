@@ -22,9 +22,11 @@
       Do screenshare: <input id="publishScreenshare" type="checkbox" />
 
       <h3> Subscribe </h3>
-      FOCI: <select id="fociSubscribePort">
+      <select onchange="fociSubscribe.value = `localhost:${this.value}`">
+        <option> </option>
         {{range $val := .}}<option value="{{$val}}">{{$val}}</option>{{end}}
       </select>
+      <input id="fociSubscribe" type="text" placeholder="FOCI">
       <input id="callIdSubscribe" type="text" placeholder="Call ID">
       <input id="deviceIdSubscribe" type="text" placeholder="Device ID">
       <input id="purposeSubscribe" type="text" placeholder="Purpose">
@@ -71,6 +73,9 @@
             case 'publish':
             case 'subscribe':
               peerConnection.setRemoteDescription({type: 'answer', sdp: parsed.sdp})
+              return
+            case 'error':
+              window.alert(parsed.message)
               return
           }
         } catch (error) {
@@ -135,7 +140,7 @@
     subscribeButton.onclick = () => {
       if (peerConnection === null) {
         return window.alert('Not connected to a FOCI')
-      } else if (fociSubscribePort.value === '' || callIdSubscribe.value === '' || deviceIdSubscribe.value === '' || purposeSubscribe === '') {
+      } else if (fociSubscribe.value === '' || callIdSubscribe.value === '' || deviceIdSubscribe.value === '' || purposeSubscribe === '') {
         return window.alert('Not all required values are satisfied')
       }
 
@@ -151,6 +156,7 @@
           device_id: deviceIdSubscribe.value,
           purpose: purposeSubscribe.value,
           sdp: offer.sdp,
+          foci: fociSubscribe.value,
         }))
       })
     }

@@ -104,9 +104,11 @@ type config struct {
 
 type dataChannelMessage struct {
 	Event    string `json:"event"`
+	Message  string `json:"message,omitempty"`
 	ID       string `json:"id"`
 	CallID   string `json:"call_id"`
 	DeviceID string `json:"device_id"`
 	Purpose  string `json:"purpose"`
 	SDP      string `json:"sdp"`
+	FOCI     string `json:"foci"`
 }
