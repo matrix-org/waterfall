@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
@@ -11,12 +12,13 @@ import (
 
 func main() {
 	fociCount := flag.Int("foci-count", 4, "How many FOCI should be started")
+	fociName := flag.String("foci-name", "localhost", "Name of this FOCI. Used to determine if a cascing request should be made")
 	httpAddress := flag.String("http-address", ":8080", "Address for frontend for FOCI cluster")
 	flag.Parse()
 
 	fociPorts := []int{}
 	for i := 0; i < *fociCount; i++ {
-		fociPort, err := createFoci()
+		fociPort, err := createFoci(*fociName)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -43,31 +45,34 @@ func main() {
 	log.Fatal(fileServer.ListenAndServe())
 }
 
-func createFoci() (int, error) {
+func createFoci(fociName string) (int, error) {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return 0, err
 	}
 
-	fociServer := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			setCorsHeaders(w)
-			if r.URL.String() != "/createSession" || r.Method != "POST" {
-				return
-			}
-
-			if err := handleCreateSession(w, r); err != nil {
-				log.Fatal(err)
-			}
-
-		}),
-	}
-
+	fociPort := listener.Addr().(*net.TCPAddr).Port
 	go func() {
-		log.Fatal(fociServer.Serve(listener))
+		fociWebRTCServer := &foci{
+			name: fmt.Sprintf("%s:%d", fociName, fociPort),
+		}
+		fociHTTPServer := &http.Server{
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				setCorsHeaders(w)
+
+				switch {
+				case r.URL.String() == "/createSession" && r.Method == "POST":
+					if err := fociWebRTCServer.handleCreateSession(w, r); err != nil {
+						log.Fatal(err)
+					}
+				}
+			}),
+		}
+
+		log.Fatal(fociHTTPServer.Serve(listener))
 	}()
 
-	return listener.Addr().(*net.TCPAddr).Port, nil
+	return fociPort, nil
 }
 
 type dataChannelMessage struct {
@@ -78,6 +83,7 @@ type dataChannelMessage struct {
 	DeviceID string `json:"device_id"`
 	Purpose  string `json:"purpose"`
 	SDP      string `json:"sdp"`
+	FOCI     string `json:"foci"`
 }
 
 func setCorsHeaders(w http.ResponseWriter) {
