@@ -6,10 +6,11 @@ require github.com/pion/webrtc/v3 v3.1.31
 
 require (
 	github.com/pion/rtcp v1.2.9
-	github.com/rs/zerolog v1.26.1
-	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
+	gopkg.in/yaml.v3 v3.0.0
 	maunium.net/go/mautrix v0.11.0
 )
+
+replace maunium.net/go/mautrix v0.11.0 => github.com/matrix-org/mautrix-go v0.11.1-0.20220603155839-5467b9cac1a5
 
 require (
 	github.com/google/uuid v1.3.0 // indirect
