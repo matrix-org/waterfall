@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
 	"sync"
 	"time"
-	"errors"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -61,14 +61,14 @@ type calls struct {
 // FIXME: for uniqueness, should we index tracks by {callID, streamID, trackID}?
 type trackKey struct {
 	streamID string
-	trackID string
+	trackID  string
 }
 
 type conf struct {
 	confID         string
 	calls          calls
 	trackDetailsMu sync.RWMutex
-	trackDetails map[trackKey]*trackDetail // by trackID.
+	trackDetails   map[trackKey]*trackDetail // by trackID.
 }
 
 type confs struct {
@@ -122,14 +122,14 @@ func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLoc
 	defer c.trackDetailsMu.Unlock()
 	return c.trackDetails[trackKey{
 		streamID: streamID,
-		trackID: trackID,
+		trackID:  trackID,
 	}].track
 }
 
 func (c *conf) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webrtc.DataChannel) {
 	sendError := func(errMsg string) {
 		marshaled, err := json.Marshal(&dataChannelMessage{
-			Op:   "error",
+			Op:      "error",
 			Message: errMsg,
 		})
 		if err != nil {
@@ -153,9 +153,12 @@ func (c *conf) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webr
 
 		switch msg.Op {
 		case "select":
-			// TODO: call setRemoteDescription so we can negotiate the new track.
-			// where do we get the SDP from? should the DC include it, like
-			// in the original PoC?
+			if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+				Type: webrtc.SDPTypeOffer,
+				SDP:  msg.SDP,
+			}); err != nil {
+				panic(err)
+			}
 
 			for _, trackDesc := range msg.Start {
 				track := c.localTrackLookup(trackDesc.streamID, trackDesc.trackID)
@@ -189,10 +192,19 @@ func (c *conf) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webr
 				panic(err)
 			}
 
-			// TODO: send the answer back to the caller.
-			// XXX: ideally we would do this over DC rather than slow to-device messaging.
-			// or perhaps use a pool of tracks to avoid having to renegotiate
+			response := dataChannelMessage{
+				Op:  "answer",
+				ID:  msg.ID,
+				SDP: answer.SDP,
+			}
+			marshaled, err := json.Marshal(response)
+			if err != nil {
+				panic(err)
+			}
 
+			if err = d.SendText(string(marshaled)); err != nil {
+				panic(err)
+			}
 		default:
 			log.Fatalf("Unknown operation %s", msg.Op)
 		}
@@ -233,7 +245,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 
 		c.conf.trackDetails[trackKey{
 			streamID: trackRemote.StreamID(),
-			trackID: trackRemote.ID(),
+			trackID:  trackRemote.ID(),
 		}] = &trackDetail{
 			call:  c,
 			track: trackLocal,
@@ -279,7 +291,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 			},
 			Answer: event.CallData{
 				Type: "answer",
-				SDP: answerSdp,
+				SDP:  answerSdp,
 			},
 		},
 	}
