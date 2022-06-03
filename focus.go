@@ -126,7 +126,9 @@ func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLoc
 	}].track
 }
 
-func (c *call) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webrtc.DataChannel) {
+func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
+	peerConnection := c.peerConnection
+
 	sendError := func(errMsg string) {
 		marshaled, err := json.Marshal(&dataChannelMessage{
 			Op:      "error",
@@ -256,7 +258,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	})
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		c.dataChannelHandler(peerConnection, d)
+		c.dataChannelHandler(d)
 	})
 
 	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -347,8 +349,18 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 }
 
 func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
-	// TODO: tell our peerConnection about the new candidates we just discovered
-	log.Print("ignoring candidates as not yet implemented", content)
+	for _, candidate := range content.Candidates {
+		sdpMLineIndex := uint16(candidate.SDPMLineIndex)
+		ice := webrtc.ICECandidateInit{
+			Candidate:     candidate.Candidate,
+			SDPMLineIndex: &sdpMLineIndex,
+			SDPMid:        &candidate.SDPMID,
+		}
+		if err := c.peerConnection.AddICECandidate(ice); err != nil {
+			log.Printf("Failed to add ICE candidate", content)
+			return err
+		}
+	}
 	return nil
 }
 
