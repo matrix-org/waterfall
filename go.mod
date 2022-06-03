@@ -10,7 +10,9 @@ require (
 	maunium.net/go/mautrix v0.11.0
 )
 
-replace maunium.net/go/mautrix v0.11.0 => github.com/matrix-org/mautrix-go v0.11.1-0.20220603155839-5467b9cac1a5
+// replace maunium.net/go/mautrix v0.11.0 => github.com/matrix-org/mautrix-go v0.11.1-0.20220603155839-5467b9cac1a5
+
+replace maunium.net/go/mautrix v0.11.0 => ../mautrix-go
 
 require (
 	github.com/google/uuid v1.3.0 // indirect

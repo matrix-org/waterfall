@@ -3,12 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
+	"errors"
+
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
@@ -41,10 +44,10 @@ type callState string
 
 type call struct {
 	callID         string
-	userID         string
-	deviceID       string
-	client         *Client
-	peerConnection *peerConnection
+	userID         id.UserID
+	deviceID       id.DeviceID
+	client         *mautrix.Client
+	peerConnection *webrtc.PeerConnection
 	callState      callState
 	conf           *conf
 	// we track the call's tracks via the conf object.
@@ -55,12 +58,17 @@ type calls struct {
 	calls   map[string]*call
 }
 
+// FIXME: for uniqueness, should we index tracks by {callID, streamID, trackID}?
+type trackKey struct {
+	streamID string
+	trackID string
+}
+
 type conf struct {
 	confID         string
 	calls          calls
 	trackDetailsMu sync.RWMutex
-	// FIXME: we should really index tracks by {streamID, trackID}
-	trackDetails map[string]*trackDetail // by trackID.
+	trackDetails map[trackKey]*trackDetail // by trackID.
 }
 
 type confs struct {
@@ -76,49 +84,52 @@ type focus struct {
 func (f *focus) getConf(confID string, create bool) (*conf, error) {
 	f.confs.confsMu.Lock()
 	defer f.confs.confsMu.Unlock()
-	conf := f.confs.confs[confID]
-	if conf == nil {
+	co := f.confs.confs[confID]
+	if co == nil {
 		if create {
-			conf := &conf{
+			co := conf{
 				confID: confID,
 			}
-			f.confs.confs[confID] = conf
+			f.confs.confs[confID] = &co
 		} else {
-			return _, error("No such conf")
+			return nil, errors.New("No such conf")
 		}
 	}
-	return &conf
+	return co, nil
 }
 
 func (c *conf) getCall(callID string, create bool) (*call, error) {
 	c.calls.callsMu.Lock()
 	defer c.calls.callsMu.Unlock()
-	call := c.calls.calls[callID]
-	if call == nil {
+	ca := c.calls.calls[callID]
+	if ca == nil {
 		if create {
-			call := &call{
+			ca := call{
 				callID:    callID,
 				conf:      c,
 				callState: WaitLocalMedia,
 			}
-			c.calls.calls[callID] = call
+			c.calls.calls[callID] = &ca
 		} else {
-			return _, error("No such call")
+			return nil, errors.New("No such call")
 		}
 	}
-	return &conf
+	return ca, nil
 }
 
-func (c *conf) localTrackLookup(trackID string) (track webrtc.TrackLocal) {
+func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLocal) {
 	c.trackDetailsMu.Lock()
 	defer c.trackDetailsMu.Unlock()
-	return trackDetails[trackID]
+	return c.trackDetails[trackKey{
+		streamID: streamID,
+		trackID: trackID,
+	}].track
 }
 
 func (c *conf) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webrtc.DataChannel) {
 	sendError := func(errMsg string) {
 		marshaled, err := json.Marshal(&dataChannelMessage{
-			Event:   "error",
+			Op:   "error",
 			Message: errMsg,
 		})
 		if err != nil {
@@ -142,13 +153,12 @@ func (c *conf) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webr
 
 		switch msg.Op {
 		case "select":
-			// XXX: do we actually need to call setRemoteDescription
-			// at this point, given it shouldn't have changed since the
-			// caller connected?
+			// TODO: call setRemoteDescription so we can negotiate the new track.
+			// where do we get the SDP from? should the DC include it, like
+			// in the original PoC?
 
 			for _, trackDesc := range msg.Start {
-				// TODO: we should really be indexed by streamID too here
-				track := c.localTrackLookup(trackDesc.TrackID)
+				track := c.localTrackLookup(trackDesc.streamID, trackDesc.trackID)
 
 				// TODO: hook cascade back up.
 				// As we're not an AS, we'd rely on the client
@@ -179,18 +189,17 @@ func (c *conf) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webr
 				panic(err)
 			}
 
-			// XXX: do we actually have to send the answer back to th caller?
-			// if so, do we have a problem that the updated SDP is sent over
-			// slow to-device messages rather than directly over DC, as per
-			// Sean's original POC?  In terms of speed of selection...
+			// TODO: send the answer back to the caller.
+			// XXX: ideally we would do this over DC rather than slow to-device messaging.
+			// or perhaps use a pool of tracks to avoid having to renegotiate
 
 		default:
-			log.Fatalf("Unknown msg Event type %s", msg.Event)
+			log.Fatalf("Unknown operation %s", msg.Op)
 		}
 	})
 }
 
-func (c *call) onInvite(content *CallInviteEventContent) error {
+func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	offer := content.Offer
 
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
@@ -217,12 +226,15 @@ func (c *call) onInvite(content *CallInviteEventContent) error {
 		}
 
 		c.conf.trackDetailsMu.Lock()
-		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, id, fmt.Sprintf("%s-%s-%s", c.callID, c.deviceID, trackRemote.id))
+		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, id, fmt.Sprintf("%s-%s-%s", c.callID, c.deviceID, trackRemote.ID()))
 		if err != nil {
 			panic(err)
 		}
 
-		c.conf.trackDetails[trackRemote.id] = trackDetail{
+		c.conf.trackDetails[trackKey{
+			streamID: trackRemote.StreamID(),
+			trackID: trackRemote.ID(),
+		}] = &trackDetail{
 			call:  c,
 			track: trackLocal,
 		}
@@ -238,7 +250,7 @@ func (c *call) onInvite(content *CallInviteEventContent) error {
 
 	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
-		SDP:  string(offer),
+		SDP:  offer.SDP,
 	})
 
 	answer, err := peerConnection.CreateAnswer(nil)
@@ -259,18 +271,23 @@ func (c *call) onInvite(content *CallInviteEventContent) error {
 	// TODO: sessions
 	answerEvtContent := &event.Content{
 		Parsed: event.CallAnswerEventContent{
-			CallID:  c.callID,
-			ConfID:  c.conf.confID,
-			PartyID: c.client.DeviceID,
-			Version: 1,
-			Answer:  answerSdp,
+			BaseCallEventContent: event.BaseCallEventContent{
+				CallID:  c.callID,
+				ConfID:  c.conf.confID,
+				PartyID: string(c.client.DeviceID),
+				Version: event.CallVersion("1"),
+			},
+			Answer: event.CallData{
+				Type: "answer",
+				SDP: answerSdp,
+			},
 		},
 	}
 
 	toDeviceAnswer := &mautrix.ReqSendToDevice{
-		Messages: map[c.UserID]map[c.DeviceID]*event.Content{
-			toUser: {
-				toDevice: answerEvtContent,
+		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
+			c.userID: {
+				c.deviceID: answerEvtContent,
 			},
 		},
 	}
@@ -282,9 +299,10 @@ func (c *call) onInvite(content *CallInviteEventContent) error {
 	return err
 }
 
-func (c *call) onCandidates(content *CallCandidatesEventContent) error {
+func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
 	// TODO: tell our peerConnection about the new candidates we just discovered
 	log.Print("ignoring candidates as not yet implemented", content)
+	return nil
 }
 
 func copyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.TrackLocalStaticRTP) {

@@ -1,15 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"reflect"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 )
 
-func initMatrix(config config) error {
+func initMatrix(config *config) error {
 	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
 	if err != nil {
 		log.Fatal("Failed to create client", err)
@@ -25,7 +25,7 @@ func initMatrix(config config) error {
 	client.DeviceID = whoami.DeviceID
 
 	focus := &focus{
-		name: fmt.printf("%s (%s)", config.UserID, config.DeviceID),
+		name: fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID),
 	}
 
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
@@ -54,25 +54,29 @@ func initMatrix(config config) error {
 	syncer.OnEventType(CallInvite, func(_ mautrix.EventSource, event *event.Event) {
 		log.Print("event", event)
 		invite := event.Content.AsCallInvite()
-		conf := focus.getConf(invite.ConfID, true)
-		call := conf.getCall(invite.CallID, true)
+		conf, _ := focus.getConf(invite.ConfID, true)
+		call, _ := conf.getCall(invite.CallID, true)
 		call.userID = event.Sender
 		call.deviceID = invite.DeviceID
 		// TODO: check session IDs
-		call.onInvite(event)
+		call.onInvite(invite)
 	})
 
 	syncer.OnEventType(CallCandidates, func(_ mautrix.EventSource, event *event.Event) {
 		log.Print("event", event)
-		if conf := focus.getConf(event.ConfID); err != nil {
-			log.Printf("Got candidates for unknown conf %s", event.ConfID)
+		candidates := event.Content.AsCallCandidates()
+		var conf *conf
+		var call *call
+		var err error
+		if conf, err = focus.getConf(candidates.ConfID, false); err != nil {
+			log.Printf("Got candidates for unknown conf %s", candidates.ConfID)
 			return
 		}
-		if call := conf.getCall(event.CallID); err != nil {
-			log.Printf("Got candidates for unknown call %s in conf %s", event.CallID, event.ConfID)
+		if call, err = conf.getCall(candidates.CallID, false); err != nil {
+			log.Printf("Got candidates for unknown call %s in conf %s", candidates.CallID, candidates.ConfID)
 			return
 		}
-		call.onCandidates(event.Content.AsCallCandidates())
+		call.onCandidates(candidates)
 	})
 
 	syncer.OnEventType(CallAnswer, func(_ mautrix.EventSource, event *event.Event) {
@@ -107,4 +111,6 @@ func initMatrix(config config) error {
 	if err != nil {
 		log.Panic("Sync failed", err)
 	}
+
+	return nil
 }

@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"bytes"
 	"encoding/json"
@@ -126,3 +127,4 @@ func remoteStreamLookup(msg dataChannelMessage) (webrtc.TrackLocal, webrtc.Track
 	return <-audioTrack, <-videoTrack
 
 }
+*/

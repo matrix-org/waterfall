@@ -6,6 +6,8 @@ import (
 	yaml "gopkg.in/yaml.v3"
 	"io/ioutil"
 	"log"
+
+	"maunium.net/go/mautrix/id"
 )
 
 func loadConfig(configFilePath string) (*config, error) {
@@ -42,7 +44,7 @@ type config struct {
 	AccessToken   string
 }
 
-type trackDesc struct {
+type TrackDesc struct {
 	streamID string `json:"stream_id"`
 	trackID  string `json:"track_id"`
 }
@@ -50,6 +52,7 @@ type trackDesc struct {
 type dataChannelMessage struct {
 	Op string `json:"op"`
 	// XXX: is this even needed? we know which conf a given call is for...
+	Message string `json:"message"`
 	ConfID string      `json:"conf_id"`
 	Start  []TrackDesc `json:"start"`
 	Stop   []TrackDesc `json:"top"`
