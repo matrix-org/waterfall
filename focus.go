@@ -126,7 +126,7 @@ func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLoc
 	}].track
 }
 
-func (c *conf) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webrtc.DataChannel) {
+func (c *call) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webrtc.DataChannel) {
 	sendError := func(errMsg string) {
 		marshaled, err := json.Marshal(&dataChannelMessage{
 			Op:      "error",
@@ -161,7 +161,7 @@ func (c *conf) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webr
 			}
 
 			for _, trackDesc := range msg.Start {
-				track := c.localTrackLookup(trackDesc.streamID, trackDesc.trackID)
+				track := c.conf.localTrackLookup(trackDesc.streamID, trackDesc.trackID)
 
 				// TODO: hook cascade back up.
 				// As we're not an AS, we'd rely on the client
@@ -256,8 +256,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	})
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		log.Print("onDataChannel", d)
-		//f.dataChannelHandler(peerConnection, d, setPublishDetails)
+		c.dataChannelHandler(peerConnection, d)
 	})
 
 	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -275,6 +274,42 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		return err
 	}
 	<-gatherComplete
+
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		ice := candidate.ToJSON()
+
+		// TODO: batch these up a bit
+		candidateEvtContent := &event.Content{
+			Parsed: event.CallCandidatesEventContent{
+				BaseCallEventContent: event.BaseCallEventContent{
+					CallID:  c.callID,
+					ConfID:  c.conf.confID,
+					PartyID: string(c.client.DeviceID),
+					Version: event.CallVersion("1"),
+				},
+				Candidates: []event.CallCandidate{
+					event.CallCandidate{
+						Candidate:     ice.Candidate,
+						SDPMLineIndex: int(*ice.SDPMLineIndex),
+						SDPMID:        *ice.SDPMid,
+						// XXX: what about ice.UsernameFragment?
+					},
+				},
+			},
+		}
+
+		toDevice := &mautrix.ReqSendToDevice{
+			Messages: map[id.UserID]map[id.DeviceID]*event.Content{
+				c.userID: {
+					c.deviceID: candidateEvtContent,
+				},
+			},
+		}
+
+		// TODO: E2EE
+		// TODO: to-device reliability
+		c.client.SendToDevice(event.CallCandidates, toDevice)
+	})
 
 	// TODO: send any subsequent candidates we discover to the peer
 
@@ -296,7 +331,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		},
 	}
 
-	toDeviceAnswer := &mautrix.ReqSendToDevice{
+	toDevice := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
 			c.userID: {
 				c.deviceID: answerEvtContent,
@@ -306,7 +341,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 
 	// TODO: E2EE
 	// TODO: to-device reliability
-	c.client.SendToDevice(event.CallAnswer, toDeviceAnswer)
+	c.client.SendToDevice(event.CallAnswer, toDevice)
 
 	return err
 }
