@@ -292,6 +292,44 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		c.dataChannelHandler(d)
 	})
 
+	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  offer.SDP,
+	})
+
+	answer, err := peerConnection.CreateAnswer(nil)
+	if err != nil {
+		return err
+	}
+
+	// TODO: trickle ICE for fast conn setup, rather than block here
+	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+	if err = peerConnection.SetLocalDescription(answer); err != nil {
+		return err
+	}
+	<-gatherComplete
+
+	answerSdp := peerConnection.LocalDescription().SDP
+
+	answerEvtContent := &event.Content{
+		Parsed: event.CallAnswerEventContent{
+			BaseCallEventContent: event.BaseCallEventContent{
+				CallID:          c.callID,
+				ConfID:          c.conf.confID,
+				DeviceID:        c.client.DeviceID,
+				SenderSessionID: c.localSessionID,
+				DestSessionID:   c.remoteSessionID,
+				PartyID:         string(c.client.DeviceID),
+				Version:         event.CallVersion("1"),
+			},
+			Answer: event.CallData{
+				Type: "answer",
+				SDP:  answerSdp,
+			},
+		},
+	}
+	c.sendToDevice(event.CallAnswer, answerEvtContent)
+
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if (candidate == nil) {
 			return
@@ -325,44 +363,6 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		}
 		c.sendToDevice(event.CallCandidates, candidateEvtContent)
 	})
-
-	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
-		SDP:  offer.SDP,
-	})
-
-	answer, err := peerConnection.CreateAnswer(nil)
-	if err != nil {
-		return err
-	}
-
-	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
-	if err = peerConnection.SetLocalDescription(answer); err != nil {
-		return err
-	}
-	<-gatherComplete
-
-	answerSdp := peerConnection.LocalDescription().SDP
-
-	answerEvtContent := &event.Content{
-		Parsed: event.CallAnswerEventContent{
-			BaseCallEventContent: event.BaseCallEventContent{
-				CallID:          c.callID,
-				ConfID:          c.conf.confID,
-				DeviceID:        c.client.DeviceID,
-				SenderSessionID: c.localSessionID,
-				DestSessionID:   c.remoteSessionID,
-				PartyID:         string(c.client.DeviceID),
-				Version:         event.CallVersion("1"),
-			},
-			Answer: event.CallData{
-				Type: "answer",
-				SDP:  answerSdp,
-			},
-		},
-	}
-	c.sendToDevice(event.CallAnswer, answerEvtContent)
-
 	return err
 }
 
