@@ -168,7 +168,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			log.Fatal(err)
 		}
 
-		log.Printf("Received DC %s %s %+v %+v", msg.Op, msg.ConfID, msg.Start, msg.Stop)
+		log.Printf("%s | Received DC %s confId=%s start=%+v", c.callID, msg.Op, msg.ConfID, msg.Start)
 
 		switch msg.Op {
 		case "select":
@@ -221,7 +221,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				panic(err)
 			}
 
-			log.Printf("Sending DC %s %s", response.Op, response.SDP)
+			log.Printf("%s | Sending DC %s %s", c.callID, response.Op, response.SDP)
 
 			if err = d.SendText(string(marshaled)); err != nil {
 				panic(err)
@@ -242,6 +242,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	c.peerConnection = peerConnection
 
 	peerConnection.OnTrack(func(trackRemote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+		log.Printf("%s | discovered track on PC with id %s, streamID %s and codec %+v", c.callID, trackRemote.ID(), trackRemote.StreamID(), trackRemote.Codec())
 		id := "audio"
 		if strings.Contains(trackRemote.Codec().MimeType, "video") {
 			id = "video"
@@ -271,6 +272,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 			call:  c,
 			track: trackLocal,
 		}
+		log.Printf("%s | published %s %s", c.callID, streamID, trackID)
 		c.conf.trackDetailsMu.Unlock()
 
 		copyRemoteToLocal(trackRemote, trackLocal)
@@ -279,22 +281,6 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		c.dataChannelHandler(d)
 	})
-
-	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
-		SDP:  offer.SDP,
-	})
-
-	answer, err := peerConnection.CreateAnswer(nil)
-	if err != nil {
-		return err
-	}
-
-	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
-	if err = peerConnection.SetLocalDescription(answer); err != nil {
-		return err
-	}
-	<-gatherComplete
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		ice := candidate.ToJSON()
@@ -324,7 +310,21 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		c.sendToDevice(event.CallCandidates, candidateEvtContent)
 	})
 
-	// TODO: send any subsequent candidates we discover to the peer
+	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  offer.SDP,
+	})
+
+	answer, err := peerConnection.CreateAnswer(nil)
+	if err != nil {
+		return err
+	}
+
+	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+	if err = peerConnection.SetLocalDescription(answer); err != nil {
+		return err
+	}
+	<-gatherComplete
 
 	answerSdp := peerConnection.LocalDescription().SDP
 
