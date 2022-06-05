@@ -44,9 +44,9 @@ type config struct {
 	AccessToken   string
 }
 
-type TrackDesc struct {
-	streamID string `json:"stream_id"`
-	trackID  string `json:"track_id"`
+type trackDesc struct {
+	StreamID string `json:"stream_id"`
+	TrackID  string `json:"track_id"`
 }
 
 type dataChannelMessage struct {
@@ -55,7 +55,7 @@ type dataChannelMessage struct {
 	Message string `json:"message,omitempty`
 	// XXX: is this even needed? we know which conf a given call is for...
 	ConfID string      `json:"conf_id,omitempty"`
-	Start  []TrackDesc `json:"start,omitempty"`
-	Stop   []TrackDesc `json:"stop,omitempty"`
+	Start  []trackDesc `json:"start,omitempty"`
+	Stop   []trackDesc `json:"stop,omitempty"`
 	SDP    string      `json:"sdp,omitempty"`
 }

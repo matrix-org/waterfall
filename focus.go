@@ -126,13 +126,19 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 	return ca, nil
 }
 
-func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLocal) {
+func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLocal, err error) {
 	c.trackDetailsMu.Lock()
 	defer c.trackDetailsMu.Unlock()
-	return c.trackDetails[trackKey{
+
+	trackDetail := c.trackDetails[trackKey{
 		streamID: streamID,
 		trackID:  trackID,
-	}].track
+	}]
+	if trackDetail == nil {
+		return nil, errors.New("No such track")
+	} else {
+		return trackDetail.track, nil
+	}
 }
 
 func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
@@ -162,6 +168,8 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			log.Fatal(err)
 		}
 
+		log.Printf("Received DC %s %s %+v %+v", msg.Op, msg.ConfID, msg.Start, msg.Stop)
+
 		switch msg.Op {
 		case "select":
 			if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -172,7 +180,11 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			}
 
 			for _, trackDesc := range msg.Start {
-				track := c.conf.localTrackLookup(trackDesc.streamID, trackDesc.trackID)
+				track, err := c.conf.localTrackLookup(trackDesc.StreamID, trackDesc.TrackID)
+				if err != nil {
+					sendError("No Such Track")
+					return
+				}
 
 				// TODO: hook cascade back up.
 				// As we're not an AS, we'd rely on the client
@@ -180,12 +192,8 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				// connect to another focus in order to select
 				// its streams.
 
-				if track == nil {
-					sendError("No Such Track")
-					return
-				}
-
 				if track != nil {
+					log.Printf("adding track %s", track.ID())
 					if _, err := peerConnection.AddTrack(track); err != nil {
 						panic(err)
 					}
@@ -212,6 +220,8 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			if err != nil {
 				panic(err)
 			}
+
+			log.Printf("Sending DC %s %s", response.Op, response.SDP)
 
 			if err = d.SendText(string(marshaled)); err != nil {
 				panic(err)
