@@ -95,12 +95,13 @@ func initMatrix(config *config) error {
 			case CallCandidates.Type:
 				candidates := evt.Content.AsCallCandidates()
 				log.Printf("%s | Received to-device event %s", candidates.CallID, evt.Type.Type)
+				return true
 				if conf, err = focus.getConf(candidates.ConfID, false); err != nil {
 					log.Printf("Failed to find conf %s %+v", candidates.ConfID, err)
 					return true
 				}
 				if call, err = conf.getCall(candidates.CallID, false); err != nil {
-					log.Printf("Failed to find call %s %+v", candidates.ConfID, err)
+					log.Printf("Failed to find call %s %+v", candidates.CallID, err)
 					return true
 				}
 				call.onCandidates(candidates)

@@ -19,8 +19,6 @@ import (
 
 type trackDetail struct {
 	call     *call
-	trackID  string
-	streamID string
 	track    *webrtc.TrackLocalStaticRTP
 }
 
@@ -127,6 +125,7 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 }
 
 func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLocal, err error) {
+	log.Printf("localTrackLookup called for %s %s", streamID, trackID)
 	c.trackDetailsMu.Lock()
 	defer c.trackDetailsMu.Unlock()
 
@@ -134,6 +133,9 @@ func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLoc
 		streamID: streamID,
 		trackID:  trackID,
 	}]
+
+	log.Printf("localTrackLookup returning with trackDetail %+v", trackDetail)
+
 	if trackDetail == nil {
 		return nil, errors.New("No such track")
 	} else {
@@ -145,6 +147,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 	peerConnection := c.peerConnection
 
 	sendError := func(errMsg string) {
+		log.Printf("%s | sending DC error %s", c.callID, errMsg)
 		marshaled, err := json.Marshal(&dataChannelMessage{
 			Op:      "error",
 			Message: errMsg,
@@ -170,8 +173,27 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 
 		log.Printf("%s | Received DC %s confId=%s start=%+v", c.callID, msg.Op, msg.ConfID, msg.Start)
 
+		// TODO: hook cascade back up.
+		// As we're not an AS, we'd rely on the client
+		// to send us a "connect" op to tell us how to
+		// connect to another focus in order to select
+		// its streams.
+
 		switch msg.Op {
 		case "select":
+			var tracks []webrtc.TrackLocal
+			for _, trackDesc := range msg.Start {
+				log.Printf("%s | localTrackLookup", c.callID)
+				track, err := c.conf.localTrackLookup(trackDesc.StreamID, trackDesc.TrackID)
+				if err != nil {
+					sendError("No Such Track")
+					return
+				} else {
+					tracks = append(tracks, track)
+				}
+			}
+
+			log.Printf("%s | SetRemoteDescription", c.callID)
 			if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeOffer,
 				SDP:  msg.SDP,
@@ -179,34 +201,22 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				panic(err)
 			}
 
-			for _, trackDesc := range msg.Start {
-				track, err := c.conf.localTrackLookup(trackDesc.StreamID, trackDesc.TrackID)
-				if err != nil {
-					sendError("No Such Track")
-					return
-				}
-
-				// TODO: hook cascade back up.
-				// As we're not an AS, we'd rely on the client
-				// to send us a "connect" op to tell us how to
-				// connect to another focus in order to select
-				// its streams.
-
-				if track != nil {
-					log.Printf("%s | adding track %s", c.callID, track.ID())
-					if _, err := peerConnection.AddTrack(track); err != nil {
-						panic(err)
-					}
+			for _, track := range tracks {
+				log.Printf("%s | adding track %s", c.callID, track.ID())
+				if _, err := peerConnection.AddTrack(track); err != nil {
+					panic(err)
 				}
 			}
 
 			// TODO: hook up msg.Stop to unsubscribe from tracks
 
+			log.Printf("%s | CreateAnswer", c.callID)
 			answer, err := peerConnection.CreateAnswer(nil)
 			if err != nil {
 				panic(err)
 			}
 
+			log.Printf("%s | SetLocalDescription", c.callID)
 			if err := peerConnection.SetLocalDescription(answer); err != nil {
 				panic(err)
 			}
@@ -221,7 +231,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				panic(err)
 			}
 
-			log.Printf("%s | Sending DC %s %s", c.callID, response.Op, response.SDP)
+			log.Printf("%s | Sending DC %s", c.callID, response.Op)
 
 			if err = d.SendText(string(marshaled)); err != nil {
 				panic(err)
@@ -290,6 +300,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		ice := candidate.ToJSON()
 
 		log.Printf("%s | discovered local candidate %s", c.callID, ice.Candidate)
+		return
 
 		// TODO: batch these up a bit
 		candidateEvtContent := &event.Content{
