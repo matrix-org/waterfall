@@ -266,13 +266,13 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		}
 
 		c.conf.trackDetails[trackKey{
-			streamID: trackRemote.StreamID(),
+			streamID: "unknown",
 			trackID:  trackRemote.ID(),
 		}] = &trackDetail{
 			call:  c,
 			track: trackLocal,
 		}
-		log.Printf("%s | published %s %s", c.callID, streamID, trackID)
+		log.Printf("%s | published %s %s", c.callID, "unknown", trackRemote.ID())
 		c.conf.trackDetailsMu.Unlock()
 
 		copyRemoteToLocal(trackRemote, trackLocal)
