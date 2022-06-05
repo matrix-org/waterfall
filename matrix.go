@@ -22,6 +22,7 @@ func initMatrix(config *config) error {
 	if config.UserID != whoami.UserID {
 		log.Fatalf("Access token is for the wrong user: %s", config.UserID)
 	}
+	log.Printf("Identified SFU as device %s", whoami.DeviceID)
 	client.DeviceID = whoami.DeviceID
 
 	focus := &focus{
@@ -51,68 +52,55 @@ func initMatrix(config *config) error {
 
 	// TODO: E2EE
 
-	syncer.OnEventType(CallInvite, func(_ mautrix.EventSource, event *event.Event) {
-		log.Printf("event %+v", event)
-		invite := event.Content.AsCallInvite()
-		conf, _ := focus.getConf(invite.ConfID, true)
-		call, _ := conf.getCall(invite.CallID, true)
-		call.userID = event.Sender
-		call.deviceID = invite.DeviceID
-		// TODO: check session IDs
-		call.onInvite(invite)
-	})
-
-	syncer.OnEventType(CallCandidates, func(_ mautrix.EventSource, event *event.Event) {
-		log.Printf("event %+v", event)
-		candidates := event.Content.AsCallCandidates()
-		var conf *conf
-		var call *call
-		var err error
-		if conf, err = focus.getConf(candidates.ConfID, false); err != nil {
-			log.Printf("Got candidates for unknown conf %s", candidates.ConfID)
-			return
-		}
-		if call, err = conf.getCall(candidates.CallID, false); err != nil {
-			log.Printf("Got candidates for unknown call %s in conf %s", candidates.CallID, candidates.ConfID)
-			return
-		}
-		call.onCandidates(candidates)
-	})
-
-	syncer.OnEventType(CallAnswer, func(_ mautrix.EventSource, event *event.Event) {
-		log.Printf("event %+v", event)
-		// until we have cascading hooked up, we should never be receiving answer events
-		log.Print("Ignoring unexpected answer event")
-	})
-
-	syncer.OnEventType(CallReject, func(_ mautrix.EventSource, event *event.Event) {
-		log.Printf("event %+v", event)
-		// until we have cascading hooked up, we should never be receiving reject events
-		log.Print("Ignoring unexpected reject event")
-	})
-
-	syncer.OnEventType(CallSelectAnswer, func(_ mautrix.EventSource, event *event.Event) {
-		log.Printf("event %+v", event)
-		// until we have cascading hooked up, we should never be receiving answer events
-		log.Print("Ignoring unexpected select answer event")
-	})
-
-	syncer.OnEventType(CallNegotiate, func(_ mautrix.EventSource, event *event.Event) {
-		log.Printf("event %+v", event)
-		// TODO: process SDP renegotiation
-	})
-
-	syncer.OnEventType(CallHangup, func(_ mautrix.EventSource, event *event.Event) {
-		log.Printf("event %+v", event)
-		// TODO: process hangups
-	})
-
-	syncer.OnEvent(func(source mautrix.EventSource, evt *event.Event) {
-		log.Printf("onEvent %+v %+v", source, evt);
-	})
-
 	syncer.OnSync(func(resp *mautrix.RespSync, since string) bool {
-		log.Printf("synced %+v %+v", resp, since);
+		log.Printf("synced %+v %+v", resp, since)
+
+		for _, evt := range resp.ToDevice.Events {
+			evt.Type.Class = event.ToDeviceEventType
+			err := evt.Content.ParseRaw(evt.Type)
+			if err != nil {
+				log.Printf("Failed to parse to-device event of type %s: %v", evt.Type.Type, err)
+				continue
+			}
+			log.Printf("event %+v", evt)
+			switch evt.Type.Type {
+			case CallInvite.Type:
+				invite := evt.Content.AsCallInvite()
+				conf, _ := focus.getConf(invite.ConfID, true)
+				call, _ := conf.getCall(invite.CallID, true)
+				call.userID = evt.Sender
+				call.deviceID = invite.DeviceID
+				// TODO: check session IDs
+				call.onInvite(invite)
+			case CallCandidates.Type:
+				candidates := evt.Content.AsCallCandidates()
+				var conf *conf
+				var call *call
+				var err error
+				if conf, err = focus.getConf(candidates.ConfID, false); err != nil {
+					log.Printf("Got candidates for unknown conf %s", candidates.ConfID)
+					return true
+				}
+				if call, err = conf.getCall(candidates.CallID, false); err != nil {
+					log.Printf("Got candidates for unknown call %s in conf %s", candidates.CallID, candidates.ConfID)
+					return true
+				}
+				call.onCandidates(candidates)
+			case CallAnswer.Type:
+				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+			case CallReject.Type:
+				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+			case CallSelectAnswer.Type:
+				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+			case CallNegotiate.Type:
+				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+			case CallHangup.Type:
+				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+			default:
+				log.Printf("Ignoring unrecognised to-device event of type %s", evt.Type.Type)
+			}
+		}
+
 		return true
 	})
 
