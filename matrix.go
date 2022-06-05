@@ -95,7 +95,6 @@ func initMatrix(config *config) error {
 			case CallCandidates.Type:
 				candidates := evt.Content.AsCallCandidates()
 				log.Printf("%s | Received to-device event %s", candidates.CallID, evt.Type.Type)
-				return true
 				if conf, err = focus.getConf(candidates.ConfID, false); err != nil {
 					log.Printf("Failed to find conf %s %+v", candidates.ConfID, err)
 					return true

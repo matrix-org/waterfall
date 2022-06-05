@@ -300,7 +300,6 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		ice := candidate.ToJSON()
 
 		log.Printf("%s | discovered local candidate %s", c.callID, ice.Candidate)
-		return
 
 		// TODO: batch these up a bit
 		candidateEvtContent := &event.Content{
