@@ -193,7 +193,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				// its streams.
 
 				if track != nil {
-					log.Printf("adding track %s", track.ID())
+					log.Printf("%s | adding track %s", c.callID, track.ID())
 					if _, err := peerConnection.AddTrack(track); err != nil {
 						panic(err)
 					}
@@ -283,7 +283,13 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	})
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if (candidate == nil) {
+			return
+		}
+
 		ice := candidate.ToJSON()
+
+		log.Printf("%s | discovered local candidate %s", c.callID, ice.Candidate)
 
 		// TODO: batch these up a bit
 		candidateEvtContent := &event.Content{
