@@ -24,6 +24,7 @@ func loadConfig(configFilePath string) (*config, error) {
 }
 
 func main() {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	configFilePath := flag.String("config", "config.yaml", "Configuration file path")
 	flag.Parse()
 
