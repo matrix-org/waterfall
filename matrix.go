@@ -52,7 +52,7 @@ func initMatrix(config *config) error {
 	// TODO: E2EE
 
 	syncer.OnEventType(CallInvite, func(_ mautrix.EventSource, event *event.Event) {
-		log.Print("event", event)
+		log.Printf("event %+v", event)
 		invite := event.Content.AsCallInvite()
 		conf, _ := focus.getConf(invite.ConfID, true)
 		call, _ := conf.getCall(invite.CallID, true)
@@ -63,7 +63,7 @@ func initMatrix(config *config) error {
 	})
 
 	syncer.OnEventType(CallCandidates, func(_ mautrix.EventSource, event *event.Event) {
-		log.Print("event", event)
+		log.Printf("event %+v", event)
 		candidates := event.Content.AsCallCandidates()
 		var conf *conf
 		var call *call
@@ -80,31 +80,40 @@ func initMatrix(config *config) error {
 	})
 
 	syncer.OnEventType(CallAnswer, func(_ mautrix.EventSource, event *event.Event) {
-		log.Print("event", event)
+		log.Printf("event %+v", event)
 		// until we have cascading hooked up, we should never be receiving answer events
-		log.Printf("Ignoring unexpected answer event")
+		log.Print("Ignoring unexpected answer event")
 	})
 
 	syncer.OnEventType(CallReject, func(_ mautrix.EventSource, event *event.Event) {
-		log.Print("event", event)
+		log.Printf("event %+v", event)
 		// until we have cascading hooked up, we should never be receiving reject events
-		log.Printf("Ignoring unexpected reject event")
+		log.Print("Ignoring unexpected reject event")
 	})
 
 	syncer.OnEventType(CallSelectAnswer, func(_ mautrix.EventSource, event *event.Event) {
-		log.Print("event", event)
+		log.Printf("event %+v", event)
 		// until we have cascading hooked up, we should never be receiving answer events
-		log.Printf("Ignoring unexpected select answer event")
+		log.Print("Ignoring unexpected select answer event")
 	})
 
 	syncer.OnEventType(CallNegotiate, func(_ mautrix.EventSource, event *event.Event) {
-		log.Print("event", event)
+		log.Printf("event %+v", event)
 		// TODO: process SDP renegotiation
 	})
 
 	syncer.OnEventType(CallHangup, func(_ mautrix.EventSource, event *event.Event) {
-		log.Print("event", event)
+		log.Printf("event %+v", event)
 		// TODO: process hangups
+	})
+
+	syncer.OnEvent(func(source mautrix.EventSource, evt *event.Event) {
+		log.Printf("onEvent %+v %+v", source, evt);
+	})
+
+	syncer.OnSync(func(resp *mautrix.RespSync, since string) bool {
+		log.Printf("synced %+v %+v", resp, since);
+		return true
 	})
 
 	err = client.Sync()
