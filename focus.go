@@ -81,16 +81,22 @@ type focus struct {
 	confs confs
 }
 
+func (f *focus) Init(name string) {
+	f.name = name
+	f.confs.confs = make(map[string]*conf)
+}
+
 func (f *focus) getConf(confID string, create bool) (*conf, error) {
 	f.confs.confsMu.Lock()
 	defer f.confs.confsMu.Unlock()
 	co := f.confs.confs[confID]
 	if co == nil {
 		if create {
-			co := conf{
+			co = &conf{
 				confID: confID,
 			}
-			f.confs.confs[confID] = &co
+			f.confs.confs[confID] = co
+			co.calls.calls = make(map[string]*call)
 		} else {
 			return nil, errors.New("No such conf")
 		}
@@ -104,12 +110,12 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 	ca := c.calls.calls[callID]
 	if ca == nil {
 		if create {
-			ca := call{
+			ca = &call{
 				callID:    callID,
 				conf:      c,
 				callState: WaitLocalMedia,
 			}
-			c.calls.calls[callID] = &ca
+			c.calls.calls[callID] = ca
 		} else {
 			return nil, errors.New("No such call")
 		}
