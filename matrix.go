@@ -61,7 +61,6 @@ func initMatrix(config *config) error {
 				log.Printf("Failed to parse to-device event of type %s: %v", evt.Type.Type, err)
 				continue
 			}
-			log.Printf("Received to-device event %s", evt.Type.Type)
 
 			var conf *conf
 			var call *call
@@ -69,6 +68,7 @@ func initMatrix(config *config) error {
 			switch evt.Type.Type {
 			case CallInvite.Type:
 				invite := evt.Content.AsCallInvite()
+				log.Printf("%s | Received to-device event %s", invite.CallID, evt.Type.Type)
 				if conf, err = focus.getConf(invite.ConfID, true); err != nil {
 					log.Printf("Failed to create conf %s %+v", invite.ConfID, err)
 					return true
@@ -85,11 +85,16 @@ func initMatrix(config *config) error {
 				}
 				call.userID = evt.Sender
 				call.deviceID = invite.DeviceID
+				// XXX: hardcode the same sessionID for SFUs for now, as nobody should care
+				// much if they get restarted(?)
+				call.localSessionID = "sfu"
+				call.remoteSessionID = invite.SenderSessionID
 				call.client = client
 				// TODO: check session IDs
 				call.onInvite(invite)
 			case CallCandidates.Type:
 				candidates := evt.Content.AsCallCandidates()
+				log.Printf("%s | Received to-device event %s", candidates.CallID, evt.Type.Type)
 				if conf, err = focus.getConf(candidates.ConfID, false); err != nil {
 					log.Printf("Failed to find conf %s %+v", candidates.ConfID, err)
 					return true

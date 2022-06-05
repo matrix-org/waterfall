@@ -43,13 +43,15 @@ const (
 type callState string
 
 type call struct {
-	callID         string
-	userID         id.UserID
-	deviceID       id.DeviceID
-	client         *mautrix.Client
-	peerConnection *webrtc.PeerConnection
-	callState      callState
-	conf           *conf
+	callID          string
+	userID          id.UserID
+	deviceID        id.DeviceID
+	localSessionID  string
+	remoteSessionID string
+	client          *mautrix.Client
+	peerConnection  *webrtc.PeerConnection
+	callState       callState
+	conf            *conf
 	// we track the call's tracks via the conf object.
 }
 
@@ -97,6 +99,7 @@ func (f *focus) getConf(confID string, create bool) (*conf, error) {
 			}
 			f.confs.confs[confID] = co
 			co.calls.calls = make(map[string]*call)
+			co.trackDetails = make(map[trackKey]*trackDetail)
 		} else {
 			return nil, errors.New("No such conf")
 		}
@@ -290,10 +293,13 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		candidateEvtContent := &event.Content{
 			Parsed: event.CallCandidatesEventContent{
 				BaseCallEventContent: event.BaseCallEventContent{
-					CallID:  c.callID,
-					ConfID:  c.conf.confID,
-					PartyID: string(c.client.DeviceID),
-					Version: event.CallVersion("1"),
+					CallID:          c.callID,
+					ConfID:          c.conf.confID,
+					DeviceID:        c.client.DeviceID,
+					SenderSessionID: c.localSessionID,
+					DestSessionID:   c.remoteSessionID,
+					PartyID:         string(c.client.DeviceID),
+					Version:         event.CallVersion("1"),
 				},
 				Candidates: []event.CallCandidate{
 					event.CallCandidate{
@@ -305,32 +311,23 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 				},
 			},
 		}
-
-		toDevice := &mautrix.ReqSendToDevice{
-			Messages: map[id.UserID]map[id.DeviceID]*event.Content{
-				c.userID: {
-					c.deviceID: candidateEvtContent,
-				},
-			},
-		}
-
-		// TODO: E2EE
-		// TODO: to-device reliability
-		c.client.SendToDevice(event.CallCandidates, toDevice)
+		c.sendToDevice(event.CallCandidates, candidateEvtContent)
 	})
 
 	// TODO: send any subsequent candidates we discover to the peer
 
 	answerSdp := peerConnection.LocalDescription().SDP
 
-	// TODO: sessions
 	answerEvtContent := &event.Content{
 		Parsed: event.CallAnswerEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
-				CallID:  c.callID,
-				ConfID:  c.conf.confID,
-				PartyID: string(c.client.DeviceID),
-				Version: event.CallVersion("1"),
+				CallID:          c.callID,
+				ConfID:          c.conf.confID,
+				DeviceID:        c.client.DeviceID,
+				SenderSessionID: c.localSessionID,
+				DestSessionID:   c.remoteSessionID,
+				PartyID:         string(c.client.DeviceID),
+				Version:         event.CallVersion("1"),
 			},
 			Answer: event.CallData{
 				Type: "answer",
@@ -338,20 +335,26 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 			},
 		},
 	}
+	c.sendToDevice(event.CallAnswer, answerEvtContent)
 
+	return err
+}
+
+func (c *call) sendToDevice(callType event.Type, content *event.Content) error {
+	log.Printf("%s | sending to device %s", c.callID, callType.Type)
 	toDevice := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
 			c.userID: {
-				c.deviceID: answerEvtContent,
+				c.deviceID: content,
 			},
 		},
 	}
 
 	// TODO: E2EE
 	// TODO: to-device reliability
-	c.client.SendToDevice(event.CallAnswer, toDevice)
+	c.client.SendToDevice(callType, toDevice)
 
-	return err
+	return nil
 }
 
 func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
