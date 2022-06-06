@@ -183,7 +183,6 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		case "select":
 			var tracks []webrtc.TrackLocal
 			for _, trackDesc := range msg.Start {
-				log.Printf("%s | localTrackLookup", c.callID)
 				track, err := c.conf.localTrackLookup(trackDesc.StreamID, trackDesc.TrackID)
 				if err != nil {
 					sendError("No Such Track")
@@ -193,7 +192,6 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				}
 			}
 
-			log.Printf("%s | SetRemoteDescription", c.callID)
 			if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeOffer,
 				SDP:  msg.SDP,
@@ -210,13 +208,11 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 
 			// TODO: hook up msg.Stop to unsubscribe from tracks
 
-			log.Printf("%s | CreateAnswer", c.callID)
 			answer, err := peerConnection.CreateAnswer(nil)
 			if err != nil {
 				panic(err)
 			}
 
-			log.Printf("%s | SetLocalDescription", c.callID)
 			if err := peerConnection.SetLocalDescription(answer); err != nil {
 				panic(err)
 			}
