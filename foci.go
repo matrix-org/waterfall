@@ -6,20 +6,21 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/pion/rtcp"
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v3"
 )
 
 type streamDetail struct {
 	callID, deviceID, purpose string
+	ssrc                      webrtc.SSRC
 	track                     *webrtc.TrackLocalStaticRTP
 }
-
-type setStreamDetails func(newCallID, newDeviceID, newPurpose string)
 
 type foci struct {
 	name            string
@@ -32,7 +33,7 @@ func (f *foci) localStreamLookup(msg dataChannelMessage) (audioTrack, videoTrack
 	defer f.streamDetailsMu.Unlock()
 
 	for _, s := range f.streamDetails {
-		if s.callID == msg.CallID && s.deviceID == msg.DeviceID && s.purpose == msg.Purpose {
+		if s.track != nil && s.callID == msg.CallID && s.deviceID == msg.DeviceID && s.purpose == msg.Purpose {
 			if s.track.Kind() == webrtc.RTPCodecTypeAudio {
 				audioTrack = s.track
 			} else {
@@ -43,7 +44,7 @@ func (f *foci) localStreamLookup(msg dataChannelMessage) (audioTrack, videoTrack
 	return
 }
 
-func (f *foci) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webrtc.DataChannel, setPublishDetails setStreamDetails) {
+func (f *foci) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webrtc.DataChannel) {
 	sendError := func(errMsg string) {
 		marshaled, err := json.Marshal(&dataChannelMessage{
 			Event:   "error",
@@ -70,6 +71,43 @@ func (f *foci) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webr
 
 		switch msg.Event {
 		case "publish":
+
+			parsedOffer := &sdp.SessionDescription{}
+			if err := parsedOffer.Unmarshal([]byte(msg.SDP)); err != nil {
+				log.Fatal(err)
+			}
+
+			f.streamDetailsMu.Lock()
+			for _, mid := range msg.MIDs {
+				for _, mediaSection := range parsedOffer.MediaDescriptions {
+					ssrc := int(0)
+					foundMid := false
+					err := error(nil)
+
+					for _, attribute := range mediaSection.Attributes {
+						if attribute.Key == "mid" && attribute.Value == mid {
+							foundMid = true
+						}
+
+						if attribute.Key == "ssrc" && ssrc == 0 {
+							if ssrc, err = strconv.Atoi(strings.Split(attribute.Value, " ")[0]); err != nil {
+								log.Fatal(err)
+							}
+						}
+					}
+
+					if ssrc != 0 && foundMid {
+						f.streamDetails = append(f.streamDetails, streamDetail{
+							callID:   msg.CallID,
+							deviceID: msg.DeviceID,
+							purpose:  msg.Purpose,
+							ssrc:     webrtc.SSRC(ssrc),
+						})
+					}
+				}
+			}
+			f.streamDetailsMu.Unlock()
+
 			if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeOffer,
 				SDP:  msg.SDP,
@@ -85,8 +123,6 @@ func (f *foci) dataChannelHandler(peerConnection *webrtc.PeerConnection, d *webr
 			if err := peerConnection.SetLocalDescription(answer); err != nil {
 				panic(err)
 			}
-
-			setPublishDetails(msg.CallID, msg.DeviceID, msg.Purpose)
 
 			msg.SDP = answer.SDP
 			marshaled, err := json.Marshal(msg)
@@ -165,19 +201,6 @@ func (f *foci) handleCreateSession(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 
-	var (
-		publishDetailsMu          sync.RWMutex
-		callID, deviceID, purpose string
-	)
-	setPublishDetails := func(newCallID, newDeviceID, newPurpose string) {
-		publishDetailsMu.Lock()
-		defer publishDetailsMu.Unlock()
-
-		callID = newCallID
-		deviceID = newDeviceID
-		purpose = newPurpose
-	}
-
 	peerConnection.OnTrack(func(trackRemote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 		id := "audio"
 		if strings.Contains(trackRemote.Codec().MimeType, "video") {
@@ -192,30 +215,28 @@ func (f *foci) handleCreateSession(w http.ResponseWriter, r *http.Request) error
 					}
 				}
 			}()
-
 		}
 
-		publishDetailsMu.Lock()
+		var trackLocal *webrtc.TrackLocalStaticRTP
 		f.streamDetailsMu.Lock()
-		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, id, fmt.Sprintf("%s-%s-%s", callID, deviceID, purpose))
-		if err != nil {
-			panic(err)
+		for i := range f.streamDetails {
+			if f.streamDetails[i].ssrc == trackRemote.SSRC() {
+				f.streamDetails[i].track, err = webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, id, fmt.Sprintf("%s-%s-%s", f.streamDetails[i].callID, f.streamDetails[i].deviceID, f.streamDetails[i].purpose))
+				if err != nil {
+					panic(err)
+				}
+				trackLocal = f.streamDetails[i].track
+			}
 		}
-
-		f.streamDetails = append(f.streamDetails, streamDetail{
-			callID:   callID,
-			deviceID: deviceID,
-			purpose:  purpose,
-			track:    trackLocal,
-		})
 		f.streamDetailsMu.Unlock()
-		publishDetailsMu.Unlock()
 
-		copyRemoteToLocal(trackRemote, trackLocal)
+		if trackLocal != nil {
+			copyRemoteToLocal(trackRemote, trackLocal)
+		}
 	})
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		f.dataChannelHandler(peerConnection, d, setPublishDetails)
+		f.dataChannelHandler(peerConnection, d)
 	})
 
 	peerConnection.SetRemoteDescription(webrtc.SessionDescription{

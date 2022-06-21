@@ -76,14 +76,15 @@ func createFoci(fociName string) (int, error) {
 }
 
 type dataChannelMessage struct {
-	Event    string `json:"event"`
-	Message  string `json:"message,omitempty"`
-	ID       string `json:"id"`
-	CallID   string `json:"call_id"`
-	DeviceID string `json:"device_id"`
-	Purpose  string `json:"purpose"`
-	SDP      string `json:"sdp"`
-	FOCI     string `json:"foci"`
+	Event    string   `json:"event"`
+	Message  string   `json:"message,omitempty"`
+	ID       string   `json:"id"`
+	CallID   string   `json:"call_id"`
+	DeviceID string   `json:"device_id"`
+	Purpose  string   `json:"purpose"`
+	SDP      string   `json:"sdp"`
+	MIDs     []string `json:"mids"`
+	FOCI     string   `json:"foci"`
 }
 
 func setCorsHeaders(w http.ResponseWriter) {
