@@ -43,11 +43,11 @@
     connectToFociButton.onclick = () => {
       peerConnection = new RTCPeerConnection()
       peerConnection.onconnectionstatechange = e => {
-        connectionState.innerText = peerConnection.connectionState
+        document.getElementById('connectionState').innerText = peerConnection.connectionState
       }
 
       peerConnection.ontrack = function (event) {
-        if (event.track.kind === 'audio') {
+        if (event.streams.length == 0 || event.track.kind === "audio") {
           return
         }
 
@@ -56,10 +56,6 @@
         el.autoplay = true
         el.controls = true
         el.muted = true
-
-        event.track.onmute = function(event) {
-          el.parentNode.removeChild(el);
-        }
 
         document.getElementById('tracks').appendChild(el)
       }
@@ -104,8 +100,15 @@
       }
 
       let addStreamAndSendRequest = mediaStream => {
+        let mids = []
         for (const track of mediaStream.getTracks()) {
           peerConnection.addTrack(track)
+
+          peerConnection.getTransceivers().forEach((transceiver, i) => {
+            if (transceiver.sender && transceiver.sender.track === track) {
+              mids.push((i + 1).toString())
+            }
+          })
         }
 
         const el = document.createElement('video')
@@ -124,6 +127,7 @@
             device_id: deviceIdPublish.value,
             purpose: purposePublish.value,
             sdp: offer.sdp,
+            mids: mids,
           }))
         })
       }
