@@ -18,11 +18,9 @@ import (
 )
 
 type trackDetail struct {
-	call     *call
-	track    *webrtc.TrackLocalStaticRTP
+	call  *call
+	track *webrtc.TrackLocalStaticRTP
 }
-
-type setTrackDetails func(call *call, track *webrtc.TrackLocal)
 
 // stolen from matrix-js-sdk
 // TODO: actually use callState (will be needed for renegotiation)
@@ -118,7 +116,7 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 			}
 			c.calls.calls[callID] = ca
 		} else {
-			return nil, errors.New("No such call")
+			return nil, errors.New("no such call")
 		}
 	}
 	return ca, nil
@@ -327,7 +325,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	c.sendToDevice(event.CallAnswer, answerEvtContent)
 
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if (candidate == nil) {
+		if candidate == nil {
 			return
 		}
 
