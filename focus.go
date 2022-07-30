@@ -159,6 +159,18 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		}
 	}
 
+	d.OnOpen(func() {
+		log.Printf("DC opened on call %s", c.callID)
+	})
+
+	d.OnClose(func() {
+		log.Printf("DC closed on call %s", c.callID)
+	})
+
+	d.OnError(func(err error) {
+		log.Fatalf("DC error on call %s: %s", c.callID, err)
+	})
+
 	d.OnMessage(func(m webrtc.DataChannelMessage) {
 		if !m.IsString {
 			log.Fatal("Inbound message is not string")
