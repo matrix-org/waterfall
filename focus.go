@@ -132,11 +132,10 @@ func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLoc
 		trackID:  trackID,
 	}]
 
-	log.Printf("localTrackLookup returning with trackDetail %+v", trackDetail)
-
 	if trackDetail == nil {
-		return nil, errors.New("No such track")
+		return nil, errors.New("no such track")
 	} else {
+		log.Printf("localTrackLookup returning %s track with StreamID %s", trackDetail.track.Kind(), trackDetail.track.StreamID())
 		return trackDetail.track, nil
 	}
 }
@@ -210,7 +209,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			}
 
 			for _, track := range tracks {
-				log.Printf("%s | adding track %s", c.callID, track.ID())
+				log.Printf("%s | adding %s track with StreamID %s", c.callID, track.Kind(), track.StreamID())
 				if _, err := peerConnection.AddTrack(track); err != nil {
 					panic(err)
 				}
