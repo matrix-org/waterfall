@@ -357,7 +357,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 					Version:         event.CallVersion("1"),
 				},
 				Candidates: []event.CallCandidate{
-					event.CallCandidate{
+					{
 						Candidate:     ice.Candidate,
 						SDPMLineIndex: int(*ice.SDPMLineIndex),
 						SDPMID:        *ice.SDPMid,
