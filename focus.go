@@ -397,7 +397,7 @@ func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
 			SDPMid:        &candidate.SDPMID,
 		}
 		if err := c.peerConnection.AddICECandidate(ice); err != nil {
-			log.Printf("Failed to add ICE candidate", content)
+			log.Print("Failed to add ICE candidate", content)
 			return err
 		}
 	}

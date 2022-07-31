@@ -19,7 +19,7 @@ func loadConfig(configFilePath string) (*config, error) {
 	}
 	var config config
 	if err := yaml.Unmarshal(file, &config); err != nil {
-		return nil, fmt.Errorf("Failed to unmarshal YAML: %s", err)
+		return nil, fmt.Errorf("failed to unmarshal YAML: %s", err)
 	}
 	return &config, nil
 }
