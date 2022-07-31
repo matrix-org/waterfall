@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	yaml "gopkg.in/yaml.v3"
 	"io/ioutil"
 	"log"
+
+	yaml "gopkg.in/yaml.v3"
 
 	"maunium.net/go/mautrix/id"
 )
@@ -53,7 +54,7 @@ type trackDesc struct {
 type dataChannelMessage struct {
 	Op      string `json:"op"`
 	ID      string `json:"id"`
-	Message string `json:"message,omitempty`
+	Message string `json:"message,omitempty"`
 	// XXX: is this even needed? we know which conf a given call is for...
 	ConfID string      `json:"conf_id,omitempty"`
 	Start  []trackDesc `json:"start,omitempty"`
