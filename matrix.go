@@ -111,7 +111,7 @@ func initMatrix(config *config) error {
 			case CallSelectAnswer.Type:
 				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
 			case CallNegotiate.Type:
-				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+				log.Printf("Ignoring event as %s should be handled over DC", evt.Type.Type)
 			case CallHangup.Type:
 				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
 			default:
