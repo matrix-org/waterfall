@@ -17,11 +17,6 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-type trackDetail struct {
-	call  *call
-	track *webrtc.TrackLocalStaticRTP
-}
-
 // stolen from matrix-js-sdk
 // TODO: actually use callState (will be needed for renegotiation)
 const (
@@ -56,17 +51,11 @@ type calls struct {
 	calls   map[string]*call
 }
 
-// FIXME: for uniqueness, should we index tracks by {callID, streamID, trackID}?
-type trackKey struct {
-	streamID string
-	trackID  string
-}
-
 type conf struct {
-	confID         string
-	calls          calls
-	trackDetailsMu sync.RWMutex
-	trackDetails   map[trackKey]*trackDetail // by trackID.
+	confID   string
+	calls    calls
+	tracksMu sync.RWMutex
+	tracks   map[string][]*webrtc.TrackLocalStaticRTP // by streamId.
 }
 
 type confs struct {
@@ -95,9 +84,9 @@ func (f *focus) getConf(confID string, create bool) (*conf, error) {
 			}
 			f.confs.confs[confID] = co
 			co.calls.calls = make(map[string]*call)
-			co.trackDetails = make(map[trackKey]*trackDetail)
+			co.tracks = make(map[string][]*webrtc.TrackLocalStaticRTP)
 		} else {
-			return nil, errors.New("No such conf")
+			return nil, errors.New("no such conf")
 		}
 	}
 	return co, nil
@@ -122,21 +111,20 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 	return ca, nil
 }
 
-func (c *conf) localTrackLookup(streamID, trackID string) (track webrtc.TrackLocal, err error) {
-	log.Printf("localTrackLookup called for %s %s", streamID, trackID)
-	c.trackDetailsMu.Lock()
-	defer c.trackDetailsMu.Unlock()
+func (c *conf) getLocalTrackByStreamId(streamID string) (tracks []webrtc.TrackLocal, err error) {
+	c.tracksMu.Lock()
+	defer c.tracksMu.Unlock()
 
-	trackDetail := c.trackDetails[trackKey{
-		streamID: streamID,
-		trackID:  trackID,
-	}]
-
-	if trackDetail == nil {
-		return nil, errors.New("no such track")
+	foundTracks := c.tracks[streamID]
+	if foundTracks == nil {
+		log.Printf("Found no streams for %s", streamID)
+		return nil, errors.New("no such streams")
 	} else {
-		log.Printf("localTrackLookup returning %s track with StreamID %s", trackDetail.track.Kind(), trackDetail.track.StreamID())
-		return trackDetail.track, nil
+		tracksToReturn := []webrtc.TrackLocal{}
+		for _, track := range foundTracks {
+			tracksToReturn = append(tracksToReturn, track)
+		}
+		return tracksToReturn, nil
 	}
 }
 
@@ -192,20 +180,13 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		case "select":
 			var tracks []webrtc.TrackLocal
 			for _, trackDesc := range msg.Start {
-				track, err := c.conf.localTrackLookup(trackDesc.StreamID, trackDesc.TrackID)
+				foundTracks, err := c.conf.getLocalTrackByStreamId(trackDesc.StreamID)
 				if err != nil {
-					sendError("No Such Track")
+					sendError("No Such Stream")
 					return
 				} else {
-					tracks = append(tracks, track)
+					tracks = append(tracks, foundTracks...)
 				}
-			}
-
-			if err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
-				Type: webrtc.SDPTypeOffer,
-				SDP:  msg.SDP,
-			}); err != nil {
-				panic(err)
 			}
 
 			for _, track := range tracks {
@@ -215,34 +196,40 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				}
 			}
 
-			// TODO: hook up msg.Stop to unsubscribe from tracks
-
-			answer, err := peerConnection.CreateAnswer(nil)
+			offer, err := peerConnection.CreateOffer(nil)
+			if err != nil {
+				panic(err)
+			}
+			err = peerConnection.SetLocalDescription(offer)
 			if err != nil {
 				panic(err)
 			}
 
-			if err := peerConnection.SetLocalDescription(answer); err != nil {
-				panic(err)
-			}
-
 			response := dataChannelMessage{
-				Op:  "answer",
+				Op:  "offer",
 				ID:  msg.ID,
-				SDP: answer.SDP,
+				SDP: offer.SDP,
 			}
 			marshaled, err := json.Marshal(response)
 			if err != nil {
 				panic(err)
 			}
-
-			log.Printf("%s | Sending DC %s", c.callID, response.Op)
-
-			if err = d.SendText(string(marshaled)); err != nil {
+			err = d.SendText(string(marshaled))
+			if err != nil {
 				panic(err)
 			}
+
+			log.Printf("%s | Sent DC %s", c.callID, response.Op)
+
+		case "answer":
+			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+				Type: webrtc.SDPTypeAnswer,
+				SDP:  msg.SDP,
+			})
+
 		default:
 			log.Fatalf("Unknown operation %s", msg.Op)
+			// TODO: hook up msg.Stop to unsubscribe from tracks
 		}
 	})
 }
@@ -257,11 +244,8 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	c.peerConnection = peerConnection
 
 	peerConnection.OnTrack(func(trackRemote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		log.Printf("%s | discovered track on PC with id %s, streamID %s and codec %+v", c.callID, trackRemote.ID(), trackRemote.StreamID(), trackRemote.Codec())
-		id := "audio"
+		log.Printf("%s | discovered track with streamID %s and kind %s", c.callID, trackRemote.StreamID(), trackRemote.Kind())
 		if strings.Contains(trackRemote.Codec().MimeType, "video") {
-			id = "video"
-
 			// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
 			go func() {
 				ticker := time.NewTicker(time.Millisecond * 200)
@@ -274,21 +258,24 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 
 		}
 
-		c.conf.trackDetailsMu.Lock()
-		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, id, fmt.Sprintf("%s-%s-%s", c.callID, c.deviceID, trackRemote.ID()))
+		c.conf.tracksMu.Lock()
+		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.Kind().String(), trackRemote.StreamID())
 		if err != nil {
 			panic(err)
 		}
 
-		c.conf.trackDetails[trackKey{
-			streamID: "unknown",
-			trackID:  trackRemote.ID(),
-		}] = &trackDetail{
-			call:  c,
-			track: trackLocal,
+		if c.conf.tracks[trackLocal.StreamID()] == nil {
+			receivedTracks := []*webrtc.TrackLocalStaticRTP{trackLocal}
+			c.conf.tracks[trackLocal.StreamID()] = receivedTracks
+
+		} else {
+			receivedTracks := append(c.conf.tracks[trackLocal.StreamID()], trackLocal)
+			c.conf.tracks[trackLocal.StreamID()] = receivedTracks
+
 		}
-		log.Printf("%s | published %s %s", c.callID, "unknown", trackRemote.ID())
-		c.conf.trackDetailsMu.Unlock()
+
+		log.Printf("%s | published track with streamID %s and kind %s", c.callID, trackLocal.StreamID(), trackLocal.Kind())
+		c.conf.tracksMu.Unlock()
 
 		copyRemoteToLocal(trackRemote, trackLocal)
 	})
