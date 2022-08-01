@@ -358,6 +358,23 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	return err
 }
 
+func (c *call) onSelectAnswer(content *event.CallSelectAnswerEventContent) {
+	selectedPartyId := content.SelectedPartyID
+	if selectedPartyId != string(c.client.DeviceID) {
+		c.terminate()
+		log.Printf("%s | Call was answered on a different device: %s", content.CallID, selectedPartyId)
+	}
+}
+
+func (c *call) onHangup(content *event.CallHangupEventContent) {
+	c.terminate()
+}
+
+func (c *call) terminate() error {
+	// TODO: Implement terminate
+	return nil
+}
+
 func (c *call) sendToDevice(callType event.Type, content *event.Content) error {
 	log.Printf("%s | sending to device %s", c.callID, callType.Type)
 	toDevice := &mautrix.ReqSendToDevice{

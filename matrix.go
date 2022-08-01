@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strings"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -51,9 +52,22 @@ func initMatrix(config *config) error {
 
 	// TODO: E2EE
 
-	syncer.OnSync(func(resp *mautrix.RespSync, since string) bool {
-		//log.Printf("synced %+v %+v", resp, since)
+	getExistingCall := func(confID string, callID string) (*call, error) {
+		var conf *conf
+		var call *call
 
+		if conf, err = focus.getConf(confID, false); err != nil || conf == nil {
+			log.Printf("Failed to get conf %s %+v", confID, err)
+			return nil, err
+		}
+		if call, err = conf.getCall(callID, false); err != nil || call == nil {
+			log.Printf("Failed to get call %s %+v", callID, err)
+			return nil, err
+		}
+		return call, nil
+	}
+
+	syncer.OnSync(func(resp *mautrix.RespSync, since string) bool {
 		for _, evt := range resp.ToDevice.Events {
 			evt.Type.Class = event.ToDeviceEventType
 			err := evt.Content.ParseRaw(evt.Type)
@@ -65,23 +79,24 @@ func initMatrix(config *config) error {
 			var conf *conf
 			var call *call
 
+			if strings.HasPrefix(evt.Type.Type, "m.call.") || strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
+				log.Printf("%s | Received to-device event %s", evt.Content.Raw["call_id"], evt.Type.Type)
+			} else {
+				log.Printf("Received non-call to-device event %s", evt.Type.Type)
+				continue
+			}
+
+			// TODO: check session IDs
 			switch evt.Type.Type {
 			case CallInvite.Type:
 				invite := evt.Content.AsCallInvite()
-				log.Printf("%s | Received to-device event %s", invite.CallID, evt.Type.Type)
-				if conf, err = focus.getConf(invite.ConfID, true); err != nil {
+				if conf, err = focus.getConf(invite.ConfID, true); err != nil || conf == nil {
 					log.Printf("Failed to create conf %s %+v", invite.ConfID, err)
 					return true
 				}
-				if conf == nil {
-					log.Fatal("Failed to create conf")
-				}
-				if call, err = conf.getCall(invite.CallID, true); err != nil {
+				if call, err = conf.getCall(invite.CallID, true); err != nil || call == nil {
 					log.Printf("Failed to create call %s %+v", invite.CallID, err)
 					return true
-				}
-				if call == nil {
-					log.Fatal("Failed to create call")
 				}
 				call.userID = evt.Sender
 				call.deviceID = invite.DeviceID
@@ -90,24 +105,25 @@ func initMatrix(config *config) error {
 				call.localSessionID = "sfu"
 				call.remoteSessionID = invite.SenderSessionID
 				call.client = client
-				// TODO: check session IDs
 				call.onInvite(invite)
 			case CallCandidates.Type:
 				candidates := evt.Content.AsCallCandidates()
-				log.Printf("%s | Received to-device event %s", candidates.CallID, evt.Type.Type)
-				if conf, err = focus.getConf(candidates.ConfID, false); err != nil {
-					log.Printf("Failed to find conf %s %+v", candidates.ConfID, err)
-					return true
-				}
-				if call, err = conf.getCall(candidates.CallID, false); err != nil {
-					log.Printf("Failed to find call %s %+v", candidates.CallID, err)
+				if call, err = getExistingCall((*candidates).ConfID, (*candidates).CallID); err != nil || call == nil {
 					return true
 				}
 				call.onCandidates(candidates)
 			case CallSelectAnswer.Type:
-				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+				selectAnswer := evt.Content.AsCallSelectAnswer()
+				if call, err = getExistingCall(selectAnswer.ConfID, selectAnswer.CallID); err != nil || call == nil {
+					return true
+				}
+				call.onSelectAnswer(selectAnswer)
 			case CallHangup.Type:
-				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+				hangup := evt.Content.AsCallHangup()
+				if call, err = getExistingCall(hangup.ConfID, hangup.CallID); err != nil || call == nil {
+					return true
+				}
+				call.onHangup(hangup)
 
 			// Events we don't care about
 			case CallNegotiate.Type:
@@ -123,8 +139,7 @@ func initMatrix(config *config) error {
 		return true
 	})
 
-	err = client.Sync()
-	if err != nil {
+	if err = client.Sync(); err != nil {
 		log.Panic("Sync failed", err)
 	}
 
