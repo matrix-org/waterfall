@@ -46,6 +46,17 @@ type call struct {
 	// we track the call's tracks via the conf object.
 }
 
+type localTrackInfo struct {
+	streamID string
+	trackID  string
+	call     *call
+}
+
+type localTrackWithInfo struct {
+	track *webrtc.TrackLocalStaticRTP
+	info  localTrackInfo
+}
+
 type calls struct {
 	callsMu sync.RWMutex
 	calls   map[string]*call
@@ -55,7 +66,7 @@ type conf struct {
 	confID   string
 	calls    calls
 	tracksMu sync.RWMutex
-	tracks   map[string][]*webrtc.TrackLocalStaticRTP // by streamId.
+	tracks   []localTrackWithInfo
 }
 
 type confs struct {
@@ -84,7 +95,7 @@ func (f *focus) getConf(confID string, create bool) (*conf, error) {
 			}
 			f.confs.confs[confID] = co
 			co.calls.calls = make(map[string]*call)
-			co.tracks = make(map[string][]*webrtc.TrackLocalStaticRTP)
+			co.tracks = []localTrackWithInfo{}
 		} else {
 			return nil, errors.New("no such conf")
 		}
@@ -111,20 +122,30 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 	return ca, nil
 }
 
-func (c *conf) getLocalTrackByStreamId(streamID string) (tracks []webrtc.TrackLocal, err error) {
+func (c *conf) getLocalTrackByStreamId(selectInfo localTrackInfo) (tracks []webrtc.TrackLocal, err error) {
 	c.tracksMu.Lock()
 	defer c.tracksMu.Unlock()
 
-	foundTracks := c.tracks[streamID]
-	if foundTracks == nil {
-		log.Printf("Found no streams for %s", streamID)
+	foundTracks := []webrtc.TrackLocal{}
+	for _, track := range c.tracks {
+		info := track.info
+		if selectInfo.call != nil && selectInfo.call != info.call {
+			continue
+		}
+		if selectInfo.streamID != "" && selectInfo.streamID != info.streamID {
+			continue
+		}
+		if selectInfo.trackID != "" && selectInfo.trackID != info.trackID {
+			continue
+		}
+		foundTracks = append(foundTracks, track.track)
+	}
+
+	if len(foundTracks) == 0 {
+		log.Printf("Found no tracks for %+v", selectInfo)
 		return nil, errors.New("no such streams")
 	} else {
-		tracksToReturn := []webrtc.TrackLocal{}
-		for _, track := range foundTracks {
-			tracksToReturn = append(tracksToReturn, track)
-		}
-		return tracksToReturn, nil
+		return foundTracks, nil
 	}
 }
 
@@ -180,7 +201,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		case "select":
 			var tracks []webrtc.TrackLocal
 			for _, trackDesc := range msg.Start {
-				foundTracks, err := c.conf.getLocalTrackByStreamId(trackDesc.StreamID)
+				foundTracks, err := c.conf.getLocalTrackByStreamId(localTrackInfo{streamID: trackDesc.StreamID})
 				if err != nil {
 					sendError("No Such Stream")
 					return
@@ -259,20 +280,19 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 		}
 
 		c.conf.tracksMu.Lock()
-		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.Kind().String(), trackRemote.StreamID())
+		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
 		if err != nil {
 			panic(err)
 		}
 
-		if c.conf.tracks[trackLocal.StreamID()] == nil {
-			receivedTracks := []*webrtc.TrackLocalStaticRTP{trackLocal}
-			c.conf.tracks[trackLocal.StreamID()] = receivedTracks
-
-		} else {
-			receivedTracks := append(c.conf.tracks[trackLocal.StreamID()], trackLocal)
-			c.conf.tracks[trackLocal.StreamID()] = receivedTracks
-
-		}
+		c.conf.tracks = append(c.conf.tracks, localTrackWithInfo{
+			track: trackLocal,
+			info: localTrackInfo{
+				trackID:  trackLocal.ID(),
+				streamID: trackLocal.StreamID(),
+				call:     c,
+			},
+		})
 
 		log.Printf("%s | published track with streamID %s and kind %s", c.callID, trackLocal.StreamID(), trackLocal.Kind())
 		c.conf.tracksMu.Unlock()
