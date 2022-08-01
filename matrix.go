@@ -104,16 +104,17 @@ func initMatrix(config *config) error {
 					return true
 				}
 				call.onCandidates(candidates)
-			case CallAnswer.Type:
-				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
-			case CallReject.Type:
-				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
 			case CallSelectAnswer.Type:
 				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
-			case CallNegotiate.Type:
-				log.Printf("Ignoring event as %s should be handled over DC", evt.Type.Type)
 			case CallHangup.Type:
 				log.Printf("Ignoring unimplemented event of type %s", evt.Type.Type)
+
+			// Events we don't care about
+			case CallNegotiate.Type:
+				log.Printf("Ignoring event %s as should be handled over DC", evt.Type.Type)
+			case CallReject.Type:
+			case CallAnswer.Type:
+				log.Printf("Ignoring event %s as we are always the ones answering", evt.Type.Type)
 			default:
 				log.Printf("Ignoring unrecognised to-device event of type %s", evt.Type.Type)
 			}
