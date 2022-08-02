@@ -186,6 +186,42 @@ func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 	c.sendToDevice(event.CallCandidates, candidateEvtContent)
 }
 
+func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
+	log.Printf("%s | discovered track with streamID %s and kind %s", c.callID, trackRemote.StreamID(), trackRemote.Kind())
+	if strings.Contains(trackRemote.Codec().MimeType, "video") {
+		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
+		go func() {
+			ticker := time.NewTicker(time.Millisecond * 200)
+			for range ticker.C {
+				if err := c.peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
+					log.Printf("%s | failed to write RTCP on trackID %s: %s", c.callID, trackRemote.ID(), err)
+					break
+				}
+			}
+		}()
+	}
+
+	c.conf.tracksMu.Lock()
+	trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
+	if err != nil {
+		panic(err)
+	}
+
+	c.conf.tracks = append(c.conf.tracks, localTrackWithInfo{
+		track: trackLocal,
+		info: localTrackInfo{
+			trackID:  trackLocal.ID(),
+			streamID: trackLocal.StreamID(),
+			call:     c,
+		},
+	})
+
+	log.Printf("%s | published track with streamID %s and kind %s", c.callID, trackLocal.StreamID(), trackLocal.Kind())
+	c.conf.tracksMu.Unlock()
+
+	copyRemoteToLocal(trackRemote, trackLocal)
+}
+
 func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	offer := content.Offer
 
@@ -195,42 +231,9 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	}
 	c.peerConnection = peerConnection
 
-	peerConnection.OnTrack(func(trackRemote *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
-		log.Printf("%s | discovered track with streamID %s and kind %s", c.callID, trackRemote.StreamID(), trackRemote.Kind())
-		if strings.Contains(trackRemote.Codec().MimeType, "video") {
-			// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
-			go func() {
-				ticker := time.NewTicker(time.Millisecond * 200)
-				for range ticker.C {
-					if err := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
-						log.Printf("%s | failed to write RTCP on trackID %s: %s", c.callID, trackRemote.ID(), err)
-						break
-					}
-				}
-			}()
-		}
-
-		c.conf.tracksMu.Lock()
-		trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
-		if err != nil {
-			panic(err)
-		}
-
-		c.conf.tracks = append(c.conf.tracks, localTrackWithInfo{
-			track: trackLocal,
-			info: localTrackInfo{
-				trackID:  trackLocal.ID(),
-				streamID: trackLocal.StreamID(),
-				call:     c,
-			},
-		})
-
-		log.Printf("%s | published track with streamID %s and kind %s", c.callID, trackLocal.StreamID(), trackLocal.Kind())
-		c.conf.tracksMu.Unlock()
-
-		copyRemoteToLocal(trackRemote, trackLocal)
+	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		c.trackHandler(track, receiver)
 	})
-
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		c.dataChannelHandler(d)
 	})
