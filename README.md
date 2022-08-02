@@ -173,6 +173,6 @@ The client will respond to the `subscribe` with the answer.
 
 ## Running
 
-* `go run *.go`
+* `go run ./src/*.go`
 * Access at http://localhost:8080
 
