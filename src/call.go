@@ -111,6 +111,26 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				}
 			}
 
+		case "publish":
+			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+				Type: webrtc.SDPTypeOffer,
+				SDP:  msg.SDP,
+			})
+
+			offer, err := c.peerConnection.CreateAnswer(nil)
+			if err != nil {
+				panic(err)
+			}
+			err = c.peerConnection.SetLocalDescription(offer)
+			if err != nil {
+				panic(err)
+			}
+
+			c.sendDataChannelMessage(dataChannelMessage{
+				Op:  "answer",
+				SDP: offer.SDP,
+			})
+
 		case "answer":
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeAnswer,
