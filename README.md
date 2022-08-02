@@ -176,3 +176,8 @@ The client will respond to the `subscribe` with the answer.
 * `go run ./src/*.go`
 * Access at http://localhost:8080
 
+## Building
+
+* `./build.zsh`
+* `./dist/bin`
+* Access at <http://localhost:8080>
