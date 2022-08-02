@@ -136,20 +136,10 @@ func (c *call) negotiationNeededHandler() {
 		panic(err)
 	}
 
-	response := dataChannelMessage{
+	c.sendDataChannelMessage(dataChannelMessage{
 		Op:  "offer",
 		SDP: offer.SDP,
-	}
-	marshaled, err := json.Marshal(response)
-	if err != nil {
-		panic(err)
-	}
-	err = c.dataChannel.SendText(string(marshaled))
-	if err != nil {
-		log.Printf("%s | failed to send over DC: %s", c.callID, err)
-	}
-
-	log.Printf("%s | sent DC %s", c.callID, response.Op)
+	})
 }
 
 func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
@@ -349,4 +339,21 @@ func (c *call) sendToDevice(callType event.Type, content *event.Content) error {
 	c.client.SendToDevice(callType, toDevice)
 
 	return nil
+}
+
+func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
+	msg.ConfID = c.conf.confID
+	// TODO: Set ID
+
+	marshaled, err := json.Marshal(msg)
+	if err != nil {
+		panic(err)
+	}
+
+	err = c.dataChannel.SendText(string(marshaled))
+	if err != nil {
+		log.Printf("%s | failed to send over DC: %s", c.callID, err)
+	}
+
+	log.Printf("%s | sent DC %s", c.callID, msg.Op)
 }
