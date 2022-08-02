@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -43,6 +42,7 @@ type call struct {
 	peerConnection  *webrtc.PeerConnection
 	callState       callState
 	conf            *conf
+	dataChannel     *webrtc.DataChannel
 	// we track the call's tracks via the conf object.
 }
 
@@ -59,7 +59,7 @@ type localTrackWithInfo struct {
 
 type calls struct {
 	callsMu sync.RWMutex
-	calls   map[string]*call
+	calls   map[string]*call // By callID
 }
 
 type conf struct {
@@ -122,12 +122,9 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 	return ca, nil
 }
 
-func (c *conf) getLocalTrackByStreamId(selectInfo localTrackInfo) (tracks []webrtc.TrackLocal, err error) {
-	c.tracksMu.Lock()
-	defer c.tracksMu.Unlock()
-
-	foundTracks := []webrtc.TrackLocal{}
-	for _, track := range c.tracks {
+func (c *conf) getLocalTrackIndicesByInfo(selectInfo localTrackInfo) (tracks []int, err error) {
+	foundIndices := []int{}
+	for index, track := range c.tracks {
 		info := track.info
 		if selectInfo.call != nil && selectInfo.call != info.call {
 			continue
@@ -138,18 +135,73 @@ func (c *conf) getLocalTrackByStreamId(selectInfo localTrackInfo) (tracks []webr
 		if selectInfo.trackID != "" && selectInfo.trackID != info.trackID {
 			continue
 		}
-		foundTracks = append(foundTracks, track.track)
+		foundIndices = append(foundIndices, index)
+	}
+
+	if len(foundIndices) == 0 {
+		log.Printf("Found no tracks for %+v", selectInfo)
+		return nil, errors.New("no such tracks")
+	} else {
+		return foundIndices, nil
+	}
+}
+
+func (c *conf) getLocalTrackByInfo(selectInfo localTrackInfo) (tracks []webrtc.TrackLocal, err error) {
+	c.tracksMu.Lock()
+	defer c.tracksMu.Unlock()
+
+	indices, err := c.getLocalTrackIndicesByInfo(selectInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	foundTracks := []webrtc.TrackLocal{}
+	for _, index := range indices {
+		foundTracks = append(foundTracks, c.tracks[index].track)
 	}
 
 	if len(foundTracks) == 0 {
-		log.Printf("Found no tracks for %+v", selectInfo)
-		return nil, errors.New("no such streams")
+		log.Printf("No tracks")
+		return nil, errors.New("no such tracks")
 	} else {
 		return foundTracks, nil
 	}
 }
 
+func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) error {
+	c.tracksMu.Lock()
+	defer c.tracksMu.Unlock()
+
+	indices, err := c.getLocalTrackIndicesByInfo(removeInfo)
+	if err != nil {
+		return err
+	}
+
+	// FIXME: the big O of this must be awful...
+	for _, index := range indices {
+		info := c.tracks[index].info
+
+		for _, call := range c.calls.calls {
+			for _, sender := range call.peerConnection.GetSenders() {
+				if info.trackID == sender.Track().ID() {
+					log.Printf("%s | removing %s track with StreamID %s", call.callID, sender.Track().Kind(), info.streamID)
+					if err := sender.Stop(); err != nil {
+						log.Printf("%s | failed to stop sender: %s", call.callID, err)
+					}
+					if err := call.peerConnection.RemoveTrack(sender); err != nil {
+						log.Printf("%s | failed to remove track: %s", call.callID, err)
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
+	c.dataChannel = d
 	peerConnection := c.peerConnection
 
 	sendError := func(errMsg string) {
@@ -168,15 +220,15 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 	}
 
 	d.OnOpen(func() {
-		log.Printf("DC opened on call %s", c.callID)
+		log.Printf("%s | DC opened", c.callID)
 	})
 
 	d.OnClose(func() {
-		log.Printf("DC closed on call %s", c.callID)
+		log.Printf("%s | DC closed", c.callID)
 	})
 
 	d.OnError(func(err error) {
-		log.Fatalf("DC error on call %s: %s", c.callID, err)
+		log.Fatalf("%s | DC error: %s", c.callID, err)
 	})
 
 	d.OnMessage(func(m webrtc.DataChannelMessage) {
@@ -186,10 +238,10 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 
 		msg := &dataChannelMessage{}
 		if err := json.Unmarshal(m.Data, msg); err != nil {
-			log.Fatal(err)
+			log.Fatalf("%s | failed to unmarshal: %s", c.callID, err)
 		}
 
-		log.Printf("%s | Received DC %s confId=%s start=%+v", c.callID, msg.Op, msg.ConfID, msg.Start)
+		log.Printf("%s | received DC %s confId=%s start=%+v", c.callID, msg.Op, msg.ConfID, msg.Start)
 
 		// TODO: hook cascade back up.
 		// As we're not an AS, we'd rely on the client
@@ -201,7 +253,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		case "select":
 			var tracks []webrtc.TrackLocal
 			for _, trackDesc := range msg.Start {
-				foundTracks, err := c.conf.getLocalTrackByStreamId(localTrackInfo{streamID: trackDesc.StreamID})
+				foundTracks, err := c.conf.getLocalTrackByInfo(localTrackInfo{streamID: trackDesc.StreamID})
 				if err != nil {
 					sendError("No Such Stream")
 					return
@@ -217,31 +269,6 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				}
 			}
 
-			offer, err := peerConnection.CreateOffer(nil)
-			if err != nil {
-				panic(err)
-			}
-			err = peerConnection.SetLocalDescription(offer)
-			if err != nil {
-				panic(err)
-			}
-
-			response := dataChannelMessage{
-				Op:  "offer",
-				ID:  msg.ID,
-				SDP: offer.SDP,
-			}
-			marshaled, err := json.Marshal(response)
-			if err != nil {
-				panic(err)
-			}
-			err = d.SendText(string(marshaled))
-			if err != nil {
-				panic(err)
-			}
-
-			log.Printf("%s | Sent DC %s", c.callID, response.Op)
-
 		case "answer":
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeAnswer,
@@ -253,6 +280,68 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			// TODO: hook up msg.Stop to unsubscribe from tracks
 		}
 	})
+}
+
+func (c *call) negotiationNeeded() {
+	log.Printf("%s | negotiation needed", c.callID)
+
+	offer, err := c.peerConnection.CreateOffer(nil)
+	if err != nil {
+		panic(err)
+	}
+	err = c.peerConnection.SetLocalDescription(offer)
+	if err != nil {
+		panic(err)
+	}
+
+	response := dataChannelMessage{
+		Op:  "offer",
+		SDP: offer.SDP,
+	}
+	marshaled, err := json.Marshal(response)
+	if err != nil {
+		panic(err)
+	}
+	err = c.dataChannel.SendText(string(marshaled))
+	if err != nil {
+		log.Printf("%s | failed to send over DC: %s", c.callID, err)
+	}
+
+	log.Printf("%s | sent DC %s", c.callID, response.Op)
+}
+
+func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
+	if candidate == nil {
+		return
+	}
+
+	ice := candidate.ToJSON()
+
+	log.Printf("%s | discovered local candidate %s", c.callID, ice.Candidate)
+
+	// TODO: batch these up a bit
+	candidateEvtContent := &event.Content{
+		Parsed: event.CallCandidatesEventContent{
+			BaseCallEventContent: event.BaseCallEventContent{
+				CallID:          c.callID,
+				ConfID:          c.conf.confID,
+				DeviceID:        c.client.DeviceID,
+				SenderSessionID: c.localSessionID,
+				DestSessionID:   c.remoteSessionID,
+				PartyID:         string(c.client.DeviceID),
+				Version:         event.CallVersion("1"),
+			},
+			Candidates: []event.CallCandidate{
+				{
+					Candidate:     ice.Candidate,
+					SDPMLineIndex: int(*ice.SDPMLineIndex),
+					SDPMID:        *ice.SDPMid,
+					// XXX: what about ice.UsernameFragment?
+				},
+			},
+		},
+	}
+	c.sendToDevice(event.CallCandidates, candidateEvtContent)
 }
 
 func (c *call) onInvite(content *event.CallInviteEventContent) error {
@@ -271,12 +360,12 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 			go func() {
 				ticker := time.NewTicker(time.Millisecond * 200)
 				for range ticker.C {
-					if errSend := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); errSend != nil {
-						fmt.Println(errSend)
+					if err := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
+						log.Printf("%s | failed to write RTCP on trackID %s: %s", c.callID, trackRemote.ID(), err)
+						break
 					}
 				}
 			}()
-
 		}
 
 		c.conf.tracksMu.Lock()
@@ -302,6 +391,12 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		c.dataChannelHandler(d)
+	})
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		c.iceCandidateHandler(candidate)
+	})
+	peerConnection.OnNegotiationNeeded(func() {
+		c.negotiationNeeded()
 	})
 
 	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -342,39 +437,6 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	}
 	c.sendToDevice(event.CallAnswer, answerEvtContent)
 
-	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if candidate == nil {
-			return
-		}
-
-		ice := candidate.ToJSON()
-
-		log.Printf("%s | discovered local candidate %s", c.callID, ice.Candidate)
-
-		// TODO: batch these up a bit
-		candidateEvtContent := &event.Content{
-			Parsed: event.CallCandidatesEventContent{
-				BaseCallEventContent: event.BaseCallEventContent{
-					CallID:          c.callID,
-					ConfID:          c.conf.confID,
-					DeviceID:        c.client.DeviceID,
-					SenderSessionID: c.localSessionID,
-					DestSessionID:   c.remoteSessionID,
-					PartyID:         string(c.client.DeviceID),
-					Version:         event.CallVersion("1"),
-				},
-				Candidates: []event.CallCandidate{
-					{
-						Candidate:     ice.Candidate,
-						SDPMLineIndex: int(*ice.SDPMLineIndex),
-						SDPMID:        *ice.SDPMid,
-						// XXX: what about ice.UsernameFragment?
-					},
-				},
-			},
-		}
-		c.sendToDevice(event.CallCandidates, candidateEvtContent)
-	})
 	return err
 }
 
@@ -391,7 +453,22 @@ func (c *call) onHangup(content *event.CallHangupEventContent) {
 }
 
 func (c *call) terminate() error {
-	// TODO: Implement terminate
+	log.Printf("%s | Terminating call", c.callID)
+
+	if err := c.peerConnection.Close(); err != nil {
+		log.Printf("%s | error closing peer connection: %s", c.callID, err)
+	}
+
+	c.conf.calls.callsMu.Lock()
+	delete(c.conf.calls.calls, c.callID)
+	c.conf.calls.callsMu.Unlock()
+
+	if err := c.conf.removeTracksFromPeerConnectionsByInfo(localTrackInfo{call: c}); err != nil {
+		return err
+	}
+
+	// TODO: Remove the tracks from conf.tracks
+
 	return nil
 }
 
@@ -432,12 +509,14 @@ func copyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.Track
 	buff := make([]byte, 1500)
 	for {
 		i, _, err := trackRemote.Read(buff)
-		if err != nil {
-			panic(err)
+		if err != nil || buff == nil {
+			log.Printf("ending read on track with StreamID %s: %s", trackRemote.StreamID(), err)
+			break
 		}
 
 		if _, err = trackLocal.Write(buff[:i]); err != nil {
-			panic(err)
+			log.Printf("ending write on track with StreamID %s: %s", trackLocal.StreamID(), err)
+			break
 		}
 	}
 
