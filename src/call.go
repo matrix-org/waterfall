@@ -46,21 +46,6 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 	c.dataChannel = d
 	peerConnection := c.peerConnection
 
-	sendError := func(errMsg string) {
-		log.Printf("%s | sending DC error %s", c.callID, errMsg)
-		marshaled, err := json.Marshal(&dataChannelMessage{
-			Op:      "error",
-			Message: errMsg,
-		})
-		if err != nil {
-			panic(err)
-		}
-
-		if err = d.SendText(string(marshaled)); err != nil {
-			panic(err)
-		}
-	}
-
 	d.OnOpen(func() {
 		log.Printf("%s | DC opened", c.callID)
 	})
@@ -97,7 +82,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			for _, trackDesc := range msg.Start {
 				foundTracks, err := c.conf.getLocalTrackByInfo(localTrackInfo{streamID: trackDesc.StreamID})
 				if err != nil {
-					sendError("No Such Stream")
+					c.sendDataChannelError("No Such Stream")
 					return
 				} else {
 					tracks = append(tracks, foundTracks...)
@@ -376,4 +361,19 @@ func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
 	}
 
 	log.Printf("%s | sent DC %s", c.callID, msg.Op)
+}
+
+func (c *call) sendDataChannelError(errMsg string) {
+	log.Printf("%s | sending DC error %s", c.callID, errMsg)
+	marshaled, err := json.Marshal(&dataChannelMessage{
+		Op:      "error",
+		Message: errMsg,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	if err = c.dataChannel.SendText(string(marshaled)); err != nil {
+		panic(err)
+	}
 }
