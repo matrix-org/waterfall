@@ -73,11 +73,11 @@ func initMatrix(config *config) error {
 		var call *call
 
 		if conf, err = focus.getConf(confID, false); err != nil || conf == nil {
-			log.Printf("%s | failed to get conf %+v", confID, err)
+			log.Printf("failed to get conf %s: %s", confID, err)
 			return nil, err
 		}
 		if call, err = conf.getCall(callID, false); err != nil || call == nil {
-			log.Printf("%s | failed to get call %+v", callID, err)
+			log.Printf("failed to get call %s: %s", callID, err)
 			return nil, err
 		}
 		return call, nil
@@ -96,7 +96,7 @@ func initMatrix(config *config) error {
 			var call *call
 
 			if strings.HasPrefix(evt.Type.Type, "m.call.") || strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
-				log.Printf("%s | received to-device event %s", evt.Content.Raw["call_id"], evt.Type.Type)
+				log.Printf("%s | received to-device event %s", evt.Sender.String(), evt.Type.Type)
 			} else {
 				log.Printf("received non-call to-device event %s", evt.Type.Type)
 				continue
@@ -107,11 +107,11 @@ func initMatrix(config *config) error {
 			case CallInvite.Type:
 				invite := evt.Content.AsCallInvite()
 				if conf, err = focus.getConf(invite.ConfID, true); err != nil || conf == nil {
-					log.Printf("%s | failed to create conf %s: %+v", invite.CallID, invite.ConfID, err)
+					log.Printf("%s | failed to create conf %s: %+v", evt.Sender.String(), invite.ConfID, err)
 					return true
 				}
 				if call, err = conf.getCall(invite.CallID, true); err != nil || call == nil {
-					log.Printf("%s | failed to create call: %+v", invite.CallID, err)
+					log.Printf("%s | failed to create call: %+v", evt.Sender.String(), err)
 					return true
 				}
 				call.userID = evt.Sender
@@ -143,16 +143,12 @@ func initMatrix(config *config) error {
 
 			// Events we don't care about
 			case CallNegotiate.Type:
-				negotiate := evt.Content.AsCallNegotiate()
-				log.Printf("%s | ignoring event %s as should be handled over DC", negotiate.CallID, evt.Type.Type)
+				log.Printf("%s | ignoring event %s as should be handled over DC", evt.Sender.String(), evt.Type.Type)
 			case CallReject.Type:
-				reject := evt.Content.AsCallReject()
-				log.Printf("%s | ignoring event %s as we are always the ones answering", reject.CallID, evt.Type.Type)
 			case CallAnswer.Type:
-				answer := evt.Content.AsCallAnswer()
-				log.Printf("%s | ignoring event %s as we are always the ones answering", answer.CallID, evt.Type.Type)
+				log.Printf("%s | ignoring event %s as we are always the ones answering", evt.Sender.String(), evt.Type.Type)
 			default:
-				log.Printf("%s | ignoring unrecognised to-device event of type %s", evt.Content.Raw["call_id"], evt.Type.Type)
+				log.Printf("%s | ignoring unrecognised to-device event of type %s", evt.Sender.String(), evt.Type.Type)
 			}
 		}
 

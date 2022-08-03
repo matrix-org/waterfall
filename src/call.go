@@ -47,11 +47,11 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 	peerConnection := c.peerConnection
 
 	d.OnOpen(func() {
-		log.Printf("%s | DC opened", c.callID)
+		log.Printf("%s | DC opened", c.userID)
 	})
 
 	d.OnClose(func() {
-		log.Printf("%s | DC closed", c.callID)
+		log.Printf("%s | DC closed", c.userID)
 	})
 
 	d.OnError(func(err error) {
@@ -68,7 +68,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			log.Fatalf("%s | failed to unmarshal: %s", c.callID, err)
 		}
 
-		log.Printf("%s | received DC: %s", c.callID, msg.Op)
+		log.Printf("%s | received DC: %s", c.userID, msg.Op)
 
 		// TODO: hook cascade back up.
 		// As we're not an AS, we'd rely on the client
@@ -78,7 +78,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 
 		switch msg.Op {
 		case "select":
-			log.Printf("%s | selected: %+v", c.callID, msg.Start)
+			log.Printf("%s | selected: %+v", c.userID, msg.Start)
 
 			var tracks []webrtc.TrackLocal
 			for _, trackDesc := range msg.Start {
@@ -92,7 +92,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			}
 
 			for _, track := range tracks {
-				log.Printf("%s | adding %s track with %s", c.callID, track.Kind(), track.ID())
+				log.Printf("%s | adding %s track with %s", c.userID, track.Kind(), track.ID())
 				if _, err := peerConnection.AddTrack(track); err != nil {
 					panic(err)
 				}
@@ -132,7 +132,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 }
 
 func (c *call) negotiationNeededHandler() {
-	log.Printf("%s | negotiation needed", c.callID)
+	log.Printf("%s | negotiation needed", c.userID)
 
 	offer, err := c.peerConnection.CreateOffer(nil)
 	if err != nil {
@@ -182,14 +182,14 @@ func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 }
 
 func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
-	log.Printf("%s | discovered track with streamID %s and kind %s", c.callID, trackRemote.StreamID(), trackRemote.Kind())
+	log.Printf("%s | discovered track with streamID %s and kind %s", c.userID, trackRemote.StreamID(), trackRemote.Kind())
 	if strings.Contains(trackRemote.Codec().MimeType, "video") {
 		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
 		go func() {
 			ticker := time.NewTicker(time.Millisecond * 200)
 			for range ticker.C {
 				if err := c.peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
-					log.Printf("%s | failed to write RTCP on trackID %s: %s", c.callID, trackRemote.ID(), err)
+					log.Printf("%s | failed to write RTCP on trackID %s: %s", c.userID, trackRemote.ID(), err)
 					break
 				}
 			}
@@ -211,7 +211,7 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 		},
 	})
 
-	log.Printf("%s | published track with streamID %s and kind %s", c.callID, trackLocal.StreamID(), trackLocal.Kind())
+	log.Printf("%s | published track with streamID %s and kind %s", c.userID, trackLocal.StreamID(), trackLocal.Kind())
 	c.conf.tracksMu.Unlock()
 
 	copyRemoteToLocal(trackRemote, trackLocal)
@@ -284,7 +284,7 @@ func (c *call) onSelectAnswer(content *event.CallSelectAnswerEventContent) {
 	selectedPartyId := content.SelectedPartyID
 	if selectedPartyId != string(c.client.DeviceID) {
 		c.terminate()
-		log.Printf("%s | Call was answered on a different device: %s", content.CallID, selectedPartyId)
+		log.Printf("%s | Call was answered on a different device: %s", c.userID, selectedPartyId)
 	}
 }
 
@@ -313,7 +313,7 @@ func (c *call) terminate() error {
 	log.Printf("%s | terminating call", c.callID)
 
 	if err := c.peerConnection.Close(); err != nil {
-		log.Printf("%s | error closing peer connection: %s", c.callID, err)
+		log.Printf("%s | error closing peer connection: %s", c.userID, err)
 	}
 
 	c.conf.calls.callsMu.Lock()
@@ -332,7 +332,7 @@ func (c *call) terminate() error {
 }
 
 func (c *call) sendToDevice(callType event.Type, content *event.Content) error {
-	log.Printf("%s | sending to device %s", c.callID, callType.Type)
+	log.Printf("%s | sending to device %s", c.userID, callType.Type)
 	toDevice := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
 			c.userID: {
@@ -359,14 +359,14 @@ func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
 
 	err = c.dataChannel.SendText(string(marshaled))
 	if err != nil {
-		log.Printf("%s | failed to send %s over DC: %s", c.callID, msg.Op, err)
+		log.Printf("%s | failed to send %s over DC: %s", c.userID, msg.Op, err)
 	}
 
-	log.Printf("%s | sent DC %s", c.callID, msg.Op)
+	log.Printf("%s | sent DC %s", c.userID, msg.Op)
 }
 
 func (c *call) sendDataChannelError(errMsg string) {
-	log.Printf("%s | sending DC error %s", c.callID, errMsg)
+	log.Printf("%s | sending DC error: %s", c.userID, errMsg)
 	marshaled, err := json.Marshal(&dataChannelMessage{
 		Op:      "error",
 		Message: errMsg,
