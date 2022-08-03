@@ -84,7 +84,7 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 	return ca, nil
 }
 
-func (c *conf) getLocalTrackIndicesByInfo(selectInfo localTrackInfo) (tracks []int, err error) {
+func (c *conf) getLocalTrackIndicesByInfo(selectInfo localTrackInfo) (tracks []int) {
 	foundIndices := []int{}
 	for index, track := range c.tracks {
 		info := track.info
@@ -100,41 +100,21 @@ func (c *conf) getLocalTrackIndicesByInfo(selectInfo localTrackInfo) (tracks []i
 		foundIndices = append(foundIndices, index)
 	}
 
-	if len(foundIndices) == 0 {
-		log.Printf("found no tracks for %+v", selectInfo)
-		return nil, errors.New("no such tracks")
-	} else {
-		return foundIndices, nil
-	}
+	return foundIndices
 }
 
-func (c *conf) getLocalTrackByInfo(selectInfo localTrackInfo) (tracks []webrtc.TrackLocal, err error) {
-	c.tracksMu.Lock()
-	defer c.tracksMu.Unlock()
-
-	indices, err := c.getLocalTrackIndicesByInfo(selectInfo)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *conf) getLocalTrackByInfo(selectInfo localTrackInfo) (tracks []webrtc.TrackLocal) {
+	indices := c.getLocalTrackIndicesByInfo(selectInfo)
 	foundTracks := []webrtc.TrackLocal{}
 	for _, index := range indices {
 		foundTracks = append(foundTracks, c.tracks[index].track)
 	}
 
-	if len(foundTracks) == 0 {
-		log.Printf("No tracks")
-		return nil, errors.New("no such tracks")
-	} else {
-		return foundTracks, nil
-	}
+	return foundTracks
 }
 
 func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) error {
-	indices, err := c.getLocalTrackIndicesByInfo(removeInfo)
-	if err != nil {
-		return err
-	}
+	indices := c.getLocalTrackIndicesByInfo(removeInfo)
 
 	// FIXME: the big O of this must be awful...
 	for _, index := range indices {
@@ -159,14 +139,11 @@ func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) 
 	return nil
 }
 
-func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) error {
+func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) {
 	c.tracksMu.Lock()
 	defer c.tracksMu.Unlock()
 
-	indicesToRemove, err := c.getLocalTrackIndicesByInfo(removeInfo)
-	if err != nil {
-		return err
-	}
+	indicesToRemove := c.getLocalTrackIndicesByInfo(removeInfo)
 
 	newTracks := []localTrackWithInfo{}
 	for index, track := range c.tracks {
@@ -182,6 +159,4 @@ func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) error {
 	}
 
 	c.tracks = newTracks
-
-	return nil
 }

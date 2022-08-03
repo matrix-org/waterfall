@@ -323,9 +323,7 @@ func (c *call) terminate() error {
 	if err := c.conf.removeTracksFromPeerConnectionsByInfo(info); err != nil {
 		return err
 	}
-	if err := c.conf.removeTracksFromConfByInfo(info); err != nil {
-		return err
-	}
+	c.conf.removeTracksFromConfByInfo(info)
 
 	return nil
 }
