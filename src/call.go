@@ -310,7 +310,7 @@ func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
 }
 
 func (c *call) terminate() error {
-	log.Printf("%s | terminating call", c.callID)
+	log.Printf("%s | terminating call", c.userID)
 
 	if err := c.peerConnection.Close(); err != nil {
 		log.Printf("%s | error closing peer connection: %s", c.userID, err)
