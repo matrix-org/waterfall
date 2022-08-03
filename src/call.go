@@ -182,7 +182,6 @@ func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 }
 
 func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
-	log.Printf("%s | discovered track with streamID %s and kind %s", c.userID, trackRemote.StreamID(), trackRemote.Kind())
 	if strings.Contains(trackRemote.Codec().MimeType, "video") {
 		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
 		go func() {
@@ -211,7 +210,7 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 		},
 	})
 
-	log.Printf("%s | published track with streamID %s and kind %s", c.userID, trackLocal.StreamID(), trackLocal.Kind())
+	log.Printf("%s | published track with trackID %s and kind %s", c.userID, trackLocal.ID(), trackLocal.Kind())
 	c.conf.tracksMu.Unlock()
 
 	copyRemoteToLocal(trackRemote, trackLocal)
