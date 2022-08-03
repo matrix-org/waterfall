@@ -101,7 +101,7 @@ func (c *conf) getLocalTrackIndicesByInfo(selectInfo localTrackInfo) (tracks []i
 	}
 
 	if len(foundIndices) == 0 {
-		log.Printf("Found no tracks for %+v", selectInfo)
+		log.Printf("found no tracks for %+v", selectInfo)
 		return nil, errors.New("no such tracks")
 	} else {
 		return foundIndices, nil

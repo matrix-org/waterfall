@@ -73,11 +73,11 @@ func initMatrix(config *config) error {
 		var call *call
 
 		if conf, err = focus.getConf(confID, false); err != nil || conf == nil {
-			log.Printf("Failed to get conf %s %+v", confID, err)
+			log.Printf("%s | failed to get conf %+v", confID, err)
 			return nil, err
 		}
 		if call, err = conf.getCall(callID, false); err != nil || call == nil {
-			log.Printf("Failed to get call %s %+v", callID, err)
+			log.Printf("%s | failed to get call %+v", callID, err)
 			return nil, err
 		}
 		return call, nil
@@ -88,7 +88,7 @@ func initMatrix(config *config) error {
 			evt.Type.Class = event.ToDeviceEventType
 			err := evt.Content.ParseRaw(evt.Type)
 			if err != nil {
-				log.Printf("Failed to parse to-device event of type %s: %v", evt.Type.Type, err)
+				log.Printf("failed to parse to-device event of type %s: %v", evt.Type.Type, err)
 				continue
 			}
 
@@ -96,9 +96,9 @@ func initMatrix(config *config) error {
 			var call *call
 
 			if strings.HasPrefix(evt.Type.Type, "m.call.") || strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
-				log.Printf("%s | Received to-device event %s", evt.Content.Raw["call_id"], evt.Type.Type)
+				log.Printf("%s | received to-device event %s", evt.Content.Raw["call_id"], evt.Type.Type)
 			} else {
-				log.Printf("Received non-call to-device event %s", evt.Type.Type)
+				log.Printf("received non-call to-device event %s", evt.Type.Type)
 				continue
 			}
 
@@ -107,11 +107,11 @@ func initMatrix(config *config) error {
 			case CallInvite.Type:
 				invite := evt.Content.AsCallInvite()
 				if conf, err = focus.getConf(invite.ConfID, true); err != nil || conf == nil {
-					log.Printf("Failed to create conf %s %+v", invite.ConfID, err)
+					log.Printf("%s | failed to create conf %s: %+v", invite.CallID, invite.ConfID, err)
 					return true
 				}
 				if call, err = conf.getCall(invite.CallID, true); err != nil || call == nil {
-					log.Printf("Failed to create call %s %+v", invite.CallID, err)
+					log.Printf("%s | failed to create call: %+v", invite.CallID, err)
 					return true
 				}
 				call.userID = evt.Sender
@@ -143,12 +143,16 @@ func initMatrix(config *config) error {
 
 			// Events we don't care about
 			case CallNegotiate.Type:
-				log.Printf("Ignoring event %s as should be handled over DC", evt.Type.Type)
+				negotiate := evt.Content.AsCallNegotiate()
+				log.Printf("%s | ignoring event %s as should be handled over DC", negotiate.CallID, evt.Type.Type)
 			case CallReject.Type:
+				reject := evt.Content.AsCallReject()
+				log.Printf("%s | ignoring event %s as we are always the ones answering", reject.CallID, evt.Type.Type)
 			case CallAnswer.Type:
-				log.Printf("Ignoring event %s as we are always the ones answering", evt.Type.Type)
+				answer := evt.Content.AsCallAnswer()
+				log.Printf("%s | ignoring event %s as we are always the ones answering", answer.CallID, evt.Type.Type)
 			default:
-				log.Printf("Ignoring unrecognised to-device event of type %s", evt.Type.Type)
+				log.Printf("%s | ignoring unrecognised to-device event of type %s", evt.Content.Raw["call_id"], evt.Type.Type)
 			}
 		}
 

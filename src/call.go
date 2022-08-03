@@ -90,7 +90,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			}
 
 			for _, track := range tracks {
-				log.Printf("%s | adding %s track with StreamID %s", c.callID, track.Kind(), track.StreamID())
+				log.Printf("%s | adding %s track with %s", c.callID, track.Kind(), track.ID())
 				if _, err := peerConnection.AddTrack(track); err != nil {
 					panic(err)
 				}
@@ -153,8 +153,6 @@ func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 	}
 
 	ice := candidate.ToJSON()
-
-	log.Printf("%s | discovered local candidate %s", c.callID, ice.Candidate)
 
 	// TODO: batch these up a bit
 	candidateEvtContent := &event.Content{
@@ -310,7 +308,7 @@ func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
 }
 
 func (c *call) terminate() error {
-	log.Printf("%s | Terminating call", c.callID)
+	log.Printf("%s | terminating call", c.callID)
 
 	if err := c.peerConnection.Close(); err != nil {
 		log.Printf("%s | error closing peer connection: %s", c.callID, err)
@@ -359,7 +357,7 @@ func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
 
 	err = c.dataChannel.SendText(string(marshaled))
 	if err != nil {
-		log.Printf("%s | failed to send over DC: %s", c.callID, err)
+		log.Printf("%s | failed to send %s over DC: %s", c.callID, msg.Op, err)
 	}
 
 	log.Printf("%s | sent DC %s", c.callID, msg.Op)
