@@ -76,6 +76,7 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 				callID: callID,
 				conf:   c,
 			}
+			ca.subscribedTracks.tracks = []localTrackInfo{}
 			c.calls.calls[callID] = ca
 		} else {
 			return nil, errors.New("no such call")

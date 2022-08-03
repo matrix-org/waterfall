@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"maunium.net/go/mautrix"
@@ -30,16 +31,22 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
+type subscribedTracks struct {
+	mutex  sync.RWMutex
+	tracks []localTrackInfo
+}
+
 type call struct {
-	callID          string
-	userID          id.UserID
-	deviceID        id.DeviceID
-	localSessionID  string
-	remoteSessionID string
-	client          *mautrix.Client
-	peerConnection  *webrtc.PeerConnection
-	conf            *conf
-	dataChannel     *webrtc.DataChannel
+	callID           string
+	userID           id.UserID
+	deviceID         id.DeviceID
+	localSessionID   string
+	remoteSessionID  string
+	client           *mautrix.Client
+	peerConnection   *webrtc.PeerConnection
+	conf             *conf
+	dataChannel      *webrtc.DataChannel
+	subscribedTracks subscribedTracks
 }
 
 func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
@@ -80,23 +87,16 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		case "select":
 			log.Printf("%s | selected: %+v", c.userID, msg.Start)
 
-			var tracks []webrtc.TrackLocal
+			c.subscribedTracks.mutex.Lock()
 			for _, trackDesc := range msg.Start {
-				foundTracks, err := c.conf.getLocalTrackByInfo(localTrackInfo{streamID: trackDesc.StreamID, trackID: trackDesc.TrackID})
-				if err != nil {
-					c.sendDataChannelError("No Such Stream")
-					return
-				} else {
-					tracks = append(tracks, foundTracks...)
-				}
+				c.subscribedTracks.tracks = append(c.subscribedTracks.tracks, localTrackInfo{
+					streamID: trackDesc.StreamID,
+					trackID:  trackDesc.TrackID,
+				})
 			}
+			c.subscribedTracks.mutex.Unlock()
 
-			for _, track := range tracks {
-				log.Printf("%s | adding %s track with %s", c.userID, track.Kind(), track.ID())
-				if _, err := peerConnection.AddTrack(track); err != nil {
-					panic(err)
-				}
-			}
+			c.addSubscribedTracksToPeerConnection()
 
 		case "publish":
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -212,6 +212,8 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 
 	log.Printf("%s | published track with trackID %s and kind %s", c.userID, trackLocal.ID(), trackLocal.Kind())
 	c.conf.tracksMu.Unlock()
+
+	c.addSubscribedTracksToPeerConnection()
 
 	copyRemoteToLocal(trackRemote, trackLocal)
 }
@@ -362,17 +364,27 @@ func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
 	log.Printf("%s | sent DC %s", c.userID, msg.Op)
 }
 
-func (c *call) sendDataChannelError(errMsg string) {
-	log.Printf("%s | sending DC error: %s", c.userID, errMsg)
-	marshaled, err := json.Marshal(&dataChannelMessage{
-		Op:      "error",
-		Message: errMsg,
-	})
-	if err != nil {
-		panic(err)
-	}
+func (c *call) addSubscribedTracksToPeerConnection() {
+	newSubscribedTracks := []localTrackInfo{}
+	tracksToAddToPeerConnection := []webrtc.TrackLocal{}
 
-	if err = c.dataChannel.SendText(string(marshaled)); err != nil {
-		panic(err)
+	c.subscribedTracks.mutex.Lock()
+	for _, trackInfo := range c.subscribedTracks.tracks {
+		foundTracks := c.conf.getLocalTrackByInfo(trackInfo)
+		if len(foundTracks) == 0 {
+			log.Printf("%s | no track found for %+v", c.userID, trackInfo)
+			newSubscribedTracks = append(newSubscribedTracks, trackInfo)
+		} else {
+			tracksToAddToPeerConnection = append(tracksToAddToPeerConnection, foundTracks...)
+		}
+	}
+	c.subscribedTracks.tracks = newSubscribedTracks
+	c.subscribedTracks.mutex.Unlock()
+
+	for _, track := range tracksToAddToPeerConnection {
+		log.Printf("%s | adding %s track with %s", c.userID, track.Kind(), track.ID())
+		if _, err := c.peerConnection.AddTrack(track); err != nil {
+			panic(err)
+		}
 	}
 }
