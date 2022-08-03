@@ -80,7 +80,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		case "select":
 			var tracks []webrtc.TrackLocal
 			for _, trackDesc := range msg.Start {
-				foundTracks, err := c.conf.getLocalTrackByInfo(localTrackInfo{streamID: trackDesc.StreamID})
+				foundTracks, err := c.conf.getLocalTrackByInfo(localTrackInfo{streamID: trackDesc.StreamID, trackID: trackDesc.TrackID})
 				if err != nil {
 					c.sendDataChannelError("No Such Stream")
 					return
