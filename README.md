@@ -179,11 +179,11 @@ The client will respond to the `subscribe` with the answer.
 
 ## Running
 
-* `go run ./src/*.go`
+* `./scripts/run.sh`
 * Access at <http://localhost:8080>
 
 ## Building
 
-* `./build.zsh`
+* `./scripts/build.sh`
 * `./dist/bin`
 * Access at <http://localhost:8080>
