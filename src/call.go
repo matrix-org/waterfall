@@ -68,7 +68,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			log.Fatalf("%s | failed to unmarshal: %s", c.callID, err)
 		}
 
-		log.Printf("%s | received DC %s confId=%s start=%+v", c.callID, msg.Op, msg.ConfID, msg.Start)
+		log.Printf("%s | received DC: %s", c.callID, msg.Op)
 
 		// TODO: hook cascade back up.
 		// As we're not an AS, we'd rely on the client
@@ -78,6 +78,8 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 
 		switch msg.Op {
 		case "select":
+			log.Printf("%s | selected: %+v", c.callID, msg.Start)
+
 			var tracks []webrtc.TrackLocal
 			for _, trackDesc := range msg.Start {
 				foundTracks, err := c.conf.getLocalTrackByInfo(localTrackInfo{streamID: trackDesc.StreamID, trackID: trackDesc.TrackID})
