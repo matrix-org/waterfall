@@ -195,13 +195,13 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 		}()
 	}
 
-	c.conf.tracksMu.Lock()
+	c.conf.tracks.mutex.Lock()
 	trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
 	if err != nil {
 		panic(err)
 	}
 
-	c.conf.tracks = append(c.conf.tracks, localTrackWithInfo{
+	c.conf.tracks.tracks = append(c.conf.tracks.tracks, localTrackWithInfo{
 		track: trackLocal,
 		info: localTrackInfo{
 			trackID:  trackLocal.ID(),
@@ -211,7 +211,7 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 	})
 
 	log.Printf("%s | published track with trackID %s and kind %s", c.userID, trackLocal.ID(), trackLocal.Kind())
-	c.conf.tracksMu.Unlock()
+	c.conf.tracks.mutex.Unlock()
 
 	c.addSubscribedTracksToPeerConnection()
 

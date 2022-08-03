@@ -40,11 +40,15 @@ type calls struct {
 	calls   map[string]*call // By callID
 }
 
+type tracks struct {
+	mutex  sync.RWMutex
+	tracks []localTrackWithInfo
+}
+
 type conf struct {
-	confID   string
-	calls    calls
-	tracksMu sync.RWMutex
-	tracks   []localTrackWithInfo
+	confID string
+	calls  calls
+	tracks tracks
 }
 
 func (f *focus) getConf(confID string, create bool) (*conf, error) {
@@ -58,7 +62,7 @@ func (f *focus) getConf(confID string, create bool) (*conf, error) {
 			}
 			f.confs.confs[confID] = co
 			co.calls.calls = make(map[string]*call)
-			co.tracks = []localTrackWithInfo{}
+			co.tracks.tracks = []localTrackWithInfo{}
 		} else {
 			return nil, errors.New("no such conf")
 		}
@@ -87,7 +91,7 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 
 func (c *conf) getLocalTrackIndicesByInfo(selectInfo localTrackInfo) (tracks []int) {
 	foundIndices := []int{}
-	for index, track := range c.tracks {
+	for index, track := range c.tracks.tracks {
 		info := track.info
 		if selectInfo.call != nil && selectInfo.call != info.call {
 			continue
@@ -108,7 +112,7 @@ func (c *conf) getLocalTrackByInfo(selectInfo localTrackInfo) (tracks []webrtc.T
 	indices := c.getLocalTrackIndicesByInfo(selectInfo)
 	foundTracks := []webrtc.TrackLocal{}
 	for _, index := range indices {
-		foundTracks = append(foundTracks, c.tracks[index].track)
+		foundTracks = append(foundTracks, c.tracks.tracks[index].track)
 	}
 
 	return foundTracks
@@ -119,7 +123,7 @@ func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) 
 
 	// FIXME: the big O of this must be awful...
 	for _, index := range indices {
-		info := c.tracks[index].info
+		info := c.tracks.tracks[index].info
 
 		for _, call := range c.calls.calls {
 			for _, sender := range call.peerConnection.GetSenders() {
@@ -141,13 +145,13 @@ func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) 
 }
 
 func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) {
-	c.tracksMu.Lock()
-	defer c.tracksMu.Unlock()
+	c.tracks.mutex.Lock()
+	defer c.tracks.mutex.Unlock()
 
 	indicesToRemove := c.getLocalTrackIndicesByInfo(removeInfo)
 
 	newTracks := []localTrackWithInfo{}
-	for index, track := range c.tracks {
+	for index, track := range c.tracks.tracks {
 		keep := true
 		for _, indexToRemove := range indicesToRemove {
 			if indexToRemove == index {
@@ -159,5 +163,5 @@ func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) {
 		}
 	}
 
-	c.tracks = newTracks
+	c.tracks.tracks = newTracks
 }
