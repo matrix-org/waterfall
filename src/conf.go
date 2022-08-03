@@ -131,9 +131,6 @@ func (c *conf) getLocalTrackByInfo(selectInfo localTrackInfo) (tracks []webrtc.T
 }
 
 func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) error {
-	c.tracksMu.Lock()
-	defer c.tracksMu.Unlock()
-
 	indices, err := c.getLocalTrackIndicesByInfo(removeInfo)
 	if err != nil {
 		return err
@@ -158,6 +155,33 @@ func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) 
 			}
 		}
 	}
+
+	return nil
+}
+
+func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) error {
+	c.tracksMu.Lock()
+	defer c.tracksMu.Unlock()
+
+	indicesToRemove, err := c.getLocalTrackIndicesByInfo(removeInfo)
+	if err != nil {
+		return err
+	}
+
+	newTracks := []localTrackWithInfo{}
+	for index, track := range c.tracks {
+		keep := true
+		for _, indexToRemove := range indicesToRemove {
+			if indexToRemove == index {
+				keep = false
+			}
+		}
+		if keep {
+			newTracks = append(newTracks, track)
+		}
+	}
+
+	c.tracks = newTracks
 
 	return nil
 }

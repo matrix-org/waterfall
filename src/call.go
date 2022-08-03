@@ -320,11 +320,13 @@ func (c *call) terminate() error {
 	delete(c.conf.calls.calls, c.callID)
 	c.conf.calls.callsMu.Unlock()
 
-	if err := c.conf.removeTracksFromPeerConnectionsByInfo(localTrackInfo{call: c}); err != nil {
+	info := localTrackInfo{call: c}
+	if err := c.conf.removeTracksFromPeerConnectionsByInfo(info); err != nil {
 		return err
 	}
-
-	// TODO: Remove the tracks from conf.tracks
+	if err := c.conf.removeTracksFromConfByInfo(info); err != nil {
+		return err
+	}
 
 	return nil
 }
