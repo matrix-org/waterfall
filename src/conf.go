@@ -118,7 +118,7 @@ func (c *conf) getLocalTrackByInfo(selectInfo localTrackInfo) (tracks []webrtc.T
 	return foundTracks
 }
 
-func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) error {
+func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) int {
 	indices := c.getLocalTrackIndicesByInfo(removeInfo)
 
 	// FIXME: the big O of this must be awful...
@@ -134,14 +134,13 @@ func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) 
 					}
 					if err := call.peerConnection.RemoveTrack(sender); err != nil {
 						log.Printf("%s | failed to remove track: %s", call.userID, err)
-						return err
 					}
 				}
 			}
 		}
 	}
 
-	return nil
+	return len(indices)
 }
 
 func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) {

@@ -322,9 +322,7 @@ func (c *call) terminate() error {
 	c.conf.calls.callsMu.Unlock()
 
 	info := localTrackInfo{call: c}
-	if err := c.conf.removeTracksFromPeerConnectionsByInfo(info); err != nil {
-		return err
-	}
+	c.conf.removeTracksFromPeerConnectionsByInfo(info)
 	c.conf.removeTracksFromConfByInfo(info)
 
 	return nil
