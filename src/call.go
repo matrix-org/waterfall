@@ -118,6 +118,38 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				SDP: offer.SDP,
 			})
 
+		case "unpublish":
+			log.Printf("%s | unpublished: %+v", c.userID, msg.Stop)
+
+			for _, trackDesc := range msg.Stop {
+				if removedTracksCount := c.conf.removeTracksFromPeerConnectionsByInfo(localTrackInfo{
+					streamID: trackDesc.StreamID,
+					trackID:  trackDesc.TrackID,
+				}); removedTracksCount == 0 {
+					log.Printf("%s | no tracks to remove for: %+v", c.userID, msg.Stop)
+				}
+
+			}
+
+			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+				Type: webrtc.SDPTypeOffer,
+				SDP:  msg.SDP,
+			})
+
+			offer, err := c.peerConnection.CreateAnswer(nil)
+			if err != nil {
+				panic(err)
+			}
+			err = c.peerConnection.SetLocalDescription(offer)
+			if err != nil {
+				panic(err)
+			}
+
+			c.sendDataChannelMessage(dataChannelMessage{
+				Op:  "answer",
+				SDP: offer.SDP,
+			})
+
 		case "answer":
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeAnswer,
