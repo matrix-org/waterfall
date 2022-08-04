@@ -210,7 +210,7 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 		},
 	})
 
-	log.Printf("%s | published track with trackID %s and kind %s", c.userID, trackLocal.ID(), trackLocal.Kind())
+	log.Printf("%s | published track with streamID %s trackID %s and kind %s", c.userID, trackLocal.StreamID(), trackLocal.ID(), trackLocal.Kind())
 	c.conf.tracks.mutex.Unlock()
 
 	c.addSubscribedTracksToPeerConnection()
