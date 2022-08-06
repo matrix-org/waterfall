@@ -241,11 +241,15 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 			call:     c,
 		},
 	})
-
-	log.Printf("%s | published track with streamID %s trackID %s and kind %s", c.userID, trackLocal.StreamID(), trackLocal.ID(), trackLocal.Kind())
 	c.conf.tracks.mutex.Unlock()
 
-	c.addSubscribedTracksToPeerConnection()
+	log.Printf("%s | published track with streamID %s trackID %s and kind %s", c.userID, trackLocal.StreamID(), trackLocal.ID(), trackLocal.Kind())
+
+	for _, call := range c.conf.calls.calls {
+		if call.callID != c.callID {
+			call.addSubscribedTracksToPeerConnection()
+		}
+	}
 
 	copyRemoteToLocal(trackRemote, trackLocal)
 }
