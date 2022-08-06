@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/pion/webrtc/v3"
+	"maunium.net/go/mautrix/id"
 )
 
 type localTrackInfo struct {
@@ -163,4 +164,12 @@ func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) {
 	}
 
 	c.tracks.tracks = newTracks
+}
+
+func (c *conf) removeOldCallByDeviceId(deviceId id.DeviceID) {
+	for _, call := range c.calls.calls {
+		if call.deviceID == deviceId {
+			call.terminate()
+		}
+	}
 }

@@ -110,6 +110,7 @@ func initMatrix(config *config) error {
 					log.Printf("%s | failed to create conf %s: %+v", evt.Sender.String(), invite.ConfID, err)
 					return true
 				}
+				conf.removeOldCallByDeviceId(invite.DeviceID)
 				if call, err = conf.getCall(invite.CallID, true); err != nil || call == nil {
 					log.Printf("%s | failed to create call: %+v", evt.Sender.String(), err)
 					return true
