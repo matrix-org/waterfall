@@ -214,6 +214,7 @@ func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 }
 
 func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
+	// FIXME: This is a potential performance killer
 	if strings.Contains(trackRemote.Codec().MimeType, "video") {
 		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
 		go func() {
