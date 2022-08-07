@@ -21,11 +21,22 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 
 	yaml "gopkg.in/yaml.v3"
 
 	"maunium.net/go/mautrix/id"
+
+	_ "net/http/pprof"
 )
+
+func initProfiling() {
+	log.Printf("Initializing profiling")
+
+	go func() {
+		http.ListenAndServe(":1234", nil)
+	}()
+}
 
 func loadConfig(configFilePath string) (*config, error) {
 	log.Printf("Loading %s", configFilePath)
@@ -41,7 +52,14 @@ func loadConfig(configFilePath string) (*config, error) {
 }
 
 func main() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+	profilingEnabled := flag.Bool("profile", false, "profiling mode")
+	flag.Parse()
+
+	if *profilingEnabled {
+		initProfiling()
+	}
+
+	log.SetFlags(log.Ldate | log.Ltime)
 	configFilePath := flag.String("config", "config.yaml", "Configuration file path")
 	flag.Parse()
 

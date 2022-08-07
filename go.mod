@@ -13,7 +13,10 @@ require (
 replace maunium.net/go/mautrix v0.11.0 => ../mautrix-go
 
 require (
+	github.com/chzyer/readline v1.5.0 // indirect
+	github.com/google/pprof v0.0.0-20220729232143-a41b82acbcb1 // indirect
 	github.com/google/uuid v1.3.0 // indirect
+	github.com/ianlancetaylor/demangle v0.0.0-20220319035150-800ac71e25c2 // indirect
 	github.com/pion/datachannel v1.5.2 // indirect
 	github.com/pion/dtls/v2 v2.1.3 // indirect
 	github.com/pion/ice/v2 v2.2.3 // indirect
