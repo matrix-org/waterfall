@@ -36,5 +36,4 @@ func copyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.Track
 			break
 		}
 	}
-
 }
