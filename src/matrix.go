@@ -26,6 +26,8 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
+const localSessionID = "sfu"
+
 func initMatrix(config *config) error {
 	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
 	if err != nil {
@@ -102,7 +104,11 @@ func initMatrix(config *config) error {
 				continue
 			}
 
-			// TODO: check session IDs
+			if evt.Content.Raw["dest_session_id"] != localSessionID {
+				log.Printf("%s | SessionID %s does not match our SessionID %s - ignoring", evt.Content.Raw["dest_session_id"], localSessionID, err)
+				continue
+			}
+
 			switch evt.Type.Type {
 			case CallInvite.Type:
 				invite := evt.Content.AsCallInvite()
@@ -110,16 +116,18 @@ func initMatrix(config *config) error {
 					log.Printf("%s | failed to create conf %s: %+v", evt.Sender.String(), invite.ConfID, err)
 					return true
 				}
-				conf.removeOldCallByDeviceId(invite.DeviceID)
+				if err := conf.removeOldCallsByDeviceAndSessionIds(invite.DeviceID, invite.SenderSessionID); err != nil {
+					log.Printf("%s | error removing old calls - ignoring call: %+v", evt.Sender.String(), err)
+					return true
+				}
 				if call, err = conf.getCall(invite.CallID, true); err != nil || call == nil {
 					log.Printf("%s | failed to create call: %+v", evt.Sender.String(), err)
 					return true
 				}
 				call.userID = evt.Sender
 				call.deviceID = invite.DeviceID
-				// XXX: hardcode the same sessionID for SFUs for now, as nobody should care
-				// much if they get restarted(?)
-				call.localSessionID = "sfu"
+				// XXX: What if an SFU gets restarted?
+				call.localSessionID = localSessionID
 				call.remoteSessionID = invite.SenderSessionID
 				call.client = client
 				call.onInvite(invite)

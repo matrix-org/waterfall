@@ -166,10 +166,16 @@ func (c *conf) removeTracksFromConfByInfo(removeInfo localTrackInfo) {
 	c.tracks.tracks = newTracks
 }
 
-func (c *conf) removeOldCallByDeviceId(deviceId id.DeviceID) {
+func (c *conf) removeOldCallsByDeviceAndSessionIds(deviceID id.DeviceID, sessionID id.SessionID) error {
+	var err error
 	for _, call := range c.calls.calls {
-		if call.deviceID == deviceId {
-			call.terminate()
+		if call.deviceID == deviceID {
+			if call.remoteSessionID == sessionID {
+				err = errors.New("found existing call with equal DeviceID and SessionID")
+			} else {
+				call.terminate()
+			}
 		}
 	}
+	return err
 }

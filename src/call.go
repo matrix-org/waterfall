@@ -40,8 +40,8 @@ type call struct {
 	callID           string
 	userID           id.UserID
 	deviceID         id.DeviceID
-	localSessionID   string
-	remoteSessionID  string
+	localSessionID   id.SessionID
+	remoteSessionID  id.SessionID
 	client           *mautrix.Client
 	peerConnection   *webrtc.PeerConnection
 	conf             *conf
