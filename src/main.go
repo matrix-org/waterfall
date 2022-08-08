@@ -21,7 +21,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
+	"os"
+	"os/signal"
+	"runtime"
+	"runtime/pprof"
+	"syscall"
 
 	yaml "gopkg.in/yaml.v3"
 
@@ -30,19 +34,56 @@ import (
 	_ "net/http/pprof"
 )
 
-func initProfiling() {
-	log.Printf("Initializing profiling")
+var configFilePath = flag.String("config", "config.yaml", "Configuration file path")
+var cpuProfile = flag.String("cpuProfile", "", "write CPU profile to `file`")
+var memProfile = flag.String("memProfile", "", "write memory profile to `file`")
 
-	go func() {
-		http.ListenAndServe(":1234", nil)
-	}()
+func initCpuProfiling(cpuProfile *string) func() {
+	log.Print("initializing CPU profiling")
+
+	f, err := os.Create(*cpuProfile)
+	if err != nil {
+		log.Fatalf("could not create CPU profile: %s", err)
+	}
+	if err := pprof.StartCPUProfile(f); err != nil {
+		log.Fatalf("could not start CPU profile: %s", err)
+	}
+
+	return func() {
+		pprof.StopCPUProfile()
+		if err := f.Close(); err != nil {
+			log.Fatalf("could not close CPU profile: %s", err)
+		}
+	}
+}
+
+func initMemoryProfiling(memProfile *string) func() {
+	log.Print("initializing memory profiling")
+
+	return func() {
+		f, err := os.Create(*memProfile)
+		if err != nil {
+			log.Fatalf("could not create memory profile: %s", err)
+		}
+		runtime.GC()
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatalf("could not write memory profile: %s", err)
+		}
+		if err = f.Close(); err != nil {
+			log.Fatalf("could not close memory profile: %s", err)
+		}
+	}
+}
+
+func initLogging() {
+	log.SetFlags(log.Ldate | log.Ltime)
 }
 
 func loadConfig(configFilePath string) (*config, error) {
-	log.Printf("Loading %s", configFilePath)
+	log.Printf("loading %s", configFilePath)
 	file, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
-		log.Fatal("Failed to read config", err)
+		log.Fatalf("failed to read config: %s", err)
 	}
 	var config config
 	if err := yaml.Unmarshal(file, &config); err != nil {
@@ -51,26 +92,44 @@ func loadConfig(configFilePath string) (*config, error) {
 	return &config, nil
 }
 
+func onKill(c chan os.Signal, beforeExit []func()) {
+	select {
+	case <-c:
+		log.Printf("ending program")
+
+		for _, function := range beforeExit {
+			function()
+		}
+		defer os.Exit(0)
+	}
+}
+
 func main() {
-	profilingEnabled := flag.Bool("profile", false, "profiling mode")
+	initLogging()
+
 	flag.Parse()
 
-	if *profilingEnabled {
-		initProfiling()
+	beforeExit := []func(){}
+	if *cpuProfile != "" {
+		beforeExit = append(beforeExit, initCpuProfiling(cpuProfile))
+	}
+	if *memProfile != "" {
+		beforeExit = append(beforeExit, initMemoryProfiling(memProfile))
 	}
 
-	log.SetFlags(log.Ldate | log.Ltime)
-	configFilePath := flag.String("config", "config.yaml", "Configuration file path")
-	flag.Parse()
+	// try to handle os interrupt(signal terminated)
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go onKill(c, beforeExit)
 
 	var config *config
 	var err error
 	if config, err = loadConfig(*configFilePath); err != nil {
-		log.Fatal("Failed to load config file", err)
+		log.Fatalf("failed to load config file: %s", err)
 	}
 
 	if err := initMatrix(config); err != nil {
-		log.Fatal("Failed to init Matrix", err)
+		log.Fatalf("failed to init Matrix: %s", err)
 	}
 }
 
