@@ -228,12 +228,12 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 		}()
 	}
 
-	c.conf.tracks.mutex.Lock()
 	trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
 	if err != nil {
 		panic(err)
 	}
 
+	c.conf.tracks.mutex.Lock()
 	c.conf.tracks.tracks = append(c.conf.tracks.tracks, localTrackWithInfo{
 		track: trackLocal,
 		info: localTrackInfo{
