@@ -96,7 +96,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			}
 			c.subscribedTracks.mutex.Unlock()
 
-			c.addSubscribedTracksToPeerConnection()
+			go c.addSubscribedTracksToPeerConnection()
 
 		case "publish":
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -248,11 +248,11 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 
 	for _, call := range c.conf.calls.calls {
 		if call.callID != c.callID {
-			call.addSubscribedTracksToPeerConnection()
+			go call.addSubscribedTracksToPeerConnection()
 		}
 	}
 
-	copyRemoteToLocal(trackRemote, trackLocal)
+	go copyRemoteToLocal(trackRemote, trackLocal)
 }
 
 func (c *call) onInvite(content *event.CallInviteEventContent) error {
