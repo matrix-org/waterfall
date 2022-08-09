@@ -400,6 +400,10 @@ func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
 }
 
 func (c *call) addSubscribedTracksToPeerConnection() {
+	if len(c.subscribedTracks.tracks) == 0 {
+		return
+	}
+
 	newSubscribedTracks := []localTrackInfo{}
 	tracksToAddToPeerConnection := []webrtc.TrackLocal{}
 
