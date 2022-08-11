@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"sync"
 )
 
@@ -33,4 +34,23 @@ type focus struct {
 func (f *focus) Init(name string) {
 	f.name = name
 	f.confs.confs = make(map[string]*conf)
+}
+
+func (f *focus) getConf(confID string, create bool) (*conf, error) {
+	f.confs.confsMu.Lock()
+	defer f.confs.confsMu.Unlock()
+	co := f.confs.confs[confID]
+	if co == nil {
+		if create {
+			co = &conf{
+				confID: confID,
+			}
+			f.confs.confs[confID] = co
+			co.calls.calls = make(map[string]*call)
+			co.tracks.tracks = []localTrackWithInfo{}
+		} else {
+			return nil, errors.New("no such conf")
+		}
+	}
+	return co, nil
 }
