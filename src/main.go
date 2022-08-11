@@ -34,6 +34,8 @@ import (
 	_ "net/http/pprof"
 )
 
+var configInstance *config
+
 var configFilePath = flag.String("config", "config.yaml", "Configuration file path")
 var cpuProfile = flag.String("cpuProfile", "", "write CPU profile to `file`")
 var memProfile = flag.String("memProfile", "", "write memory profile to `file`")
@@ -122,13 +124,12 @@ func main() {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go onKill(c, beforeExit)
 
-	var config *config
 	var err error
-	if config, err = loadConfig(*configFilePath); err != nil {
+	if configInstance, err = loadConfig(*configFilePath); err != nil {
 		log.Fatalf("failed to load config file: %s", err)
 	}
 
-	if err := initMatrix(config); err != nil {
+	if err := initMatrix(); err != nil {
 		log.Fatalf("failed to init Matrix: %s", err)
 	}
 }
@@ -137,6 +138,7 @@ type config struct {
 	UserID        id.UserID
 	HomeserverURL string
 	AccessToken   string
+	Timeout       int64
 }
 
 type trackDesc struct {
@@ -149,8 +151,9 @@ type dataChannelMessage struct {
 	ID      string `json:"id"`
 	Message string `json:"message,omitempty"`
 	// XXX: is this even needed? we know which conf a given call is for...
-	ConfID string      `json:"conf_id,omitempty"`
-	Start  []trackDesc `json:"start,omitempty"`
-	Stop   []trackDesc `json:"stop,omitempty"`
-	SDP    string      `json:"sdp,omitempty"`
+	ConfID    string      `json:"conf_id,omitempty"`
+	Start     []trackDesc `json:"start,omitempty"`
+	Stop      []trackDesc `json:"stop,omitempty"`
+	SDP       string      `json:"sdp,omitempty"`
+	Timestamp int         `json:"ts,omitempty"`
 }

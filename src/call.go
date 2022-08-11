@@ -47,6 +47,7 @@ type call struct {
 	conf             *conf
 	dataChannel      *webrtc.DataChannel
 	subscribedTracks subscribedTracks
+	lastKeepAliveTs  time.Time
 }
 
 func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
@@ -75,7 +76,9 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			log.Fatalf("%s | failed to unmarshal: %s", c.callID, err)
 		}
 
-		log.Printf("%s | received DC: %s", c.userID, msg.Op)
+		if msg.Op != "alive" {
+			log.Printf("%s | received DC: %s", c.userID, msg.Op)
+		}
 
 		// TODO: hook cascade back up.
 		// As we're not an AS, we'd rely on the client
@@ -155,6 +158,9 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				Type: webrtc.SDPTypeAnswer,
 				SDP:  msg.SDP,
 			})
+
+		case "alive":
+			c.lastKeepAliveTs = time.UnixMilli(int64(msg.Timestamp))
 
 		default:
 			log.Fatalf("Unknown operation %s", msg.Op)
@@ -255,6 +261,12 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 	go copyRemoteToLocal(trackRemote, trackLocal)
 }
 
+func (c *call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
+	if state == webrtc.ICEConnectionStateCompleted || state == webrtc.ICEConnectionStateConnected {
+		go c.checkKeepAliveTimestamp()
+	}
+}
+
 func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	offer := content.Offer
 
@@ -275,6 +287,9 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	})
 	peerConnection.OnNegotiationNeeded(func() {
 		c.negotiationNeededHandler()
+	})
+	peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		c.iceConnectionStateHandler(state)
 	})
 
 	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -347,7 +362,7 @@ func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
 	return nil
 }
 
-func (c *call) terminate() error {
+func (c *call) terminate() {
 	log.Printf("%s | terminating call", c.userID)
 
 	if err := c.peerConnection.Close(); err != nil {
@@ -362,10 +377,28 @@ func (c *call) terminate() error {
 	c.conf.removeTracksFromPeerConnectionsByInfo(info)
 	c.conf.removeTracksFromConfByInfo(info)
 
-	return nil
 }
 
-func (c *call) sendToDevice(callType event.Type, content *event.Content) error {
+func (c *call) hangup(reason event.CallHangupReason) {
+	hangupEvtContent := &event.Content{
+		Parsed: event.CallHangupEventContent{
+			BaseCallEventContent: event.BaseCallEventContent{
+				CallID:          c.callID,
+				ConfID:          c.conf.confID,
+				DeviceID:        c.client.DeviceID,
+				SenderSessionID: c.localSessionID,
+				DestSessionID:   c.remoteSessionID,
+				PartyID:         string(c.client.DeviceID),
+				Version:         event.CallVersion("1"),
+			},
+			Reason: reason,
+		},
+	}
+	c.sendToDevice(event.CallHangup, hangupEvtContent)
+	c.terminate()
+}
+
+func (c *call) sendToDevice(callType event.Type, content *event.Content) {
 	log.Printf("%s | sending to device %s", c.userID, callType.Type)
 	toDevice := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
@@ -378,8 +411,6 @@ func (c *call) sendToDevice(callType event.Type, content *event.Content) error {
 	// TODO: E2EE
 	// TODO: to-device reliability
 	c.client.SendToDevice(callType, toDevice)
-
-	return nil
 }
 
 func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
@@ -424,6 +455,17 @@ func (c *call) addSubscribedTracksToPeerConnection() {
 		log.Printf("%s | adding %s track with %s", c.userID, track.Kind(), track.ID())
 		if _, err := c.peerConnection.AddTrack(track); err != nil {
 			panic(err)
+		}
+	}
+}
+
+func (c *call) checkKeepAliveTimestamp() {
+	timeout := time.Second * time.Duration(configInstance.Timeout)
+	for range time.Tick(timeout / 2 * 3) {
+		if c.lastKeepAliveTs.Add(timeout).Before(time.Now()) {
+			log.Printf("%s | call timed out", c.userID)
+			c.hangup(event.CallHangupKeepAliveTimeout)
+			break
 		}
 	}
 }

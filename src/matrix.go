@@ -28,8 +28,8 @@ import (
 
 const localSessionID = "sfu"
 
-func initMatrix(config *config) error {
-	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
+func initMatrix() error {
+	client, err := mautrix.NewClient(configInstance.HomeserverURL, configInstance.UserID, configInstance.AccessToken)
 	if err != nil {
 		log.Fatal("Failed to create client", err)
 	}
@@ -38,14 +38,14 @@ func initMatrix(config *config) error {
 	if err != nil {
 		log.Fatal("Failed to identify SFU user", err)
 	}
-	if config.UserID != whoami.UserID {
-		log.Fatalf("Access token is for the wrong user: %s", config.UserID)
+	if configInstance.UserID != whoami.UserID {
+		log.Fatalf("Access token is for the wrong user: %s", configInstance.UserID)
 	}
 	log.Printf("Identified SFU as device %s", whoami.DeviceID)
 	client.DeviceID = whoami.DeviceID
 
 	focus := new(focus)
-	focus.Init(fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID))
+	focus.Init(fmt.Sprintf("%s (%s)", configInstance.UserID, client.DeviceID))
 
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
 	syncer.ParseEventContent = true
