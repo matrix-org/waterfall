@@ -170,8 +170,6 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 }
 
 func (c *call) negotiationNeededHandler() {
-	log.Printf("%s | negotiation needed", c.userID)
-
 	offer, err := c.peerConnection.CreateOffer(nil)
 	if err != nil {
 		panic(err)
@@ -399,7 +397,9 @@ func (c *call) hangup(reason event.CallHangupReason) {
 }
 
 func (c *call) sendToDevice(callType event.Type, content *event.Content) {
-	log.Printf("%s | sending to device %s", c.userID, callType.Type)
+	if callType.Type != event.CallCandidates.Type {
+		log.Printf("%s | sending to device %s", c.userID, callType.Type)
+	}
 	toDevice := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
 			c.userID: {
