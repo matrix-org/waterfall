@@ -79,6 +79,7 @@ func initMemoryProfiling(memProfile *string) func() {
 }
 
 func initLogging(logTime *bool) {
+	log.SetFlags(0)
 	if *logTime {
 		log.SetFlags(log.Ldate | log.Ltime)
 	}
