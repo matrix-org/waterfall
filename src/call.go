@@ -37,17 +37,17 @@ type subscribedTracks struct {
 }
 
 type call struct {
-	callID           string
-	userID           id.UserID
-	deviceID         id.DeviceID
-	localSessionID   id.SessionID
-	remoteSessionID  id.SessionID
-	client           *mautrix.Client
-	peerConnection   *webrtc.PeerConnection
-	conf             *conf
-	dataChannel      *webrtc.DataChannel
-	subscribedTracks subscribedTracks
-	lastKeepAliveTs  time.Time
+	callID                 string
+	userID                 id.UserID
+	deviceID               id.DeviceID
+	localSessionID         id.SessionID
+	remoteSessionID        id.SessionID
+	client                 *mautrix.Client
+	peerConnection         *webrtc.PeerConnection
+	conf                   *conf
+	dataChannel            *webrtc.DataChannel
+	subscribedTracks       subscribedTracks
+	lastKeepAliveTimestamp time.Time
 }
 
 func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
@@ -160,7 +160,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			})
 
 		case "alive":
-			c.lastKeepAliveTs = time.UnixMilli(int64(msg.Timestamp))
+			c.lastKeepAliveTimestamp = time.Now()
 
 		default:
 			log.Fatalf("Unknown operation %s", msg.Op)
@@ -261,6 +261,7 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 
 func (c *call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
 	if state == webrtc.ICEConnectionStateCompleted || state == webrtc.ICEConnectionStateConnected {
+		c.lastKeepAliveTimestamp = time.Now()
 		go c.checkKeepAliveTimestamp()
 	}
 }
@@ -461,9 +462,9 @@ func (c *call) addSubscribedTracksToPeerConnection() {
 
 func (c *call) checkKeepAliveTimestamp() {
 	timeout := time.Second * time.Duration(configInstance.Timeout)
-	for range time.Tick(timeout / 2 * 3) {
-		if c.lastKeepAliveTs.Add(timeout).Before(time.Now()) {
-			log.Printf("%s | call timed out", c.userID)
+	for range time.Tick(timeout) {
+		if c.lastKeepAliveTimestamp.Add(timeout).Before(time.Now()) {
+			log.Printf("%s | did not get keep-alive message in the last %s:", c.userID, timeout)
 			c.hangup(event.CallHangupKeepAliveTimeout)
 			break
 		}
