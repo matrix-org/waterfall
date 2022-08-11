@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-clear && go run ./src/*.go
+clear && go run ./src/*.go --logTime

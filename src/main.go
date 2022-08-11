@@ -36,7 +36,8 @@ import (
 
 var configInstance *config
 
-var configFilePath = flag.String("config", "config.yaml", "Configuration file path")
+var logTime = flag.Bool("logTime", false, "whether or not to print time and date in logs")
+var configFilePath = flag.String("config", "config.yaml", "configuration file path")
 var cpuProfile = flag.String("cpuProfile", "", "write CPU profile to `file`")
 var memProfile = flag.String("memProfile", "", "write memory profile to `file`")
 
@@ -77,8 +78,10 @@ func initMemoryProfiling(memProfile *string) func() {
 	}
 }
 
-func initLogging() {
-	log.SetFlags(log.Ldate | log.Ltime)
+func initLogging(logTime *bool) {
+	if *logTime {
+		log.SetFlags(log.Ldate | log.Ltime)
+	}
 }
 
 func loadConfig(configFilePath string) (*config, error) {
@@ -107,9 +110,9 @@ func onKill(c chan os.Signal, beforeExit []func()) {
 }
 
 func main() {
-	initLogging()
-
 	flag.Parse()
+
+	initLogging(logTime)
 
 	beforeExit := []func(){}
 	if *cpuProfile != "" {
