@@ -98,15 +98,12 @@ func loadConfig(configFilePath string) (*config, error) {
 }
 
 func onKill(c chan os.Signal, beforeExit []func()) {
-	select {
-	case <-c:
-		log.Printf("ending program")
-
-		for _, function := range beforeExit {
-			function()
-		}
-		defer os.Exit(0)
+	<-c
+	log.Printf("ending program")
+	for _, function := range beforeExit {
+		function()
 	}
+	defer os.Exit(0)
 }
 
 func main() {
