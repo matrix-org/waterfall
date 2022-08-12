@@ -97,7 +97,9 @@ func initMatrix() error {
 			var conf *conf
 			var call *call
 
-			if strings.HasPrefix(evt.Type.Type, "m.call.") || strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
+			if (strings.HasPrefix(evt.Type.Type, "m.call.") || strings.HasPrefix(evt.Type.Type, "org.matrix.call.")) &&
+				evt.Type.Type != CallCandidates.Type &&
+				evt.Type.Type != CallSelectAnswer.Type {
 				log.Printf("%s | received to-device event %s", evt.Sender.String(), evt.Type.Type)
 			} else {
 				log.Printf("received non-call to-device event %s", evt.Type.Type)
