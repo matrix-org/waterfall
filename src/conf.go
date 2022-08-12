@@ -110,7 +110,7 @@ func (c *conf) removeTracksFromPeerConnectionsByInfo(removeInfo localTrackInfo) 
 		for _, call := range c.calls.calls {
 			for _, sender := range call.peerConnection.GetSenders() {
 				if info.trackID == sender.Track().ID() {
-					log.Printf("%s | removing %s track with StreamID %s", call.userID, sender.Track().Kind(), info.streamID)
+					log.Printf("%s | removing %s StreamID %s TrackID %s", call.userID, sender.Track().Kind(), sender.Track().StreamID(), sender.Track().ID())
 					if err := sender.Stop(); err != nil {
 						log.Printf("%s | failed to stop sender: %s", call.userID, err)
 					}

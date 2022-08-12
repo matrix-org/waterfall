@@ -54,14 +54,6 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 	c.dataChannel = d
 	peerConnection := c.peerConnection
 
-	d.OnOpen(func() {
-		log.Printf("%s | DC opened", c.userID)
-	})
-
-	d.OnClose(func() {
-		log.Printf("%s | DC closed", c.userID)
-	})
-
 	d.OnError(func(err error) {
 		log.Fatalf("%s | DC error: %s", c.callID, err)
 	})
@@ -76,10 +68,6 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			log.Fatalf("%s | failed to unmarshal: %s", c.callID, err)
 		}
 
-		if msg.Op != "alive" {
-			log.Printf("%s | received DC: %s", c.userID, msg.Op)
-		}
-
 		// TODO: hook cascade back up.
 		// As we're not an AS, we'd rely on the client
 		// to send us a "connect" op to tell us how to
@@ -88,10 +76,9 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 
 		switch msg.Op {
 		case "select":
-			log.Printf("%s | selected: %+v", c.userID, msg.Start)
-
 			c.subscribedTracks.mutex.Lock()
 			for _, trackDesc := range msg.Start {
+				log.Printf("%s | selecting StreamID %s TrackID %s", c.userID, trackDesc.StreamID, trackDesc.TrackID)
 				c.subscribedTracks.tracks = append(c.subscribedTracks.tracks, localTrackInfo{
 					streamID: trackDesc.StreamID,
 					trackID:  trackDesc.TrackID,
@@ -102,6 +89,8 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			go c.addSubscribedTracksToPeerConnection()
 
 		case "publish":
+			log.Printf("%s | received DC publish", c.userID)
+
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeOffer,
 				SDP:  msg.SDP,
@@ -122,9 +111,8 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			})
 
 		case "unpublish":
-			log.Printf("%s | unpublished: %+v", c.userID, msg.Stop)
-
 			for _, trackDesc := range msg.Stop {
+				log.Printf("%s | unpublishing StreamID %s TrackID %s", c.userID, trackDesc.StreamID, trackDesc.TrackID)
 				if removedTracksCount := c.conf.removeTracksFromPeerConnectionsByInfo(localTrackInfo{
 					streamID: trackDesc.StreamID,
 					trackID:  trackDesc.TrackID,
@@ -154,6 +142,8 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			})
 
 		case "answer":
+			log.Printf("%s | received DC answer", c.userID)
+
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeAnswer,
 				SDP:  msg.SDP,
@@ -248,7 +238,7 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 	})
 	c.conf.tracks.mutex.Unlock()
 
-	log.Printf("%s | published track with streamID %s trackID %s and kind %s", c.userID, trackLocal.StreamID(), trackLocal.ID(), trackLocal.Kind())
+	log.Printf("%s | published %s StreamID %s TrackID %s", c.userID, trackLocal.Kind(), trackLocal.StreamID(), trackLocal.ID())
 
 	for _, call := range c.conf.calls.calls {
 		if call.callID != c.callID {
@@ -443,7 +433,7 @@ func (c *call) addSubscribedTracksToPeerConnection() {
 	for _, trackInfo := range c.subscribedTracks.tracks {
 		foundTracks := c.conf.getLocalTrackByInfo(trackInfo)
 		if len(foundTracks) == 0 {
-			log.Printf("%s | no track found for %+v", c.userID, trackInfo)
+			log.Printf("%s | no track found StreamID %s TrackID %s", c.userID, trackInfo.streamID, trackInfo.trackID)
 			newSubscribedTracks = append(newSubscribedTracks, trackInfo)
 		} else {
 			tracksToAddToPeerConnection = append(tracksToAddToPeerConnection, foundTracks...)
@@ -453,7 +443,7 @@ func (c *call) addSubscribedTracksToPeerConnection() {
 	c.subscribedTracks.mutex.Unlock()
 
 	for _, track := range tracksToAddToPeerConnection {
-		log.Printf("%s | adding %s track with %s", c.userID, track.Kind(), track.ID())
+		log.Printf("%s | adding %s StreamID %s TrackID %s", c.userID, track.Kind(), track.StreamID(), track.ID())
 		if _, err := c.peerConnection.AddTrack(track); err != nil {
 			panic(err)
 		}
