@@ -143,16 +143,27 @@ func main() {
 	}
 }
 
-type trackDesc struct {
+type TrackDescription struct {
 	StreamID string `json:"stream_id"`
 	TrackID  string `json:"track_id"`
 }
 
-type dataChannelMessage struct {
-	Op       string                      `json:"op"`
-	Message  string                      `json:"message,omitempty"`
-	Start    []trackDesc                 `json:"start,omitempty"`
-	Stop     []trackDesc                 `json:"stop,omitempty"`
+type SFUMessageOperation string
+
+const (
+	SFUOperationSelect    SFUMessageOperation = "select"
+	SFUOperationMetadata  SFUMessageOperation = "metadata"
+	SFUOperationPublish   SFUMessageOperation = "publish"
+	SFUOperationUnpublish SFUMessageOperation = "unpublish"
+	SFUOperationAlive     SFUMessageOperation = "alive"
+	SFUOperationOffer     SFUMessageOperation = "offer"
+	SFUOperationAnswer    SFUMessageOperation = "answer"
+)
+
+type SFUMessage struct {
+	Op       SFUMessageOperation         `json:"op"`
+	Start    []TrackDescription          `json:"start,omitempty"`
+	Stop     []TrackDescription          `json:"stop,omitempty"`
 	SDP      string                      `json:"sdp,omitempty"`
 	Metadata event.CallSDPStreamMetadata `json:"metadata,omitempty"`
 }
