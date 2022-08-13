@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"maunium.net/go/mautrix"
@@ -30,11 +29,6 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
-
-type subscribedTracks struct {
-	mutex  sync.RWMutex
-	tracks []localTrackInfo
-}
 
 type call struct {
 	callID                 string
@@ -46,13 +40,16 @@ type call struct {
 	peerConnection         *webrtc.PeerConnection
 	conf                   *conf
 	dataChannel            *webrtc.DataChannel
-	subscribedTracks       subscribedTracks
 	lastKeepAliveTimestamp time.Time
 }
 
 func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 	c.dataChannel = d
 	peerConnection := c.peerConnection
+
+	d.OnOpen(func() {
+		c.sendDataChannelMessage(dataChannelMessage{Op: "metadata"})
+	})
 
 	d.OnError(func(err error) {
 		log.Fatalf("%s | DC error: %s", c.callID, err)
@@ -74,19 +71,33 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		// connect to another focus in order to select
 		// its streams.
 
+		if msg.Metadata != nil {
+			c.conf.updateSDPStreamMetadata(c.deviceID, msg.Metadata)
+		}
+
 		switch msg.Op {
 		case "select":
-			c.subscribedTracks.mutex.Lock()
+			if len(msg.Start) == 0 {
+				return
+			}
+
 			for _, trackDesc := range msg.Start {
 				log.Printf("%s | selecting StreamID %s TrackID %s", c.userID, trackDesc.StreamID, trackDesc.TrackID)
-				c.subscribedTracks.tracks = append(c.subscribedTracks.tracks, localTrackInfo{
+				foundTracks := c.conf.getLocalTrackByInfo(localTrackInfo{
 					streamID: trackDesc.StreamID,
 					trackID:  trackDesc.TrackID,
 				})
+				if len(foundTracks) == 0 {
+					log.Printf("%s | no track found StreamID %s TrackID %s", c.userID, trackDesc.StreamID, trackDesc.TrackID)
+					continue
+				}
+				for _, track := range foundTracks {
+					log.Printf("%s | adding %s StreamID %s TrackID %s", c.userID, track.Kind(), track.StreamID(), track.ID())
+					if _, err := c.peerConnection.AddTrack(track); err != nil {
+						panic(err)
+					}
+				}
 			}
-			c.subscribedTracks.mutex.Unlock()
-
-			go c.addSubscribedTracksToPeerConnection()
 
 		case "publish":
 			log.Printf("%s | received DC publish", c.userID)
@@ -151,6 +162,11 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 
 		case "alive":
 			c.lastKeepAliveTimestamp = time.Now()
+
+		case "metadata":
+			log.Printf("%s | received DC metadata", c.userID)
+
+			c.conf.sendUpdatedMetadataFromCall(c.callID)
 
 		default:
 			log.Fatalf("Unknown operation %s", msg.Op)
@@ -240,12 +256,7 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 
 	log.Printf("%s | published %s StreamID %s TrackID %s", c.userID, trackLocal.Kind(), trackLocal.StreamID(), trackLocal.ID())
 
-	for _, call := range c.conf.calls.calls {
-		if call.callID != c.callID {
-			go call.addSubscribedTracksToPeerConnection()
-		}
-	}
-
+	go c.conf.sendUpdatedMetadataFromCall(c.callID)
 	go copyRemoteToLocal(trackRemote, trackLocal)
 }
 
@@ -257,6 +268,7 @@ func (c *call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
 }
 
 func (c *call) onInvite(content *event.CallInviteEventContent) error {
+	c.conf.updateSDPStreamMetadata(c.deviceID, content.SDPStreamMetadata)
 	offer := content.Offer
 
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
@@ -315,6 +327,7 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 				Type: "answer",
 				SDP:  answerSdp,
 			},
+			SDPStreamMetadata: c.conf.getRemoteMetadataForDevice(c.deviceID),
 		},
 	}
 	c.sendToDevice(event.CallAnswer, answerEvtContent)
@@ -365,7 +378,8 @@ func (c *call) terminate() {
 	info := localTrackInfo{call: c}
 	c.conf.removeTracksFromPeerConnectionsByInfo(info)
 	c.conf.removeTracksFromConfByInfo(info)
-
+	c.conf.removeMetadataByDeviceId(c.deviceID)
+	c.conf.sendUpdatedMetadataFromCall(c.callID)
 }
 
 func (c *call) hangup(reason event.CallHangupReason) {
@@ -405,8 +419,17 @@ func (c *call) sendToDevice(callType event.Type, content *event.Content) {
 }
 
 func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
+	if c.dataChannel == nil {
+		return
+	}
+
 	msg.ConfID = c.conf.confID
+	msg.Metadata = c.conf.getRemoteMetadataForDevice(c.deviceID)
 	// TODO: Set ID
+
+	if msg.Op == "metadata" && len(msg.Metadata) == 0 {
+		return
+	}
 
 	marshaled, err := json.Marshal(msg)
 	if err != nil {
@@ -419,35 +442,6 @@ func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
 	}
 
 	log.Printf("%s | sent DC %s", c.userID, msg.Op)
-}
-
-func (c *call) addSubscribedTracksToPeerConnection() {
-	if len(c.subscribedTracks.tracks) == 0 {
-		return
-	}
-
-	newSubscribedTracks := []localTrackInfo{}
-	tracksToAddToPeerConnection := []webrtc.TrackLocal{}
-
-	c.subscribedTracks.mutex.Lock()
-	for _, trackInfo := range c.subscribedTracks.tracks {
-		foundTracks := c.conf.getLocalTrackByInfo(trackInfo)
-		if len(foundTracks) == 0 {
-			log.Printf("%s | no track found StreamID %s TrackID %s", c.userID, trackInfo.streamID, trackInfo.trackID)
-			newSubscribedTracks = append(newSubscribedTracks, trackInfo)
-		} else {
-			tracksToAddToPeerConnection = append(tracksToAddToPeerConnection, foundTracks...)
-		}
-	}
-	c.subscribedTracks.tracks = newSubscribedTracks
-	c.subscribedTracks.mutex.Unlock()
-
-	for _, track := range tracksToAddToPeerConnection {
-		log.Printf("%s | adding %s StreamID %s TrackID %s", c.userID, track.Kind(), track.StreamID(), track.ID())
-		if _, err := c.peerConnection.AddTrack(track); err != nil {
-			panic(err)
-		}
-	}
 }
 
 func (c *call) checkKeepAliveTimestamp() {

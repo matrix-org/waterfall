@@ -29,6 +29,7 @@ import (
 
 	yaml "gopkg.in/yaml.v3"
 
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
 	_ "net/http/pprof"
@@ -152,8 +153,9 @@ type dataChannelMessage struct {
 	ID      string `json:"id"`
 	Message string `json:"message,omitempty"`
 	// XXX: is this even needed? we know which conf a given call is for...
-	ConfID string      `json:"conf_id,omitempty"`
-	Start  []trackDesc `json:"start,omitempty"`
-	Stop   []trackDesc `json:"stop,omitempty"`
-	SDP    string      `json:"sdp,omitempty"`
+	ConfID   string                      `json:"conf_id,omitempty"`
+	Start    []trackDesc                 `json:"start,omitempty"`
+	Stop     []trackDesc                 `json:"stop,omitempty"`
+	SDP      string                      `json:"sdp,omitempty"`
+	Metadata event.CallSDPStreamMetadata `json:"metadata,omitempty"`
 }

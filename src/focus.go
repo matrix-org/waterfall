@@ -19,6 +19,8 @@ package main
 import (
 	"errors"
 	"sync"
+
+	"maunium.net/go/mautrix/event"
 )
 
 type confs struct {
@@ -48,6 +50,7 @@ func (f *focus) getConf(confID string, create bool) (*conf, error) {
 			f.confs.confs[confID] = co
 			co.calls.calls = make(map[string]*call)
 			co.tracks.tracks = []localTrackWithInfo{}
+			co.metadata.metadata = make(event.CallSDPStreamMetadata)
 		} else {
 			return nil, errors.New("no such conf")
 		}

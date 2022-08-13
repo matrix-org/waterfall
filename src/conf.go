@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"github.com/pion/webrtc/v3"
+	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -46,10 +47,16 @@ type tracks struct {
 	tracks []localTrackWithInfo
 }
 
+type metadata struct {
+	mutex    sync.RWMutex
+	metadata event.CallSDPStreamMetadata
+}
+
 type conf struct {
-	confID string
-	calls  calls
-	tracks tracks
+	confID   string
+	calls    calls
+	tracks   tracks
+	metadata metadata
 }
 
 func (c *conf) getCall(callID string, create bool) (*call, error) {
@@ -62,7 +69,6 @@ func (c *conf) getCall(callID string, create bool) (*call, error) {
 				callID: callID,
 				conf:   c,
 			}
-			ca.subscribedTracks.tracks = []localTrackInfo{}
 			c.calls.calls[callID] = ca
 		} else {
 			return nil, errors.New("no such call")
@@ -159,4 +165,62 @@ func (c *conf) removeOldCallsByDeviceAndSessionIds(deviceID id.DeviceID, session
 		}
 	}
 	return err
+}
+
+func (c *conf) updateSDPStreamMetadata(deviceId id.DeviceID, metadata event.CallSDPStreamMetadata) {
+	c.metadata.mutex.Lock()
+	// Update existing and add new
+	for streamId, info := range metadata {
+		c.metadata.metadata[streamId] = info
+	}
+	// Remove removed
+	for streamId, info := range c.metadata.metadata {
+		_, exists := metadata[streamId]
+		if info.DeviceID == deviceId && !exists {
+			delete(c.metadata.metadata, streamId)
+		}
+	}
+	c.metadata.mutex.Unlock()
+}
+
+func (c *conf) getRemoteMetadataForDevice(deviceId id.DeviceID) event.CallSDPStreamMetadata {
+	metadata := make(event.CallSDPStreamMetadata)
+	c.metadata.mutex.Lock()
+	for streamId, info := range c.metadata.metadata {
+		metadata[streamId] = info
+	}
+	c.metadata.mutex.Unlock()
+	for streamId, info := range metadata {
+		if info.DeviceID == deviceId {
+			delete(metadata, streamId)
+			continue
+		}
+		for trackId := range info.Tracks {
+			if len(c.getLocalTrackIndicesByInfo(localTrackInfo{
+				streamID: streamId,
+				trackID:  trackId,
+			})) == 0 {
+				delete(metadata, streamId)
+				break
+			}
+		}
+	}
+
+	return metadata
+}
+
+func (c *conf) removeMetadataByDeviceId(deviceId id.DeviceID) {
+	for streamId, info := range c.metadata.metadata {
+		if info.DeviceID == deviceId {
+			delete(c.metadata.metadata, streamId)
+		}
+	}
+}
+
+func (c *conf) sendUpdatedMetadataFromCall(callID string) {
+	for _, call := range c.calls.calls {
+		if call.callID != callID {
+			call.sendDataChannelMessage(dataChannelMessage{Op: "metadata"})
+		}
+	}
 }
