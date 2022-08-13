@@ -52,21 +52,21 @@ func InitMatrix() error {
 
 	// add to-device flavours of the call events to mautrix for MSC3401
 	var (
-		CallInvite       = event.Type{"m.call.invite", event.ToDeviceEventType}
-		CallCandidates   = event.Type{"m.call.candidates", event.ToDeviceEventType}
-		CallAnswer       = event.Type{"m.call.answer", event.ToDeviceEventType}
-		CallReject       = event.Type{"m.call.reject", event.ToDeviceEventType}
-		CallSelectAnswer = event.Type{"m.call.select_answer", event.ToDeviceEventType}
-		CallNegotiate    = event.Type{"m.call.negotiate", event.ToDeviceEventType}
-		CallHangup       = event.Type{"m.call.hangup", event.ToDeviceEventType}
+		ToDeviceCallInvite       = event.Type{"m.call.invite", event.ToDeviceEventType}
+		ToDeviceCallCandidates   = event.Type{"m.call.candidates", event.ToDeviceEventType}
+		ToDeviceCallAnswer       = event.Type{"m.call.answer", event.ToDeviceEventType}
+		ToDeviceCallReject       = event.Type{"m.call.reject", event.ToDeviceEventType}
+		ToDeviceCallSelectAnswer = event.Type{"m.call.select_answer", event.ToDeviceEventType}
+		ToDeviceCallNegotiate    = event.Type{"m.call.negotiate", event.ToDeviceEventType}
+		ToDeviceCallHangup       = event.Type{"m.call.hangup", event.ToDeviceEventType}
 	)
-	event.TypeMap[CallInvite] = reflect.TypeOf(event.CallInviteEventContent{})
-	event.TypeMap[CallCandidates] = reflect.TypeOf(event.CallCandidatesEventContent{})
-	event.TypeMap[CallAnswer] = reflect.TypeOf(event.CallAnswerEventContent{})
-	event.TypeMap[CallReject] = reflect.TypeOf(event.CallRejectEventContent{})
-	event.TypeMap[CallSelectAnswer] = reflect.TypeOf(event.CallSelectAnswerEventContent{})
-	event.TypeMap[CallNegotiate] = reflect.TypeOf(event.CallNegotiateEventContent{})
-	event.TypeMap[CallHangup] = reflect.TypeOf(event.CallHangupEventContent{})
+	event.TypeMap[ToDeviceCallInvite] = reflect.TypeOf(event.CallInviteEventContent{})
+	event.TypeMap[ToDeviceCallCandidates] = reflect.TypeOf(event.CallCandidatesEventContent{})
+	event.TypeMap[ToDeviceCallAnswer] = reflect.TypeOf(event.CallAnswerEventContent{})
+	event.TypeMap[ToDeviceCallReject] = reflect.TypeOf(event.CallRejectEventContent{})
+	event.TypeMap[ToDeviceCallSelectAnswer] = reflect.TypeOf(event.CallSelectAnswerEventContent{})
+	event.TypeMap[ToDeviceCallNegotiate] = reflect.TypeOf(event.CallNegotiateEventContent{})
+	event.TypeMap[ToDeviceCallHangup] = reflect.TypeOf(event.CallHangupEventContent{})
 
 	// TODO: E2EE
 
@@ -100,7 +100,7 @@ func InitMatrix() error {
 			if !strings.HasPrefix(evt.Type.Type, "m.call.") && !strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
 				log.Printf("received non-call to-device event %s", evt.Type.Type)
 				continue
-			} else if evt.Type.Type != CallCandidates.Type && evt.Type.Type != CallSelectAnswer.Type {
+			} else if evt.Type.Type != ToDeviceCallCandidates.Type && evt.Type.Type != ToDeviceCallSelectAnswer.Type {
 				log.Printf("%s | received to-device event %s", evt.Sender.String(), evt.Type.Type)
 			}
 
@@ -110,7 +110,7 @@ func InitMatrix() error {
 			}
 
 			switch evt.Type.Type {
-			case CallInvite.Type:
+			case ToDeviceCallInvite.Type:
 				invite := evt.Content.AsCallInvite()
 				if conf, err = focus.GetConf(invite.ConfID, true); err != nil || conf == nil {
 					log.Printf("%s | failed to create conf %s: %+v", evt.Sender.String(), invite.ConfID, err)
@@ -131,19 +131,19 @@ func InitMatrix() error {
 				call.RemoteSessionID = invite.SenderSessionID
 				call.Client = client
 				call.OnInvite(invite)
-			case CallCandidates.Type:
+			case ToDeviceCallCandidates.Type:
 				candidates := evt.Content.AsCallCandidates()
 				if call, err = getExistingCall((*candidates).ConfID, (*candidates).CallID); err != nil || call == nil {
 					return true
 				}
 				call.OnCandidates(candidates)
-			case CallSelectAnswer.Type:
+			case ToDeviceCallSelectAnswer.Type:
 				selectAnswer := evt.Content.AsCallSelectAnswer()
 				if call, err = getExistingCall(selectAnswer.ConfID, selectAnswer.CallID); err != nil || call == nil {
 					return true
 				}
 				call.OnSelectAnswer(selectAnswer)
-			case CallHangup.Type:
+			case ToDeviceCallHangup.Type:
 				hangup := evt.Content.AsCallHangup()
 				if call, err = getExistingCall(hangup.ConfID, hangup.CallID); err != nil || call == nil {
 					return true
@@ -151,10 +151,10 @@ func InitMatrix() error {
 				call.OnHangup(hangup)
 
 			// Events we don't care about
-			case CallNegotiate.Type:
+			case ToDeviceCallNegotiate.Type:
 				log.Printf("%s | ignoring event %s as should be handled over DC", evt.Sender.String(), evt.Type.Type)
-			case CallReject.Type:
-			case CallAnswer.Type:
+			case ToDeviceCallReject.Type:
+			case ToDeviceCallAnswer.Type:
 				log.Printf("%s | ignoring event %s as we are always the ones answering", evt.Sender.String(), evt.Type.Type)
 			default:
 				log.Printf("%s | ignoring unrecognised to-device event of type %s", evt.Sender.String(), evt.Type.Type)
