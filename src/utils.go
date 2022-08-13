@@ -18,7 +18,10 @@ package main
 
 import (
 	"log"
+	"strings"
+	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -27,12 +30,28 @@ func CopyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.Track
 	for {
 		i, _, err := trackRemote.Read(buff)
 		if err != nil || buff == nil {
-			log.Printf("ending read on track with StreamID %s: %s", trackRemote.StreamID(), err)
+			log.Printf("ending read on TrackID %s: %s", trackRemote.ID(), err)
 			break
 		}
 
 		if _, err = trackLocal.Write(buff[:i]); err != nil {
-			log.Printf("ending write on track with StreamID %s: %s", trackLocal.StreamID(), err)
+			log.Printf("ending write on TrackID %s: %s", trackLocal.ID(), err)
+			break
+		}
+	}
+}
+
+func WriteRTCP(trackRemote *webrtc.TrackRemote, peerConnection *webrtc.PeerConnection) {
+	if !strings.Contains(trackRemote.Codec().MimeType, "video") {
+		return
+	}
+
+	// FIXME: This is a potential performance killer
+	// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
+	ticker := time.NewTicker(time.Millisecond * 200)
+	for range ticker.C {
+		if err := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
+			log.Printf("ending RTCP write on TrackID %s: %s", trackRemote.ID(), err)
 			break
 		}
 	}

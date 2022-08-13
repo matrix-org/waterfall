@@ -19,14 +19,12 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"strings"
 	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 
-	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -224,19 +222,7 @@ func (c *Call) IceCandidateHandler(candidate *webrtc.ICECandidate) {
 }
 
 func (c *Call) TrackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
-	// FIXME: This is a potential performance killer
-	if strings.Contains(trackRemote.Codec().MimeType, "video") {
-		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
-		go func() {
-			ticker := time.NewTicker(time.Millisecond * 200)
-			for range ticker.C {
-				if err := c.PeerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
-					log.Printf("%s | failed to write RTCP on trackID %s: %s", c.UserID, trackRemote.ID(), err)
-					break
-				}
-			}
-		}()
-	}
+	go WriteRTCP(trackRemote, c.PeerConnection)
 
 	trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
 	if err != nil {
