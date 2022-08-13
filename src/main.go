@@ -35,7 +35,14 @@ import (
 	_ "net/http/pprof"
 )
 
-var configInstance *config
+type Config struct {
+	UserID        id.UserID
+	HomeserverURL string
+	AccessToken   string
+	Timeout       int
+}
+
+var config *Config
 
 var logTime = flag.Bool("logTime", false, "whether or not to print time and date in logs")
 var configFilePath = flag.String("config", "config.yaml", "configuration file path")
@@ -86,13 +93,13 @@ func InitLogging(logTime *bool) {
 	}
 }
 
-func LoadConfig(configFilePath string) (*config, error) {
+func LoadConfig(configFilePath string) (*Config, error) {
 	log.Printf("loading %s", configFilePath)
 	file, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
 		log.Fatalf("failed to read config: %s", err)
 	}
-	var config config
+	var config Config
 	if err := yaml.Unmarshal(file, &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal YAML: %s", err)
 	}
@@ -127,20 +134,13 @@ func main() {
 	go OnKill(c, beforeExit)
 
 	var err error
-	if configInstance, err = LoadConfig(*configFilePath); err != nil {
+	if config, err = LoadConfig(*configFilePath); err != nil {
 		log.Fatalf("failed to load config file: %s", err)
 	}
 
 	if err := InitMatrix(); err != nil {
 		log.Fatalf("failed to init Matrix: %s", err)
 	}
-}
-
-type config struct {
-	UserID        id.UserID
-	HomeserverURL string
-	AccessToken   string
-	Timeout       int
 }
 
 type trackDesc struct {
