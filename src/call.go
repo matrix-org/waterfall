@@ -196,7 +196,6 @@ func (c *Call) IceCandidateHandler(candidate *webrtc.ICECandidate) {
 
 	ice := candidate.ToJSON()
 
-	// TODO: batch these up a bit
 	candidateEvtContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
@@ -231,7 +230,8 @@ func (c *Call) TrackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 
 	c.Conf.Tracks.Mutex.Lock()
 	c.Conf.Tracks.Tracks = append(c.Conf.Tracks.Tracks, LocalTrackWithInfo{
-		Track: trackLocal,
+		Track:       trackLocal,
+		TrackRemote: trackRemote,
 		Info: LocalTrackInfo{
 			TrackID:  trackLocal.ID(),
 			StreamID: trackLocal.StreamID(),
