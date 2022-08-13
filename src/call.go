@@ -30,29 +30,29 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-type call struct {
-	callID                 string
-	userID                 id.UserID
-	deviceID               id.DeviceID
-	localSessionID         id.SessionID
-	remoteSessionID        id.SessionID
-	client                 *mautrix.Client
-	peerConnection         *webrtc.PeerConnection
-	conf                   *conf
-	dataChannel            *webrtc.DataChannel
-	lastKeepAliveTimestamp time.Time
+type Call struct {
+	CallID                 string
+	UserID                 id.UserID
+	DeviceID               id.DeviceID
+	LocalSessionID         id.SessionID
+	RemoteSessionID        id.SessionID
+	Client                 *mautrix.Client
+	PeerConnection         *webrtc.PeerConnection
+	Conf                   *Conference
+	DataChannel            *webrtc.DataChannel
+	LastKeepAliveTimestamp time.Time
 }
 
-func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
-	c.dataChannel = d
-	peerConnection := c.peerConnection
+func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
+	c.DataChannel = d
+	peerConnection := c.PeerConnection
 
 	d.OnOpen(func() {
-		c.sendDataChannelMessage(dataChannelMessage{Op: "metadata"})
+		c.SendDataChannelMessage(dataChannelMessage{Op: "metadata"})
 	})
 
 	d.OnError(func(err error) {
-		log.Fatalf("%s | DC error: %s", c.callID, err)
+		log.Fatalf("%s | DC error: %s", c.CallID, err)
 	})
 
 	d.OnMessage(func(m webrtc.DataChannelMessage) {
@@ -62,7 +62,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 
 		msg := &dataChannelMessage{}
 		if err := json.Unmarshal(m.Data, msg); err != nil {
-			log.Fatalf("%s | failed to unmarshal: %s", c.callID, err)
+			log.Fatalf("%s | failed to unmarshal: %s", c.CallID, err)
 		}
 
 		// TODO: hook cascade back up.
@@ -72,7 +72,7 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 		// its streams.
 
 		if msg.Metadata != nil {
-			c.conf.updateSDPStreamMetadata(c.deviceID, msg.Metadata)
+			c.Conf.UpdateSDPStreamMetadata(c.DeviceID, msg.Metadata)
 		}
 
 		switch msg.Op {
@@ -82,53 +82,53 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			}
 
 			for _, trackDesc := range msg.Start {
-				log.Printf("%s | selecting StreamID %s TrackID %s", c.userID, trackDesc.StreamID, trackDesc.TrackID)
-				foundTracks := c.conf.getLocalTrackByInfo(localTrackInfo{
-					streamID: trackDesc.StreamID,
-					trackID:  trackDesc.TrackID,
+				log.Printf("%s | selecting StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+				foundTracks := c.Conf.GetLocalTrackByInfo(LocalTrackInfo{
+					StreamID: trackDesc.StreamID,
+					TrackID:  trackDesc.TrackID,
 				})
 				if len(foundTracks) == 0 {
-					log.Printf("%s | no track found StreamID %s TrackID %s", c.userID, trackDesc.StreamID, trackDesc.TrackID)
+					log.Printf("%s | no track found StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
 					continue
 				}
 				for _, track := range foundTracks {
-					log.Printf("%s | adding %s StreamID %s TrackID %s", c.userID, track.Kind(), track.StreamID(), track.ID())
-					if _, err := c.peerConnection.AddTrack(track); err != nil {
+					log.Printf("%s | adding %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
+					if _, err := c.PeerConnection.AddTrack(track); err != nil {
 						panic(err)
 					}
 				}
 			}
 
 		case "publish":
-			log.Printf("%s | received DC publish", c.userID)
+			log.Printf("%s | received DC publish", c.UserID)
 
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeOffer,
 				SDP:  msg.SDP,
 			})
 
-			offer, err := c.peerConnection.CreateAnswer(nil)
+			offer, err := c.PeerConnection.CreateAnswer(nil)
 			if err != nil {
 				panic(err)
 			}
-			err = c.peerConnection.SetLocalDescription(offer)
+			err = c.PeerConnection.SetLocalDescription(offer)
 			if err != nil {
 				panic(err)
 			}
 
-			c.sendDataChannelMessage(dataChannelMessage{
+			c.SendDataChannelMessage(dataChannelMessage{
 				Op:  "answer",
 				SDP: offer.SDP,
 			})
 
 		case "unpublish":
 			for _, trackDesc := range msg.Stop {
-				log.Printf("%s | unpublishing StreamID %s TrackID %s", c.userID, trackDesc.StreamID, trackDesc.TrackID)
-				if removedTracksCount := c.conf.removeTracksFromPeerConnectionsByInfo(localTrackInfo{
-					streamID: trackDesc.StreamID,
-					trackID:  trackDesc.TrackID,
+				log.Printf("%s | unpublishing StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+				if removedTracksCount := c.Conf.RemoveTracksFromPeerConnectionsByInfo(LocalTrackInfo{
+					StreamID: trackDesc.StreamID,
+					TrackID:  trackDesc.TrackID,
 				}); removedTracksCount == 0 {
-					log.Printf("%s | no tracks to remove for: %+v", c.userID, msg.Stop)
+					log.Printf("%s | no tracks to remove for: %+v", c.UserID, msg.Stop)
 				}
 
 			}
@@ -138,22 +138,22 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 				SDP:  msg.SDP,
 			})
 
-			offer, err := c.peerConnection.CreateAnswer(nil)
+			offer, err := c.PeerConnection.CreateAnswer(nil)
 			if err != nil {
 				panic(err)
 			}
-			err = c.peerConnection.SetLocalDescription(offer)
+			err = c.PeerConnection.SetLocalDescription(offer)
 			if err != nil {
 				panic(err)
 			}
 
-			c.sendDataChannelMessage(dataChannelMessage{
+			c.SendDataChannelMessage(dataChannelMessage{
 				Op:  "answer",
 				SDP: offer.SDP,
 			})
 
 		case "answer":
-			log.Printf("%s | received DC answer", c.userID)
+			log.Printf("%s | received DC answer", c.UserID)
 
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeAnswer,
@@ -161,12 +161,12 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 			})
 
 		case "alive":
-			c.lastKeepAliveTimestamp = time.Now()
+			c.LastKeepAliveTimestamp = time.Now()
 
 		case "metadata":
-			log.Printf("%s | received DC metadata", c.userID)
+			log.Printf("%s | received DC metadata", c.UserID)
 
-			c.conf.sendUpdatedMetadataFromCall(c.callID)
+			c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 
 		default:
 			log.Fatalf("Unknown operation %s", msg.Op)
@@ -175,23 +175,23 @@ func (c *call) dataChannelHandler(d *webrtc.DataChannel) {
 	})
 }
 
-func (c *call) negotiationNeededHandler() {
-	offer, err := c.peerConnection.CreateOffer(nil)
+func (c *Call) NegotiationNeededHandler() {
+	offer, err := c.PeerConnection.CreateOffer(nil)
 	if err != nil {
 		panic(err)
 	}
-	err = c.peerConnection.SetLocalDescription(offer)
+	err = c.PeerConnection.SetLocalDescription(offer)
 	if err != nil {
 		panic(err)
 	}
 
-	c.sendDataChannelMessage(dataChannelMessage{
+	c.SendDataChannelMessage(dataChannelMessage{
 		Op:  "offer",
 		SDP: offer.SDP,
 	})
 }
 
-func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
+func (c *Call) IceCandidateHandler(candidate *webrtc.ICECandidate) {
 	if candidate == nil {
 		return
 	}
@@ -202,12 +202,12 @@ func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 	candidateEvtContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
-				CallID:          c.callID,
-				ConfID:          c.conf.confID,
-				DeviceID:        c.client.DeviceID,
-				SenderSessionID: c.localSessionID,
-				DestSessionID:   c.remoteSessionID,
-				PartyID:         string(c.client.DeviceID),
+				CallID:          c.CallID,
+				ConfID:          c.Conf.ConfID,
+				DeviceID:        c.Client.DeviceID,
+				SenderSessionID: c.LocalSessionID,
+				DestSessionID:   c.RemoteSessionID,
+				PartyID:         string(c.Client.DeviceID),
 				Version:         event.CallVersion("1"),
 			},
 			Candidates: []event.CallCandidate{
@@ -220,18 +220,18 @@ func (c *call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 			},
 		},
 	}
-	c.sendToDevice(event.CallCandidates, candidateEvtContent)
+	c.SendToDevice(event.CallCandidates, candidateEvtContent)
 }
 
-func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
+func (c *Call) TrackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
 	// FIXME: This is a potential performance killer
 	if strings.Contains(trackRemote.Codec().MimeType, "video") {
 		// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
 		go func() {
 			ticker := time.NewTicker(time.Millisecond * 200)
 			for range ticker.C {
-				if err := c.peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
-					log.Printf("%s | failed to write RTCP on trackID %s: %s", c.userID, trackRemote.ID(), err)
+				if err := c.PeerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
+					log.Printf("%s | failed to write RTCP on trackID %s: %s", c.UserID, trackRemote.ID(), err)
 					break
 				}
 			}
@@ -243,54 +243,54 @@ func (c *call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 		panic(err)
 	}
 
-	c.conf.tracks.mutex.Lock()
-	c.conf.tracks.tracks = append(c.conf.tracks.tracks, localTrackWithInfo{
-		track: trackLocal,
-		info: localTrackInfo{
-			trackID:  trackLocal.ID(),
-			streamID: trackLocal.StreamID(),
-			call:     c,
+	c.Conf.Tracks.Mutex.Lock()
+	c.Conf.Tracks.Tracks = append(c.Conf.Tracks.Tracks, LocalTrackWithInfo{
+		Track: trackLocal,
+		Info: LocalTrackInfo{
+			TrackID:  trackLocal.ID(),
+			StreamID: trackLocal.StreamID(),
+			Call:     c,
 		},
 	})
-	c.conf.tracks.mutex.Unlock()
+	c.Conf.Tracks.Mutex.Unlock()
 
-	log.Printf("%s | published %s StreamID %s TrackID %s", c.userID, trackLocal.Kind(), trackLocal.StreamID(), trackLocal.ID())
+	log.Printf("%s | published %s StreamID %s TrackID %s", c.UserID, trackLocal.Kind(), trackLocal.StreamID(), trackLocal.ID())
 
-	go c.conf.sendUpdatedMetadataFromCall(c.callID)
-	go copyRemoteToLocal(trackRemote, trackLocal)
+	go c.Conf.SendUpdatedMetadataFromCall(c.CallID)
+	go CopyRemoteToLocal(trackRemote, trackLocal)
 }
 
-func (c *call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
+func (c *Call) IceConnectionStateHandler(state webrtc.ICEConnectionState) {
 	if state == webrtc.ICEConnectionStateCompleted || state == webrtc.ICEConnectionStateConnected {
-		c.lastKeepAliveTimestamp = time.Now()
-		go c.checkKeepAliveTimestamp()
+		c.LastKeepAliveTimestamp = time.Now()
+		go c.CheckKeepAliveTimestamp()
 	}
 }
 
-func (c *call) onInvite(content *event.CallInviteEventContent) error {
-	c.conf.updateSDPStreamMetadata(c.deviceID, content.SDPStreamMetadata)
+func (c *Call) OnInvite(content *event.CallInviteEventContent) error {
+	c.Conf.UpdateSDPStreamMetadata(c.DeviceID, content.SDPStreamMetadata)
 	offer := content.Offer
 
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		return err
 	}
-	c.peerConnection = peerConnection
+	c.PeerConnection = peerConnection
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		c.trackHandler(track, receiver)
+		c.TrackHandler(track, receiver)
 	})
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		c.dataChannelHandler(d)
+		c.DataChannelHandler(d)
 	})
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		c.iceCandidateHandler(candidate)
+		c.IceCandidateHandler(candidate)
 	})
 	peerConnection.OnNegotiationNeeded(func() {
-		c.negotiationNeededHandler()
+		c.NegotiationNeededHandler()
 	})
 	peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		c.iceConnectionStateHandler(state)
+		c.IceConnectionStateHandler(state)
 	})
 
 	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -315,39 +315,39 @@ func (c *call) onInvite(content *event.CallInviteEventContent) error {
 	answerEvtContent := &event.Content{
 		Parsed: event.CallAnswerEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
-				CallID:          c.callID,
-				ConfID:          c.conf.confID,
-				DeviceID:        c.client.DeviceID,
-				SenderSessionID: c.localSessionID,
-				DestSessionID:   c.remoteSessionID,
-				PartyID:         string(c.client.DeviceID),
+				CallID:          c.CallID,
+				ConfID:          c.Conf.ConfID,
+				DeviceID:        c.Client.DeviceID,
+				SenderSessionID: c.LocalSessionID,
+				DestSessionID:   c.RemoteSessionID,
+				PartyID:         string(c.Client.DeviceID),
 				Version:         event.CallVersion("1"),
 			},
 			Answer: event.CallData{
 				Type: "answer",
 				SDP:  answerSdp,
 			},
-			SDPStreamMetadata: c.conf.getRemoteMetadataForDevice(c.deviceID),
+			SDPStreamMetadata: c.Conf.GetRemoteMetadataForDevice(c.DeviceID),
 		},
 	}
-	c.sendToDevice(event.CallAnswer, answerEvtContent)
+	c.SendToDevice(event.CallAnswer, answerEvtContent)
 
 	return err
 }
 
-func (c *call) onSelectAnswer(content *event.CallSelectAnswerEventContent) {
-	selectedPartyId := content.SelectedPartyID
-	if selectedPartyId != string(c.client.DeviceID) {
-		c.terminate()
-		log.Printf("%s | Call was answered on a different device: %s", c.userID, selectedPartyId)
+func (c *Call) OnSelectAnswer(content *event.CallSelectAnswerEventContent) {
+	selectedPartyID := content.SelectedPartyID
+	if selectedPartyID != string(c.Client.DeviceID) {
+		c.Terminate()
+		log.Printf("%s | Call was answered on a different device: %s", c.UserID, selectedPartyID)
 	}
 }
 
-func (c *call) onHangup(content *event.CallHangupEventContent) {
-	c.terminate()
+func (c *Call) OnHangup(content *event.CallHangupEventContent) {
+	c.Terminate()
 }
 
-func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
+func (c *Call) OnCandidates(content *event.CallCandidatesEventContent) error {
 	for _, candidate := range content.Candidates {
 		sdpMLineIndex := uint16(candidate.SDPMLineIndex)
 		ice := webrtc.ICECandidateInit{
@@ -356,7 +356,7 @@ func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
 			SDPMLineIndex:    &sdpMLineIndex,
 			UsernameFragment: new(string),
 		}
-		if err := c.peerConnection.AddICECandidate(ice); err != nil {
+		if err := c.PeerConnection.AddICECandidate(ice); err != nil {
 			log.Print("Failed to add ICE candidate", content)
 			return err
 		}
@@ -364,67 +364,67 @@ func (c *call) onCandidates(content *event.CallCandidatesEventContent) error {
 	return nil
 }
 
-func (c *call) terminate() {
-	log.Printf("%s | terminating call", c.userID)
+func (c *Call) Terminate() {
+	log.Printf("%s | terminating call", c.UserID)
 
-	if err := c.peerConnection.Close(); err != nil {
-		log.Printf("%s | error closing peer connection: %s", c.userID, err)
+	if err := c.PeerConnection.Close(); err != nil {
+		log.Printf("%s | error closing peer connection: %s", c.UserID, err)
 	}
 
-	c.conf.calls.callsMu.Lock()
-	delete(c.conf.calls.calls, c.callID)
-	c.conf.calls.callsMu.Unlock()
+	c.Conf.Calls.CallsMu.Lock()
+	delete(c.Conf.Calls.Calls, c.CallID)
+	c.Conf.Calls.CallsMu.Unlock()
 
-	info := localTrackInfo{call: c}
-	c.conf.removeTracksFromPeerConnectionsByInfo(info)
-	c.conf.removeTracksFromConfByInfo(info)
-	c.conf.removeMetadataByDeviceId(c.deviceID)
-	c.conf.sendUpdatedMetadataFromCall(c.callID)
+	info := LocalTrackInfo{Call: c}
+	c.Conf.RemoveTracksFromPeerConnectionsByInfo(info)
+	c.Conf.RemoveTracksFromConfByInfo(info)
+	c.Conf.RemoveMetadataByDeviceID(c.DeviceID)
+	c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 }
 
-func (c *call) hangup(reason event.CallHangupReason) {
+func (c *Call) Hangup(reason event.CallHangupReason) {
 	hangupEvtContent := &event.Content{
 		Parsed: event.CallHangupEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
-				CallID:          c.callID,
-				ConfID:          c.conf.confID,
-				DeviceID:        c.client.DeviceID,
-				SenderSessionID: c.localSessionID,
-				DestSessionID:   c.remoteSessionID,
-				PartyID:         string(c.client.DeviceID),
+				CallID:          c.CallID,
+				ConfID:          c.Conf.ConfID,
+				DeviceID:        c.Client.DeviceID,
+				SenderSessionID: c.LocalSessionID,
+				DestSessionID:   c.RemoteSessionID,
+				PartyID:         string(c.Client.DeviceID),
 				Version:         event.CallVersion("1"),
 			},
 			Reason: reason,
 		},
 	}
-	c.sendToDevice(event.CallHangup, hangupEvtContent)
-	c.terminate()
+	c.SendToDevice(event.CallHangup, hangupEvtContent)
+	c.Terminate()
 }
 
-func (c *call) sendToDevice(callType event.Type, content *event.Content) {
+func (c *Call) SendToDevice(callType event.Type, content *event.Content) {
 	if callType.Type != event.CallCandidates.Type {
-		log.Printf("%s | sending to device %s", c.userID, callType.Type)
+		log.Printf("%s | sending to device %s", c.UserID, callType.Type)
 	}
 	toDevice := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
-			c.userID: {
-				c.deviceID: content,
+			c.UserID: {
+				c.DeviceID: content,
 			},
 		},
 	}
 
 	// TODO: E2EE
 	// TODO: to-device reliability
-	c.client.SendToDevice(callType, toDevice)
+	c.Client.SendToDevice(callType, toDevice)
 }
 
-func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
-	if c.dataChannel == nil {
+func (c *Call) SendDataChannelMessage(msg dataChannelMessage) {
+	if c.DataChannel == nil {
 		return
 	}
 
-	msg.ConfID = c.conf.confID
-	msg.Metadata = c.conf.getRemoteMetadataForDevice(c.deviceID)
+	msg.ConfID = c.Conf.ConfID
+	msg.Metadata = c.Conf.GetRemoteMetadataForDevice(c.DeviceID)
 	// TODO: Set ID
 
 	if msg.Op == "metadata" && len(msg.Metadata) == 0 {
@@ -436,20 +436,20 @@ func (c *call) sendDataChannelMessage(msg dataChannelMessage) {
 		panic(err)
 	}
 
-	err = c.dataChannel.SendText(string(marshaled))
+	err = c.DataChannel.SendText(string(marshaled))
 	if err != nil {
-		log.Printf("%s | failed to send %s over DC: %s", c.userID, msg.Op, err)
+		log.Printf("%s | failed to send %s over DC: %s", c.UserID, msg.Op, err)
 	}
 
-	log.Printf("%s | sent DC %s", c.userID, msg.Op)
+	log.Printf("%s | sent DC %s", c.UserID, msg.Op)
 }
 
-func (c *call) checkKeepAliveTimestamp() {
+func (c *Call) CheckKeepAliveTimestamp() {
 	timeout := time.Second * time.Duration(configInstance.Timeout)
 	for range time.Tick(timeout) {
-		if c.lastKeepAliveTimestamp.Add(timeout).Before(time.Now()) {
-			log.Printf("%s | did not get keep-alive message in the last %s:", c.userID, timeout)
-			c.hangup(event.CallHangupKeepAliveTimeout)
+		if c.LastKeepAliveTimestamp.Add(timeout).Before(time.Now()) {
+			log.Printf("%s | did not get keep-alive message in the last %s:", c.UserID, timeout)
+			c.Hangup(event.CallHangupKeepAliveTimeout)
 			break
 		}
 	}

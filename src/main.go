@@ -42,7 +42,7 @@ var configFilePath = flag.String("config", "config.yaml", "configuration file pa
 var cpuProfile = flag.String("cpuProfile", "", "write CPU profile to `file`")
 var memProfile = flag.String("memProfile", "", "write memory profile to `file`")
 
-func initCpuProfiling(cpuProfile *string) func() {
+func InitCpuProfiling(cpuProfile *string) func() {
 	log.Print("initializing CPU profiling")
 
 	f, err := os.Create(*cpuProfile)
@@ -61,7 +61,7 @@ func initCpuProfiling(cpuProfile *string) func() {
 	}
 }
 
-func initMemoryProfiling(memProfile *string) func() {
+func InitMemoryProfiling(memProfile *string) func() {
 	log.Print("initializing memory profiling")
 
 	return func() {
@@ -79,14 +79,14 @@ func initMemoryProfiling(memProfile *string) func() {
 	}
 }
 
-func initLogging(logTime *bool) {
+func InitLogging(logTime *bool) {
 	log.SetFlags(0)
 	if *logTime {
 		log.SetFlags(log.Ldate | log.Ltime)
 	}
 }
 
-func loadConfig(configFilePath string) (*config, error) {
+func LoadConfig(configFilePath string) (*config, error) {
 	log.Printf("loading %s", configFilePath)
 	file, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
@@ -99,7 +99,7 @@ func loadConfig(configFilePath string) (*config, error) {
 	return &config, nil
 }
 
-func onKill(c chan os.Signal, beforeExit []func()) {
+func OnKill(c chan os.Signal, beforeExit []func()) {
 	<-c
 	log.Printf("ending program")
 	for _, function := range beforeExit {
@@ -111,27 +111,27 @@ func onKill(c chan os.Signal, beforeExit []func()) {
 func main() {
 	flag.Parse()
 
-	initLogging(logTime)
+	InitLogging(logTime)
 
 	beforeExit := []func(){}
 	if *cpuProfile != "" {
-		beforeExit = append(beforeExit, initCpuProfiling(cpuProfile))
+		beforeExit = append(beforeExit, InitCpuProfiling(cpuProfile))
 	}
 	if *memProfile != "" {
-		beforeExit = append(beforeExit, initMemoryProfiling(memProfile))
+		beforeExit = append(beforeExit, InitMemoryProfiling(memProfile))
 	}
 
 	// try to handle os interrupt(signal terminated)
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go onKill(c, beforeExit)
+	go OnKill(c, beforeExit)
 
 	var err error
-	if configInstance, err = loadConfig(*configFilePath); err != nil {
+	if configInstance, err = LoadConfig(*configFilePath); err != nil {
 		log.Fatalf("failed to load config file: %s", err)
 	}
 
-	if err := initMatrix(); err != nil {
+	if err := InitMatrix(); err != nil {
 		log.Fatalf("failed to init Matrix: %s", err)
 	}
 }

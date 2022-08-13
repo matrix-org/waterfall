@@ -22,7 +22,7 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-func copyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.TrackLocalStaticRTP) {
+func CopyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.TrackLocalStaticRTP) {
 	buff := make([]byte, 1500)
 	for {
 		i, _, err := trackRemote.Read(buff)

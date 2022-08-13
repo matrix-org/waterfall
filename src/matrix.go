@@ -28,7 +28,7 @@ import (
 
 const localSessionID = "sfu"
 
-func initMatrix() error {
+func InitMatrix() error {
 	client, err := mautrix.NewClient(configInstance.HomeserverURL, configInstance.UserID, configInstance.AccessToken)
 	if err != nil {
 		log.Fatal("Failed to create client", err)
@@ -44,7 +44,7 @@ func initMatrix() error {
 	log.Printf("Identified SFU as device %s", whoami.DeviceID)
 	client.DeviceID = whoami.DeviceID
 
-	focus := new(focus)
+	focus := new(Focus)
 	focus.Init(fmt.Sprintf("%s (%s)", configInstance.UserID, client.DeviceID))
 
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
@@ -70,15 +70,15 @@ func initMatrix() error {
 
 	// TODO: E2EE
 
-	getExistingCall := func(confID string, callID string) (*call, error) {
-		var conf *conf
-		var call *call
+	getExistingCall := func(confID string, callID string) (*Call, error) {
+		var conf *Conference
+		var call *Call
 
-		if conf, err = focus.getConf(confID, false); err != nil || conf == nil {
+		if conf, err = focus.GetConf(confID, false); err != nil || conf == nil {
 			log.Printf("failed to get conf %s: %s", confID, err)
 			return nil, err
 		}
-		if call, err = conf.getCall(callID, false); err != nil || call == nil {
+		if call, err = conf.GetCall(callID, false); err != nil || call == nil {
 			log.Printf("failed to get call %s: %s", callID, err)
 			return nil, err
 		}
@@ -94,8 +94,8 @@ func initMatrix() error {
 				continue
 			}
 
-			var conf *conf
-			var call *call
+			var conf *Conference
+			var call *Call
 
 			if !strings.HasPrefix(evt.Type.Type, "m.call.") && !strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
 				log.Printf("received non-call to-device event %s", evt.Type.Type)
@@ -112,43 +112,43 @@ func initMatrix() error {
 			switch evt.Type.Type {
 			case CallInvite.Type:
 				invite := evt.Content.AsCallInvite()
-				if conf, err = focus.getConf(invite.ConfID, true); err != nil || conf == nil {
+				if conf, err = focus.GetConf(invite.ConfID, true); err != nil || conf == nil {
 					log.Printf("%s | failed to create conf %s: %+v", evt.Sender.String(), invite.ConfID, err)
 					return true
 				}
-				if err := conf.removeOldCallsByDeviceAndSessionIds(invite.DeviceID, invite.SenderSessionID); err != nil {
+				if err := conf.RemoveOldCallsByDeviceAndSessionIDs(invite.DeviceID, invite.SenderSessionID); err != nil {
 					log.Printf("%s | error removing old calls - ignoring call: %+v", evt.Sender.String(), err)
 					return true
 				}
-				if call, err = conf.getCall(invite.CallID, true); err != nil || call == nil {
+				if call, err = conf.GetCall(invite.CallID, true); err != nil || call == nil {
 					log.Printf("%s | failed to create call: %+v", evt.Sender.String(), err)
 					return true
 				}
-				call.userID = evt.Sender
-				call.deviceID = invite.DeviceID
+				call.UserID = evt.Sender
+				call.DeviceID = invite.DeviceID
 				// XXX: What if an SFU gets restarted?
-				call.localSessionID = localSessionID
-				call.remoteSessionID = invite.SenderSessionID
-				call.client = client
-				call.onInvite(invite)
+				call.LocalSessionID = localSessionID
+				call.RemoteSessionID = invite.SenderSessionID
+				call.Client = client
+				call.OnInvite(invite)
 			case CallCandidates.Type:
 				candidates := evt.Content.AsCallCandidates()
 				if call, err = getExistingCall((*candidates).ConfID, (*candidates).CallID); err != nil || call == nil {
 					return true
 				}
-				call.onCandidates(candidates)
+				call.OnCandidates(candidates)
 			case CallSelectAnswer.Type:
 				selectAnswer := evt.Content.AsCallSelectAnswer()
 				if call, err = getExistingCall(selectAnswer.ConfID, selectAnswer.CallID); err != nil || call == nil {
 					return true
 				}
-				call.onSelectAnswer(selectAnswer)
+				call.OnSelectAnswer(selectAnswer)
 			case CallHangup.Type:
 				hangup := evt.Content.AsCallHangup()
 				if call, err = getExistingCall(hangup.ConfID, hangup.CallID); err != nil || call == nil {
 					return true
 				}
-				call.onHangup(hangup)
+				call.OnHangup(hangup)
 
 			// Events we don't care about
 			case CallNegotiate.Type:

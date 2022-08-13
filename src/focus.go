@@ -23,34 +23,34 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-type confs struct {
+type Confs struct {
 	confsMu sync.RWMutex
-	confs   map[string]*conf
+	confs   map[string]*Conference
 }
 
-type focus struct {
+type Focus struct {
 	name  string
-	confs confs
+	confs Confs
 }
 
-func (f *focus) Init(name string) {
+func (f *Focus) Init(name string) {
 	f.name = name
-	f.confs.confs = make(map[string]*conf)
+	f.confs.confs = make(map[string]*Conference)
 }
 
-func (f *focus) getConf(confID string, create bool) (*conf, error) {
+func (f *Focus) GetConf(confID string, create bool) (*Conference, error) {
 	f.confs.confsMu.Lock()
 	defer f.confs.confsMu.Unlock()
 	co := f.confs.confs[confID]
 	if co == nil {
 		if create {
-			co = &conf{
-				confID: confID,
+			co = &Conference{
+				ConfID: confID,
 			}
 			f.confs.confs[confID] = co
-			co.calls.calls = make(map[string]*call)
-			co.tracks.tracks = []localTrackWithInfo{}
-			co.metadata.metadata = make(event.CallSDPStreamMetadata)
+			co.Calls.Calls = make(map[string]*Call)
+			co.Tracks.Tracks = []LocalTrackWithInfo{}
+			co.Metadata.Metadata = make(event.CallSDPStreamMetadata)
 		} else {
 			return nil, errors.New("no such conf")
 		}
