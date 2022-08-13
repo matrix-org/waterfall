@@ -230,8 +230,7 @@ func (c *Call) TrackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 
 	c.Conf.Tracks.Mutex.Lock()
 	c.Conf.Tracks.Tracks = append(c.Conf.Tracks.Tracks, LocalTrackWithInfo{
-		Track:       trackLocal,
-		TrackRemote: trackRemote,
+		Track: trackLocal,
 		Info: LocalTrackInfo{
 			TrackID:  trackLocal.ID(),
 			StreamID: trackLocal.StreamID(),
