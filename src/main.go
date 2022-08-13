@@ -149,11 +149,8 @@ type trackDesc struct {
 }
 
 type dataChannelMessage struct {
-	Op      string `json:"op"`
-	ID      string `json:"id"`
-	Message string `json:"message,omitempty"`
-	// XXX: is this even needed? we know which conf a given call is for...
-	ConfID   string                      `json:"conf_id,omitempty"`
+	Op       string                      `json:"op"`
+	Message  string                      `json:"message,omitempty"`
 	Start    []trackDesc                 `json:"start,omitempty"`
 	Stop     []trackDesc                 `json:"stop,omitempty"`
 	SDP      string                      `json:"sdp,omitempty"`

@@ -409,10 +409,7 @@ func (c *Call) SendDataChannelMessage(msg dataChannelMessage) {
 		return
 	}
 
-	msg.ConfID = c.Conf.ConfID
 	msg.Metadata = c.Conf.GetRemoteMetadataForDevice(c.DeviceID)
-	// TODO: Set ID
-
 	if msg.Op == "metadata" && len(msg.Metadata) == 0 {
 		return
 	}
