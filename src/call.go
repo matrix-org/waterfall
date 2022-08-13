@@ -46,7 +46,7 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 	peerConnection := c.PeerConnection
 
 	d.OnOpen(func() {
-		c.SendDataChannelMessage(SFUMessage{Op: SFUOperationMetadata})
+		c.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationMetadata})
 	})
 
 	d.OnError(func(err error) {
@@ -58,7 +58,7 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 			log.Fatal("Inbound message is not string")
 		}
 
-		msg := &SFUMessage{}
+		msg := &event.SFUMessage{}
 		if err := json.Unmarshal(m.Data, msg); err != nil {
 			log.Fatalf("%s | failed to unmarshal: %s", c.CallID, err)
 		}
@@ -74,7 +74,7 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 		}
 
 		switch msg.Op {
-		case SFUOperationSelect:
+		case event.SFUOperationSelect:
 			if len(msg.Start) == 0 {
 				return
 			}
@@ -97,7 +97,7 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 				}
 			}
 
-		case SFUOperationPublish:
+		case event.SFUOperationPublish:
 			log.Printf("%s | received DC publish", c.UserID)
 
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -114,12 +114,12 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 				panic(err)
 			}
 
-			c.SendDataChannelMessage(SFUMessage{
-				Op:  SFUOperationAnswer,
+			c.SendDataChannelMessage(event.SFUMessage{
+				Op:  event.SFUOperationAnswer,
 				SDP: offer.SDP,
 			})
 
-		case SFUOperationUnpublish:
+		case event.SFUOperationUnpublish:
 			for _, trackDesc := range msg.Stop {
 				log.Printf("%s | unpublishing StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
 				if removedTracksCount := c.Conf.RemoveTracksFromPeerConnectionsByInfo(LocalTrackInfo{
@@ -145,12 +145,12 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 				panic(err)
 			}
 
-			c.SendDataChannelMessage(SFUMessage{
-				Op:  SFUOperationAnswer,
+			c.SendDataChannelMessage(event.SFUMessage{
+				Op:  event.SFUOperationAnswer,
 				SDP: offer.SDP,
 			})
 
-		case SFUOperationAnswer:
+		case event.SFUOperationAnswer:
 			log.Printf("%s | received DC answer", c.UserID)
 
 			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -158,10 +158,10 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 				SDP:  msg.SDP,
 			})
 
-		case SFUOperationAlive:
+		case event.SFUOperationAlive:
 			c.LastKeepAliveTimestamp = time.Now()
 
-		case SFUOperationMetadata:
+		case event.SFUOperationMetadata:
 			log.Printf("%s | received DC metadata", c.UserID)
 
 			c.Conf.SendUpdatedMetadataFromCall(c.CallID)
@@ -183,8 +183,8 @@ func (c *Call) NegotiationNeededHandler() {
 		panic(err)
 	}
 
-	c.SendDataChannelMessage(SFUMessage{
-		Op:  SFUOperationOffer,
+	c.SendDataChannelMessage(event.SFUMessage{
+		Op:  event.SFUOperationOffer,
 		SDP: offer.SDP,
 	})
 }
@@ -404,7 +404,7 @@ func (c *Call) SendToDevice(callType event.Type, content *event.Content) {
 	c.Client.SendToDevice(callType, toDevice)
 }
 
-func (c *Call) SendDataChannelMessage(msg SFUMessage) {
+func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 	if c.DataChannel == nil {
 		return
 	}

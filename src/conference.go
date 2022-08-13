@@ -220,7 +220,7 @@ func (c *Conference) RemoveMetadataByDeviceID(deviceID id.DeviceID) {
 func (c *Conference) SendUpdatedMetadataFromCall(callID string) {
 	for _, call := range c.Calls.Calls {
 		if call.CallID != callID {
-			call.SendDataChannelMessage(SFUMessage{Op: SFUOperationMetadata})
+			call.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationMetadata})
 		}
 	}
 }
