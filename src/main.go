@@ -143,7 +143,7 @@ func main() {
 	}
 }
 
-type TrackDescription struct {
+type SFUTrackDescription struct {
 	StreamID string `json:"stream_id"`
 	TrackID  string `json:"track_id"`
 }
@@ -162,8 +162,8 @@ const (
 
 type SFUMessage struct {
 	Op       SFUMessageOperation         `json:"op"`
-	Start    []TrackDescription          `json:"start,omitempty"`
-	Stop     []TrackDescription          `json:"stop,omitempty"`
+	Start    []SFUTrackDescription       `json:"start,omitempty"`
+	Stop     []SFUTrackDescription       `json:"stop,omitempty"`
 	SDP      string                      `json:"sdp,omitempty"`
 	Metadata event.CallSDPStreamMetadata `json:"metadata,omitempty"`
 }
