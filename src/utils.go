@@ -60,8 +60,10 @@ func WriteRTCP(trackRemote *webrtc.TrackRemote, peerConnection *webrtc.PeerConne
 	ticker := time.NewTicker(time.Millisecond * 200)
 	for range ticker.C {
 		err := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}})
-		if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-			log.Printf("ending RTCP write on TrackID %s: %s", trackRemote.ID(), err)
+		if err != nil {
+			if !errors.Is(err, io.ErrClosedPipe) {
+				log.Printf("ending RTCP write on TrackID %s: %s", trackRemote.ID(), err)
+			}
 			break
 		}
 	}
