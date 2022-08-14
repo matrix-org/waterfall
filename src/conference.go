@@ -100,10 +100,11 @@ func (c *Conference) GetLocalTrackIndicesByInfo(selectInfo LocalTrackInfo) (trac
 }
 
 func (c *Conference) GetLocalTrackByInfo(selectInfo LocalTrackInfo) (tracks []webrtc.TrackLocal) {
+	indices := c.GetLocalTrackIndicesByInfo(selectInfo)
+
 	c.Tracks.Mutex.Lock()
 	defer c.Tracks.Mutex.Unlock()
 
-	indices := c.GetLocalTrackIndicesByInfo(selectInfo)
 	foundTracks := []webrtc.TrackLocal{}
 	for _, index := range indices {
 		foundTracks = append(foundTracks, c.Tracks.Tracks[index].Track)
@@ -113,10 +114,10 @@ func (c *Conference) GetLocalTrackByInfo(selectInfo LocalTrackInfo) (tracks []we
 }
 
 func (c *Conference) RemoveTracksFromPeerConnectionsByInfo(removeInfo LocalTrackInfo) int {
+	indices := c.GetLocalTrackIndicesByInfo(removeInfo)
+
 	c.Tracks.Mutex.Lock()
 	defer c.Tracks.Mutex.Unlock()
-
-	indices := c.GetLocalTrackIndicesByInfo(removeInfo)
 
 	// FIXME: the big O of this must be awful...
 	for _, index := range indices {
@@ -141,10 +142,10 @@ func (c *Conference) RemoveTracksFromPeerConnectionsByInfo(removeInfo LocalTrack
 }
 
 func (c *Conference) RemoveTracksFromConfByInfo(removeInfo LocalTrackInfo) {
+	indicesToRemove := c.GetLocalTrackIndicesByInfo(removeInfo)
+
 	c.Tracks.Mutex.Lock()
 	defer c.Tracks.Mutex.Unlock()
-
-	indicesToRemove := c.GetLocalTrackIndicesByInfo(removeInfo)
 
 	newTracks := []LocalTrackWithInfo{}
 	for index, track := range c.Tracks.Tracks {
