@@ -17,6 +17,8 @@ limitations under the License.
 package main
 
 import (
+	"errors"
+	"io"
 	"log"
 	"strings"
 	"time"
@@ -29,13 +31,17 @@ func CopyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.Track
 	buff := make([]byte, 1500)
 	for {
 		i, _, err := trackRemote.Read(buff)
-		if err != nil || buff == nil {
-			log.Printf("ending read on TrackID %s: %s", trackRemote.ID(), err)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				log.Printf("failed read on StreamID %s TrackID %s: %s", trackLocal.StreamID(), trackRemote.ID(), err)
+			}
 			break
 		}
 
 		if _, err = trackLocal.Write(buff[:i]); err != nil {
-			log.Printf("ending write on TrackID %s: %s", trackLocal.ID(), err)
+			if !errors.Is(err, io.ErrClosedPipe) {
+				log.Printf("failed write on StreamID %s TrackID %s: %s", trackLocal.StreamID(), trackLocal.ID(), err)
+			}
 			break
 		}
 	}
@@ -46,11 +52,15 @@ func WriteRTCP(trackRemote *webrtc.TrackRemote, peerConnection *webrtc.PeerConne
 		return
 	}
 
-	// FIXME: This is a potential performance killer
-	// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
+	// FIXME: This is a potential performance killer. This can be less wasteful
+	// by processing incoming RTCP events, then we would emit a NACK/PLI when a
+	// viewer requests it
+	// Send a PLI on an interval so that the publisher is pushing a keyframe
+	// every 200ms
 	ticker := time.NewTicker(time.Millisecond * 200)
 	for range ticker.C {
-		if err := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}}); err != nil {
+		err := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}})
+		if err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			log.Printf("ending RTCP write on TrackID %s: %s", trackRemote.ID(), err)
 			break
 		}
