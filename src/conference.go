@@ -78,6 +78,9 @@ func (c *Conference) GetCall(callID string, create bool) (*Call, error) {
 }
 
 func (c *Conference) GetLocalTrackIndicesByInfo(selectInfo LocalTrackInfo) (tracks []int) {
+	c.Tracks.Mutex.Lock()
+	defer c.Tracks.Mutex.Unlock()
+
 	foundIndices := []int{}
 	for index, track := range c.Tracks.Tracks {
 		info := track.Info
@@ -97,6 +100,9 @@ func (c *Conference) GetLocalTrackIndicesByInfo(selectInfo LocalTrackInfo) (trac
 }
 
 func (c *Conference) GetLocalTrackByInfo(selectInfo LocalTrackInfo) (tracks []webrtc.TrackLocal) {
+	c.Tracks.Mutex.Lock()
+	defer c.Tracks.Mutex.Unlock()
+
 	indices := c.GetLocalTrackIndicesByInfo(selectInfo)
 	foundTracks := []webrtc.TrackLocal{}
 	for _, index := range indices {
@@ -107,6 +113,9 @@ func (c *Conference) GetLocalTrackByInfo(selectInfo LocalTrackInfo) (tracks []we
 }
 
 func (c *Conference) RemoveTracksFromPeerConnectionsByInfo(removeInfo LocalTrackInfo) int {
+	c.Tracks.Mutex.Lock()
+	defer c.Tracks.Mutex.Unlock()
+
 	indices := c.GetLocalTrackIndicesByInfo(removeInfo)
 
 	// FIXME: the big O of this must be awful...
@@ -169,6 +178,8 @@ func (c *Conference) RemoveOldCallsByDeviceAndSessionIDs(deviceID id.DeviceID, s
 
 func (c *Conference) UpdateSDPStreamMetadata(deviceID id.DeviceID, metadata event.CallSDPStreamMetadata) {
 	c.Metadata.Mutex.Lock()
+	defer c.Metadata.Mutex.Unlock()
+
 	// Update existing and add new
 	for streamID, info := range metadata {
 		c.Metadata.Metadata[streamID] = info
@@ -180,7 +191,6 @@ func (c *Conference) UpdateSDPStreamMetadata(deviceID id.DeviceID, metadata even
 			delete(c.Metadata.Metadata, streamID)
 		}
 	}
-	c.Metadata.Mutex.Unlock()
 }
 
 func (c *Conference) GetRemoteMetadataForDevice(deviceID id.DeviceID) event.CallSDPStreamMetadata {
@@ -210,6 +220,9 @@ func (c *Conference) GetRemoteMetadataForDevice(deviceID id.DeviceID) event.Call
 }
 
 func (c *Conference) RemoveMetadataByDeviceID(deviceID id.DeviceID) {
+	c.Metadata.Mutex.Lock()
+	defer c.Metadata.Mutex.Unlock()
+
 	for streamID, info := range c.Metadata.Metadata {
 		if info.DeviceID == deviceID {
 			delete(c.Metadata.Metadata, streamID)
