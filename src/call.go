@@ -430,8 +430,10 @@ func (c *Call) CheckKeepAliveTimestamp() {
 	timeout := time.Second * time.Duration(config.Timeout)
 	for range time.Tick(timeout) {
 		if c.LastKeepAliveTimestamp.Add(timeout).Before(time.Now()) {
-			log.Printf("%s | did not get keep-alive message in the last %s:", c.UserID, timeout)
-			c.Hangup(event.CallHangupKeepAliveTimeout)
+			if c.PeerConnection.ConnectionState() != webrtc.PeerConnectionStateClosed {
+				log.Printf("%s | did not get keep-alive message in the last %s:", c.UserID, timeout)
+				c.Hangup(event.CallHangupKeepAliveTimeout)
+			}
 			break
 		}
 	}
