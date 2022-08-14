@@ -100,10 +100,13 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 		case event.SFUOperationPublish:
 			log.Printf("%s | received DC publish", c.UserID)
 
-			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+			err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeOffer,
 				SDP:  msg.SDP,
 			})
+			if err != nil {
+				panic(err)
+			}
 
 			offer, err := c.PeerConnection.CreateAnswer(nil)
 			if err != nil {
@@ -131,10 +134,13 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 
 			}
 
-			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+			err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeOffer,
 				SDP:  msg.SDP,
 			})
+			if err != nil {
+				panic(err)
+			}
 
 			offer, err := c.PeerConnection.CreateAnswer(nil)
 			if err != nil {
@@ -153,10 +159,13 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 		case event.SFUOperationAnswer:
 			log.Printf("%s | received DC answer", c.UserID)
 
-			peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+			err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 				Type: webrtc.SDPTypeAnswer,
 				SDP:  msg.SDP,
 			})
+			if err != nil {
+				panic(err)
+			}
 
 		case event.SFUOperationAlive:
 			c.LastKeepAliveTimestamp = time.Now()
@@ -252,13 +261,13 @@ func (c *Call) IceConnectionStateHandler(state webrtc.ICEConnectionState) {
 	}
 }
 
-func (c *Call) OnInvite(content *event.CallInviteEventContent) error {
+func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 	c.Conf.UpdateSDPStreamMetadata(c.DeviceID, content.SDPStreamMetadata)
 	offer := content.Offer
 
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
-		return err
+		panic(err)
 	}
 	c.PeerConnection = peerConnection
 
@@ -278,24 +287,26 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) error {
 		c.IceConnectionStateHandler(state)
 	})
 
-	peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+	err = peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  offer.SDP,
 	})
+	if err != nil {
+		panic(err)
+
+	}
 
 	answer, err := peerConnection.CreateAnswer(nil)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	// TODO: trickle ICE for fast conn setup, rather than block here
 	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 	if err = peerConnection.SetLocalDescription(answer); err != nil {
-		return err
+		panic(err)
 	}
 	<-gatherComplete
-
-	answerSdp := peerConnection.LocalDescription().SDP
 
 	answerEvtContent := &event.Content{
 		Parsed: event.CallAnswerEventContent{
@@ -310,21 +321,19 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) error {
 			},
 			Answer: event.CallData{
 				Type: "answer",
-				SDP:  answerSdp,
+				SDP:  peerConnection.LocalDescription().SDP,
 			},
 			SDPStreamMetadata: c.Conf.GetRemoteMetadataForDevice(c.DeviceID),
 		},
 	}
 	c.SendToDevice(event.CallAnswer, answerEvtContent)
-
-	return err
 }
 
 func (c *Call) OnSelectAnswer(content *event.CallSelectAnswerEventContent) {
 	selectedPartyID := content.SelectedPartyID
 	if selectedPartyID != string(c.Client.DeviceID) {
 		c.Terminate()
-		log.Printf("%s | Call was answered on a different device: %s", c.UserID, selectedPartyID)
+		log.Printf("%s | call was answered on a different device: %s", c.UserID, selectedPartyID)
 	}
 }
 
@@ -332,7 +341,7 @@ func (c *Call) OnHangup(content *event.CallHangupEventContent) {
 	c.Terminate()
 }
 
-func (c *Call) OnCandidates(content *event.CallCandidatesEventContent) error {
+func (c *Call) OnCandidates(content *event.CallCandidatesEventContent) {
 	for _, candidate := range content.Candidates {
 		sdpMLineIndex := uint16(candidate.SDPMLineIndex)
 		ice := webrtc.ICECandidateInit{
@@ -343,10 +352,8 @@ func (c *Call) OnCandidates(content *event.CallCandidatesEventContent) error {
 		}
 		if err := c.PeerConnection.AddICECandidate(ice); err != nil {
 			log.Print("Failed to add ICE candidate", content)
-			return err
 		}
 	}
-	return nil
 }
 
 func (c *Call) Terminate() {
