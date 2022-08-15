@@ -57,9 +57,10 @@ func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
 			continue
 		}
 		for _, track := range foundTracks {
-			log.Printf("%s | adding %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
-			if _, err := c.PeerConnection.AddTrack(track); err != nil {
-				panic(err)
+			if _, err := c.PeerConnection.AddTrack(track); err == nil {
+				log.Printf("%s | added %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
+			} else {
+				log.Printf("%s | failed to add %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
 			}
 		}
 	}
@@ -73,16 +74,19 @@ func (c *Call) onDCPublish(sdp string) {
 		SDP:  sdp,
 	})
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to set remote description %+v - ignoring: %s", c.UserID, sdp, err)
+		return
 	}
 
 	offer, err := c.PeerConnection.CreateAnswer(nil)
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to create answer - ignoring: %s", c.UserID, err)
+		return
 	}
 	err = c.PeerConnection.SetLocalDescription(offer)
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		return
 	}
 
 	c.SendDataChannelMessage(event.SFUMessage{
@@ -108,16 +112,19 @@ func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 		SDP:  sdp,
 	})
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to set remote description %+v - ignoring: %s", c.UserID, sdp, err)
+		return
 	}
 
 	offer, err := c.PeerConnection.CreateAnswer(nil)
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to create answer - ignoring: %s", c.UserID, err)
+		return
 	}
 	err = c.PeerConnection.SetLocalDescription(offer)
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		return
 	}
 
 	c.SendDataChannelMessage(event.SFUMessage{
@@ -134,7 +141,8 @@ func (c *Call) onDCAnswer(sdp string) {
 		SDP:  sdp,
 	})
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to set remote description %+v - ignoring: %s", c.UserID, sdp, err)
+		return
 	}
 }
 
@@ -205,11 +213,13 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 func (c *Call) NegotiationNeededHandler() {
 	offer, err := c.PeerConnection.CreateOffer(nil)
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to create offer - ignoring: %s", c.UserID, err)
+		return
 	}
 	err = c.PeerConnection.SetLocalDescription(offer)
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		return
 	}
 
 	c.SendDataChannelMessage(event.SFUMessage{
@@ -254,7 +264,8 @@ func (c *Call) TrackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 
 	trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to create new track local static RTP %+v - ignoring: %s", c.UserID, trackRemote.Codec().RTPCodecCapability, err)
+		return
 	}
 
 	c.Conf.Tracks.Mutex.Lock()
@@ -287,7 +298,7 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
-		panic(err)
+		log.Panicf("%s | failed to create new peer connection: %s", c.UserID, err)
 	}
 	c.PeerConnection = peerConnection
 
@@ -312,19 +323,21 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 		SDP:  offer.SDP,
 	})
 	if err != nil {
-		panic(err)
-
+		log.Printf("%s | failed to set remote description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		return
 	}
 
 	answer, err := peerConnection.CreateAnswer(nil)
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to create answer - ignoring: %s", c.UserID, err)
+		return
 	}
 
 	// TODO: trickle ICE for fast conn setup, rather than block here
 	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 	if err = peerConnection.SetLocalDescription(answer); err != nil {
-		panic(err)
+		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		return
 	}
 	<-gatherComplete
 
@@ -442,7 +455,8 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 
 	marshaled, err := json.Marshal(msg)
 	if err != nil {
-		panic(err)
+		log.Printf("%s | failed to marshal %+v - ignoring: %s", c.UserID, msg, err)
+		return
 	}
 
 	err = c.DataChannel.SendText(string(marshaled))
