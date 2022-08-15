@@ -353,7 +353,7 @@ func (c *Call) OnCandidates(content *event.CallCandidatesEventContent) {
 			UsernameFragment: new(string),
 		}
 		if err := c.PeerConnection.AddICECandidate(ice); err != nil {
-			log.Print("Failed to add ICE candidate", content)
+			log.Printf("%s | failed to add ICE candidate %+v: %s", c.UserID, content, err)
 		}
 	}
 }
