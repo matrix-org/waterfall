@@ -48,7 +48,7 @@ var configFilePath = flag.String("config", "config.yaml", "configuration file pa
 var cpuProfile = flag.String("cpuProfile", "", "write CPU profile to `file`")
 var memProfile = flag.String("memProfile", "", "write memory profile to `file`")
 
-func InitCpuProfiling(cpuProfile *string) func() {
+func initCpuProfiling(cpuProfile *string) func() {
 	log.Print("initializing CPU profiling")
 
 	f, err := os.Create(*cpuProfile)
@@ -67,7 +67,7 @@ func InitCpuProfiling(cpuProfile *string) func() {
 	}
 }
 
-func InitMemoryProfiling(memProfile *string) func() {
+func initMemoryProfiling(memProfile *string) func() {
 	log.Print("initializing memory profiling")
 
 	return func() {
@@ -85,14 +85,14 @@ func InitMemoryProfiling(memProfile *string) func() {
 	}
 }
 
-func InitLogging(logTime *bool) {
+func initLogging(logTime *bool) {
 	log.SetFlags(0)
 	if *logTime {
 		log.SetFlags(log.Ldate | log.Ltime)
 	}
 }
 
-func LoadConfig(configFilePath string) (*Config, error) {
+func loadConfig(configFilePath string) (*Config, error) {
 	log.Printf("loading %s", configFilePath)
 	file, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
@@ -117,14 +117,14 @@ func killListener(c chan os.Signal, beforeExit []func()) {
 func main() {
 	flag.Parse()
 
-	InitLogging(logTime)
+	initLogging(logTime)
 
 	beforeExit := []func(){}
 	if *cpuProfile != "" {
-		beforeExit = append(beforeExit, InitCpuProfiling(cpuProfile))
+		beforeExit = append(beforeExit, initCpuProfiling(cpuProfile))
 	}
 	if *memProfile != "" {
-		beforeExit = append(beforeExit, InitMemoryProfiling(memProfile))
+		beforeExit = append(beforeExit, initMemoryProfiling(memProfile))
 	}
 
 	// try to handle os interrupt(signal terminated)
@@ -133,7 +133,7 @@ func main() {
 	go killListener(c, beforeExit)
 
 	var err error
-	if config, err = LoadConfig(*configFilePath); err != nil {
+	if config, err = loadConfig(*configFilePath); err != nil {
 		log.Fatalf("failed to load config file: %s", err)
 	}
 

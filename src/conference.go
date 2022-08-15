@@ -77,7 +77,7 @@ func (c *Conference) GetCall(callID string, create bool) (*Call, error) {
 	return ca, nil
 }
 
-func (c *Conference) GetLocalTrackIndicesByInfo(selectInfo LocalTrackInfo) (tracks []int) {
+func (c *Conference) getLocalTrackIndicesByInfo(selectInfo LocalTrackInfo) (tracks []int) {
 	c.Tracks.Mutex.Lock()
 	defer c.Tracks.Mutex.Unlock()
 
@@ -100,7 +100,7 @@ func (c *Conference) GetLocalTrackIndicesByInfo(selectInfo LocalTrackInfo) (trac
 }
 
 func (c *Conference) GetLocalTrackByInfo(selectInfo LocalTrackInfo) (tracks []webrtc.TrackLocal) {
-	indices := c.GetLocalTrackIndicesByInfo(selectInfo)
+	indices := c.getLocalTrackIndicesByInfo(selectInfo)
 
 	c.Tracks.Mutex.Lock()
 	defer c.Tracks.Mutex.Unlock()
@@ -114,7 +114,7 @@ func (c *Conference) GetLocalTrackByInfo(selectInfo LocalTrackInfo) (tracks []we
 }
 
 func (c *Conference) RemoveTracksFromPeerConnectionsByInfo(removeInfo LocalTrackInfo) int {
-	indices := c.GetLocalTrackIndicesByInfo(removeInfo)
+	indices := c.getLocalTrackIndicesByInfo(removeInfo)
 
 	c.Tracks.Mutex.Lock()
 	defer c.Tracks.Mutex.Unlock()
@@ -142,7 +142,7 @@ func (c *Conference) RemoveTracksFromPeerConnectionsByInfo(removeInfo LocalTrack
 }
 
 func (c *Conference) RemoveTracksFromConfByInfo(removeInfo LocalTrackInfo) {
-	indicesToRemove := c.GetLocalTrackIndicesByInfo(removeInfo)
+	indicesToRemove := c.getLocalTrackIndicesByInfo(removeInfo)
 
 	c.Tracks.Mutex.Lock()
 	defer c.Tracks.Mutex.Unlock()
@@ -215,7 +215,7 @@ func (c *Conference) GetRemoteMetadataForDevice(deviceID id.DeviceID) event.Call
 		for trackID := range info.Tracks {
 			// Delete metadata, if we're the client hasn't published a track that is
 			// included in the metadata yet
-			if len(c.GetLocalTrackIndicesByInfo(LocalTrackInfo{
+			if len(c.getLocalTrackIndicesByInfo(LocalTrackInfo{
 				StreamID: streamID,
 				TrackID:  trackID,
 			})) == 0 {

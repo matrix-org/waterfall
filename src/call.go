@@ -37,8 +37,8 @@ type Call struct {
 	Client                 *mautrix.Client
 	PeerConnection         *webrtc.PeerConnection
 	Conf                   *Conference
-	DataChannel            *webrtc.DataChannel
-	LastKeepAliveTimestamp time.Time
+	dataChannel            *webrtc.DataChannel
+	lastKeepAliveTimestamp time.Time
 }
 
 func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
@@ -147,7 +147,7 @@ func (c *Call) onDCAnswer(sdp string) {
 }
 
 func (c *Call) onDCAlive() {
-	c.LastKeepAliveTimestamp = time.Now()
+	c.lastKeepAliveTimestamp = time.Now()
 
 }
 
@@ -157,8 +157,8 @@ func (c *Call) onDCMetadata(metadata event.CallSDPStreamMetadata) {
 	c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 }
 
-func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
-	c.DataChannel = d
+func (c *Call) dataChannelHandler(d *webrtc.DataChannel) {
+	c.dataChannel = d
 
 	d.OnOpen(func() {
 		c.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationMetadata})
@@ -210,7 +210,7 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 	})
 }
 
-func (c *Call) NegotiationNeededHandler() {
+func (c *Call) negotiationNeededHandler() {
 	offer, err := c.PeerConnection.CreateOffer(nil)
 	if err != nil {
 		log.Printf("%s | failed to create offer - ignoring: %s", c.UserID, err)
@@ -228,7 +228,7 @@ func (c *Call) NegotiationNeededHandler() {
 	})
 }
 
-func (c *Call) IceCandidateHandler(candidate *webrtc.ICECandidate) {
+func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 	if candidate == nil {
 		return
 	}
@@ -256,10 +256,10 @@ func (c *Call) IceCandidateHandler(candidate *webrtc.ICECandidate) {
 			},
 		},
 	}
-	c.SendToDevice(event.CallCandidates, candidateEvtContent)
+	c.sendToDevice(event.CallCandidates, candidateEvtContent)
 }
 
-func (c *Call) TrackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
+func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
 	go WriteRTCP(trackRemote, c.PeerConnection)
 
 	trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
@@ -285,9 +285,9 @@ func (c *Call) TrackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 	go CopyRemoteToLocal(trackRemote, trackLocal)
 }
 
-func (c *Call) IceConnectionStateHandler(state webrtc.ICEConnectionState) {
+func (c *Call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
 	if state == webrtc.ICEConnectionStateCompleted || state == webrtc.ICEConnectionStateConnected {
-		c.LastKeepAliveTimestamp = time.Now()
+		c.lastKeepAliveTimestamp = time.Now()
 		go c.CheckKeepAliveTimestamp()
 	}
 }
@@ -303,19 +303,19 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 	c.PeerConnection = peerConnection
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		c.TrackHandler(track, receiver)
+		c.trackHandler(track, receiver)
 	})
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		c.DataChannelHandler(d)
+		c.dataChannelHandler(d)
 	})
 	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		c.IceCandidateHandler(candidate)
+		c.iceCandidateHandler(candidate)
 	})
 	peerConnection.OnNegotiationNeeded(func() {
-		c.NegotiationNeededHandler()
+		c.negotiationNeededHandler()
 	})
 	peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		c.IceConnectionStateHandler(state)
+		c.iceConnectionStateHandler(state)
 	})
 
 	err = peerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -359,7 +359,7 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 			SDPStreamMetadata: c.Conf.GetRemoteMetadataForDevice(c.DeviceID),
 		},
 	}
-	c.SendToDevice(event.CallAnswer, answerEvtContent)
+	c.sendToDevice(event.CallAnswer, answerEvtContent)
 }
 
 func (c *Call) OnSelectAnswer(content *event.CallSelectAnswerEventContent) {
@@ -422,11 +422,11 @@ func (c *Call) Hangup(reason event.CallHangupReason) {
 			Reason: reason,
 		},
 	}
-	c.SendToDevice(event.CallHangup, hangupEvtContent)
+	c.sendToDevice(event.CallHangup, hangupEvtContent)
 	c.Terminate()
 }
 
-func (c *Call) SendToDevice(callType event.Type, content *event.Content) {
+func (c *Call) sendToDevice(callType event.Type, content *event.Content) {
 	if callType.Type != event.CallCandidates.Type {
 		log.Printf("%s | sending to device %s", c.UserID, callType.Type)
 	}
@@ -444,7 +444,7 @@ func (c *Call) SendToDevice(callType event.Type, content *event.Content) {
 }
 
 func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
-	if c.DataChannel == nil {
+	if c.dataChannel == nil {
 		return
 	}
 
@@ -459,7 +459,7 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 		return
 	}
 
-	err = c.DataChannel.SendText(string(marshaled))
+	err = c.dataChannel.SendText(string(marshaled))
 	if err != nil {
 		log.Printf("%s | failed to send %s over DC: %s", c.UserID, msg.Op, err)
 	}
@@ -470,7 +470,7 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 func (c *Call) CheckKeepAliveTimestamp() {
 	timeout := time.Second * time.Duration(config.Timeout)
 	for range time.Tick(timeout) {
-		if c.LastKeepAliveTimestamp.Add(timeout).Before(time.Now()) {
+		if c.lastKeepAliveTimestamp.Add(timeout).Before(time.Now()) {
 			if c.PeerConnection.ConnectionState() != webrtc.PeerConnectionStateClosed {
 				log.Printf("%s | did not get keep-alive message in the last %s:", c.UserID, timeout)
 				c.Hangup(event.CallHangupKeepAliveTimeout)
