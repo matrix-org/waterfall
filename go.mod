@@ -1,4 +1,4 @@
-module github.com/Sean-Der/sfu-to-sfu
+module github.com/matrix-org/sfu-to-sfu
 
 go 1.18
 
