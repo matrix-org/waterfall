@@ -19,10 +19,8 @@ package main
 import (
 	"fmt"
 	"log"
-	"strings"
 
 	"maunium.net/go/mautrix"
-	"maunium.net/go/mautrix/event"
 )
 
 const localSessionID = "sfu"
@@ -43,106 +41,13 @@ func InitMatrix() error {
 	log.Printf("Identified SFU as device %s", whoami.DeviceID)
 	client.DeviceID = whoami.DeviceID
 
-	focus := NewFocus(fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID))
+	focus := NewFocus(fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID), client)
 
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
 	syncer.ParseEventContent = true
 
 	// TODO: E2EE
-
-	getExistingCall := func(confID string, callID string) (*Call, error) {
-		var conf *Conference
-		var call *Call
-
-		if conf, err = focus.GetConf(confID, false); err != nil || conf == nil {
-			log.Printf("failed to get conf %s: %s", confID, err)
-			return nil, err
-		}
-		if call, err = conf.GetCall(callID, false); err != nil || call == nil {
-			log.Printf("failed to get call %s: %s", callID, err)
-			return nil, err
-		}
-		return call, nil
-	}
-
-	syncer.OnSync(func(resp *mautrix.RespSync, since string) bool {
-		for _, evt := range resp.ToDevice.Events {
-			evt.Type.Class = event.ToDeviceEventType
-			err := evt.Content.ParseRaw(evt.Type)
-			if err != nil {
-				log.Printf("failed to parse to-device event of type %s: %v", evt.Type.Type, err)
-				continue
-			}
-
-			var conf *Conference
-			var call *Call
-
-			if !strings.HasPrefix(evt.Type.Type, "m.call.") && !strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
-				log.Printf("received non-call to-device event %s", evt.Type.Type)
-				continue
-			} else if evt.Type.Type != event.ToDeviceCallCandidates.Type && evt.Type.Type != event.ToDeviceCallSelectAnswer.Type {
-				log.Printf("%s | received to-device event %s", evt.Sender.String(), evt.Type.Type)
-			}
-
-			if evt.Content.Raw["dest_session_id"] != localSessionID {
-				log.Printf("%s | SessionID %s does not match our SessionID %s - ignoring", evt.Content.Raw["dest_session_id"], localSessionID, err)
-				continue
-			}
-
-			switch evt.Type.Type {
-			case event.ToDeviceCallInvite.Type:
-				invite := evt.Content.AsCallInvite()
-				if conf, err = focus.GetConf(invite.ConfID, true); err != nil || conf == nil {
-					log.Printf("%s | failed to create conf %s: %+v", evt.Sender.String(), invite.ConfID, err)
-					return true
-				}
-				if err := conf.RemoveOldCallsByDeviceAndSessionIDs(invite.DeviceID, invite.SenderSessionID); err != nil {
-					log.Printf("%s | error removing old calls - ignoring call: %+v", evt.Sender.String(), err)
-					return true
-				}
-				if call, err = conf.GetCall(invite.CallID, true); err != nil || call == nil {
-					log.Printf("%s | failed to create call: %+v", evt.Sender.String(), err)
-					return true
-				}
-				call.UserID = evt.Sender
-				call.DeviceID = invite.DeviceID
-				// XXX: What if an SFU gets restarted?
-				call.LocalSessionID = localSessionID
-				call.RemoteSessionID = invite.SenderSessionID
-				call.Client = client
-				call.OnInvite(invite)
-			case event.ToDeviceCallCandidates.Type:
-				candidates := evt.Content.AsCallCandidates()
-				if call, err = getExistingCall((*candidates).ConfID, (*candidates).CallID); err != nil || call == nil {
-					return true
-				}
-				call.OnCandidates(candidates)
-			case event.ToDeviceCallSelectAnswer.Type:
-				selectAnswer := evt.Content.AsCallSelectAnswer()
-				if call, err = getExistingCall(selectAnswer.ConfID, selectAnswer.CallID); err != nil || call == nil {
-					return true
-				}
-				call.OnSelectAnswer(selectAnswer)
-			case event.ToDeviceCallHangup.Type:
-				hangup := evt.Content.AsCallHangup()
-				if call, err = getExistingCall(hangup.ConfID, hangup.CallID); err != nil || call == nil {
-					return true
-				}
-				call.OnHangup(hangup)
-
-			// Events we don't care about
-			case event.ToDeviceCallNegotiate.Type:
-				log.Printf("%s | ignoring event %s as should be handled over DC", evt.Sender.String(), evt.Type.Type)
-			case event.ToDeviceCallReject.Type:
-			case event.ToDeviceCallAnswer.Type:
-				log.Printf("%s | ignoring event %s as we are always the ones answering", evt.Sender.String(), evt.Type.Type)
-			default:
-				log.Printf("%s | ignoring unrecognised to-device event of type %s", evt.Sender.String(), evt.Type.Type)
-			}
-		}
-
-		return true
-	})
+	syncer.OnEvent(focus.onEvent)
 
 	if err = client.Sync(); err != nil {
 		log.Panic("Sync failed", err)
