@@ -55,12 +55,14 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 
 	d.OnMessage(func(m webrtc.DataChannelMessage) {
 		if !m.IsString {
-			log.Fatal("Inbound message is not string")
+			log.Printf("%s | inbound message is not string - ignoring: %+v", c.UserID, m)
+			return
 		}
 
 		msg := &event.SFUMessage{}
 		if err := json.Unmarshal(m.Data, msg); err != nil {
-			log.Fatalf("%s | failed to unmarshal: %s", c.CallID, err)
+			log.Printf("%s | failed to unmarshal %+v - ignoring: %s", c.CallID, msg, err)
+			return
 		}
 
 		// TODO: hook cascade back up.
@@ -176,7 +178,7 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 			c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 
 		default:
-			log.Fatalf("Unknown operation %s", msg.Op)
+			log.Printf("Unknown operation - ignoring: %s", msg.Op)
 			// TODO: hook up msg.Stop to unsubscribe from tracks
 		}
 	})
