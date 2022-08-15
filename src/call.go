@@ -41,9 +41,116 @@ type Call struct {
 	LastKeepAliveTimestamp time.Time
 }
 
+func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
+	if len(start) == 0 {
+		return
+	}
+
+	for _, trackDesc := range start {
+		log.Printf("%s | selecting StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+		foundTracks := c.Conf.GetLocalTrackByInfo(LocalTrackInfo{
+			StreamID: trackDesc.StreamID,
+			TrackID:  trackDesc.TrackID,
+		})
+		if len(foundTracks) == 0 {
+			log.Printf("%s | no track found StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+			continue
+		}
+		for _, track := range foundTracks {
+			log.Printf("%s | adding %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
+			if _, err := c.PeerConnection.AddTrack(track); err != nil {
+				panic(err)
+			}
+		}
+	}
+}
+
+func (c *Call) onDCPublish(sdp string) {
+	log.Printf("%s | received DC publish", c.UserID)
+
+	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  sdp,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	offer, err := c.PeerConnection.CreateAnswer(nil)
+	if err != nil {
+		panic(err)
+	}
+	err = c.PeerConnection.SetLocalDescription(offer)
+	if err != nil {
+		panic(err)
+	}
+
+	c.SendDataChannelMessage(event.SFUMessage{
+		Op:  event.SFUOperationAnswer,
+		SDP: offer.SDP,
+	})
+}
+
+func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
+	for _, trackDesc := range stop {
+		log.Printf("%s | unpublishing StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+		if removedTracksCount := c.Conf.RemoveTracksFromPeerConnectionsByInfo(LocalTrackInfo{
+			StreamID: trackDesc.StreamID,
+			TrackID:  trackDesc.TrackID,
+		}); removedTracksCount == 0 {
+			log.Printf("%s | no tracks to remove for: %+v", c.UserID, stop)
+		}
+
+	}
+
+	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  sdp,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	offer, err := c.PeerConnection.CreateAnswer(nil)
+	if err != nil {
+		panic(err)
+	}
+	err = c.PeerConnection.SetLocalDescription(offer)
+	if err != nil {
+		panic(err)
+	}
+
+	c.SendDataChannelMessage(event.SFUMessage{
+		Op:  event.SFUOperationAnswer,
+		SDP: offer.SDP,
+	})
+}
+
+func (c *Call) onDCAnswer(sdp string) {
+	log.Printf("%s | received DC answer", c.UserID)
+
+	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeAnswer,
+		SDP:  sdp,
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (c *Call) onDCAlive() {
+	c.LastKeepAliveTimestamp = time.Now()
+
+}
+
+func (c *Call) onDCMetadata(metadata event.CallSDPStreamMetadata) {
+	log.Printf("%s | received DC metadata", c.UserID)
+
+	c.Conf.SendUpdatedMetadataFromCall(c.CallID)
+}
+
 func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 	c.DataChannel = d
-	peerConnection := c.PeerConnection
 
 	d.OnOpen(func() {
 		c.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationMetadata})
@@ -65,121 +172,32 @@ func (c *Call) DataChannelHandler(d *webrtc.DataChannel) {
 			return
 		}
 
-		// TODO: hook cascade back up.
-		// As we're not an AS, we'd rely on the client
-		// to send us a "connect" op to tell us how to
-		// connect to another focus in order to select
-		// its streams.
-
 		if msg.Metadata != nil {
 			c.Conf.UpdateSDPStreamMetadata(c.DeviceID, msg.Metadata)
 		}
 
 		switch msg.Op {
 		case event.SFUOperationSelect:
-			if len(msg.Start) == 0 {
-				return
-			}
-
-			for _, trackDesc := range msg.Start {
-				log.Printf("%s | selecting StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
-				foundTracks := c.Conf.GetLocalTrackByInfo(LocalTrackInfo{
-					StreamID: trackDesc.StreamID,
-					TrackID:  trackDesc.TrackID,
-				})
-				if len(foundTracks) == 0 {
-					log.Printf("%s | no track found StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
-					continue
-				}
-				for _, track := range foundTracks {
-					log.Printf("%s | adding %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
-					if _, err := c.PeerConnection.AddTrack(track); err != nil {
-						panic(err)
-					}
-				}
-			}
-
+			c.onDCSelect(msg.Start)
 		case event.SFUOperationPublish:
-			log.Printf("%s | received DC publish", c.UserID)
-
-			err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
-				Type: webrtc.SDPTypeOffer,
-				SDP:  msg.SDP,
-			})
-			if err != nil {
-				panic(err)
-			}
-
-			offer, err := c.PeerConnection.CreateAnswer(nil)
-			if err != nil {
-				panic(err)
-			}
-			err = c.PeerConnection.SetLocalDescription(offer)
-			if err != nil {
-				panic(err)
-			}
-
-			c.SendDataChannelMessage(event.SFUMessage{
-				Op:  event.SFUOperationAnswer,
-				SDP: offer.SDP,
-			})
-
+			c.onDCPublish(msg.SDP)
 		case event.SFUOperationUnpublish:
-			for _, trackDesc := range msg.Stop {
-				log.Printf("%s | unpublishing StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
-				if removedTracksCount := c.Conf.RemoveTracksFromPeerConnectionsByInfo(LocalTrackInfo{
-					StreamID: trackDesc.StreamID,
-					TrackID:  trackDesc.TrackID,
-				}); removedTracksCount == 0 {
-					log.Printf("%s | no tracks to remove for: %+v", c.UserID, msg.Stop)
-				}
-
-			}
-
-			err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
-				Type: webrtc.SDPTypeOffer,
-				SDP:  msg.SDP,
-			})
-			if err != nil {
-				panic(err)
-			}
-
-			offer, err := c.PeerConnection.CreateAnswer(nil)
-			if err != nil {
-				panic(err)
-			}
-			err = c.PeerConnection.SetLocalDescription(offer)
-			if err != nil {
-				panic(err)
-			}
-
-			c.SendDataChannelMessage(event.SFUMessage{
-				Op:  event.SFUOperationAnswer,
-				SDP: offer.SDP,
-			})
-
+			c.onDCUnpublish(msg.Stop, msg.SDP)
 		case event.SFUOperationAnswer:
-			log.Printf("%s | received DC answer", c.UserID)
-
-			err := peerConnection.SetRemoteDescription(webrtc.SessionDescription{
-				Type: webrtc.SDPTypeAnswer,
-				SDP:  msg.SDP,
-			})
-			if err != nil {
-				panic(err)
-			}
-
+			c.onDCAnswer(msg.SDP)
 		case event.SFUOperationAlive:
-			c.LastKeepAliveTimestamp = time.Now()
-
+			c.onDCAlive()
 		case event.SFUOperationMetadata:
-			log.Printf("%s | received DC metadata", c.UserID)
-
-			c.Conf.SendUpdatedMetadataFromCall(c.CallID)
+			c.onDCMetadata(msg.Metadata)
 
 		default:
 			log.Printf("Unknown operation - ignoring: %s", msg.Op)
 			// TODO: hook up msg.Stop to unsubscribe from tracks
+			// TODO: hook cascade back up.
+			// As we're not an AS, we'd rely on the client
+			// to send us a "connect" op to tell us how to
+			// connect to another focus in order to select
+			// its streams.
 		}
 	})
 }
