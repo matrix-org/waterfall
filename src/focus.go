@@ -33,9 +33,13 @@ type Focus struct {
 	confs Confs
 }
 
-func (f *Focus) Init(name string) {
+func NewFocus(name string) *Focus {
+	f := new(Focus)
+
 	f.name = name
 	f.confs.confs = make(map[string]*Conference)
+
+	return f
 }
 
 func (f *Focus) GetConf(confID string, create bool) (*Conference, error) {

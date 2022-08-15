@@ -43,8 +43,7 @@ func InitMatrix() error {
 	log.Printf("Identified SFU as device %s", whoami.DeviceID)
 	client.DeviceID = whoami.DeviceID
 
-	focus := new(Focus)
-	focus.Init(fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID))
+	focus := NewFocus(fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID))
 
 	syncer := client.Syncer.(*mautrix.DefaultSyncer)
 	syncer.ParseEventContent = true
