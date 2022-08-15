@@ -194,19 +194,27 @@ func (c *Conference) UpdateSDPStreamMetadata(deviceID id.DeviceID, metadata even
 	}
 }
 
+// Get metadata to send to deviceID. This will not include the device's own
+// metadata and metadata which includes tracks which we have not received yet
 func (c *Conference) GetRemoteMetadataForDevice(deviceID id.DeviceID) event.CallSDPStreamMetadata {
+	// First we copy the metadata
 	metadata := make(event.CallSDPStreamMetadata)
 	c.Metadata.Mutex.Lock()
 	for streamID, info := range c.Metadata.Metadata {
 		metadata[streamID] = info
 	}
 	c.Metadata.Mutex.Unlock()
+	// Loop over the copied metadata
 	for streamID, info := range metadata {
+		// Delete metadata received from the device that we're sending metadata to
 		if info.DeviceID == deviceID {
 			delete(metadata, streamID)
 			continue
 		}
+		// Loop over the tracks in the copied metadata
 		for trackID := range info.Tracks {
+			// Delete metadata, if we're the client hasn't published a track that is
+			// included in the metadata yet
 			if len(c.GetLocalTrackIndicesByInfo(LocalTrackInfo{
 				StreamID: streamID,
 				TrackID:  trackID,
@@ -216,7 +224,6 @@ func (c *Conference) GetRemoteMetadataForDevice(deviceID id.DeviceID) event.Call
 			}
 		}
 	}
-
 	return metadata
 }
 
