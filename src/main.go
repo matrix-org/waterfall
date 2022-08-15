@@ -105,7 +105,7 @@ func LoadConfig(configFilePath string) (*Config, error) {
 	return &config, nil
 }
 
-func OnKill(c chan os.Signal, beforeExit []func()) {
+func killListener(c chan os.Signal, beforeExit []func()) {
 	<-c
 	log.Printf("ending program")
 	for _, function := range beforeExit {
@@ -130,7 +130,7 @@ func main() {
 	// try to handle os interrupt(signal terminated)
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go OnKill(c, beforeExit)
+	go killListener(c, beforeExit)
 
 	var err error
 	if config, err = LoadConfig(*configFilePath); err != nil {
