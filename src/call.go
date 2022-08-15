@@ -233,7 +233,7 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 		return
 	}
 
-	ice := candidate.ToJSON()
+	jsonCandidate := candidate.ToJSON()
 
 	candidateEvtContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
@@ -248,9 +248,9 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 			},
 			Candidates: []event.CallCandidate{
 				{
-					Candidate:     ice.Candidate,
-					SDPMLineIndex: int(*ice.SDPMLineIndex),
-					SDPMID:        *ice.SDPMid,
+					Candidate:     jsonCandidate.Candidate,
+					SDPMLineIndex: int(*jsonCandidate.SDPMLineIndex),
+					SDPMID:        *jsonCandidate.SDPMid,
 					// XXX: what about ice.UsernameFragment?
 				},
 			},
