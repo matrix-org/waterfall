@@ -39,6 +39,7 @@ type Call struct {
 	Conf                   *Conference
 	dataChannel            *webrtc.DataChannel
 	lastKeepAliveTimestamp time.Time
+	sentEndOfCandidates    bool
 }
 
 func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
@@ -291,6 +292,25 @@ func (c *Call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
 	if state == webrtc.ICEConnectionStateCompleted || state == webrtc.ICEConnectionStateConnected {
 		c.lastKeepAliveTimestamp = time.Now()
 		go c.CheckKeepAliveTimestamp()
+
+		if !c.sentEndOfCandidates {
+			candidateEvtContent := &event.Content{
+				Parsed: event.CallCandidatesEventContent{
+					BaseCallEventContent: event.BaseCallEventContent{
+						CallID:          c.CallID,
+						ConfID:          c.Conf.ConfID,
+						DeviceID:        c.Client.DeviceID,
+						SenderSessionID: c.LocalSessionID,
+						DestSessionID:   c.RemoteSessionID,
+						PartyID:         string(c.Client.DeviceID),
+						Version:         event.CallVersion("1"),
+					},
+					Candidates: []event.CallCandidate{{Candidate: ""}},
+				},
+			}
+			c.sendToDevice(event.CallCandidates, candidateEvtContent)
+			c.sentEndOfCandidates = true
+		}
 	}
 }
 
