@@ -236,15 +236,6 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 
 	jsonCandidate := candidate.ToJSON()
 
-	callCandidate := event.CallCandidate{
-		Candidate:     jsonCandidate.Candidate,
-		SDPMLineIndex: int(*jsonCandidate.SDPMLineIndex),
-		SDPMID:        *jsonCandidate.SDPMid,
-	}
-	if jsonCandidate.UsernameFragment != nil {
-		callCandidate.UsernameFragment = *jsonCandidate.UsernameFragment
-	}
-
 	candidateEvtContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
@@ -256,7 +247,11 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 				PartyID:         string(c.Client.DeviceID),
 				Version:         event.CallVersion("1"),
 			},
-			Candidates: []event.CallCandidate{callCandidate},
+			Candidates: []event.CallCandidate{{
+				Candidate:     jsonCandidate.Candidate,
+				SDPMLineIndex: int(*jsonCandidate.SDPMLineIndex),
+				SDPMID:        *jsonCandidate.SDPMid,
+			}},
 		},
 	}
 	c.sendToDevice(event.CallCandidates, candidateEvtContent)
