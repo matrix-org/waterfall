@@ -1,0 +1,4 @@
+homeserverurl: "http://localhost:8008"
+userid: "@sfu:shadowfax"
+accesstoken: "..."
+timeout: 30
