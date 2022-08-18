@@ -27,21 +27,28 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
+const pliInterval = 200
+const bufferSize = 1500
+
 func CopyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.TrackLocalStaticRTP) {
-	buff := make([]byte, 1500)
+	buff := make([]byte, bufferSize)
+
 	for {
-		i, _, err := trackRemote.Read(buff)
+		index, _, err := trackRemote.Read(buff)
+
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.Printf("failed read on StreamID %s TrackID %s: %s", trackLocal.StreamID(), trackRemote.ID(), err)
 			}
+
 			break
 		}
 
-		if _, err = trackLocal.Write(buff[:i]); err != nil {
+		if _, err = trackLocal.Write(buff[:index]); err != nil {
 			if !errors.Is(err, io.ErrClosedPipe) {
 				log.Printf("failed write on StreamID %s TrackID %s: %s", trackLocal.StreamID(), trackLocal.ID(), err)
 			}
+
 			break
 		}
 	}
@@ -57,13 +64,14 @@ func WriteRTCP(trackRemote *webrtc.TrackRemote, peerConnection *webrtc.PeerConne
 	// viewer requests it
 	// Send a PLI on an interval so that the publisher is pushing a keyframe
 	// every 200ms
-	ticker := time.NewTicker(time.Millisecond * 200)
+	ticker := time.NewTicker(time.Millisecond * pliInterval)
 	for range ticker.C {
 		err := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}})
 		if err != nil {
 			if !errors.Is(err, io.ErrClosedPipe) {
 				log.Printf("ending RTCP write on TrackID %s: %s", trackRemote.ID(), err)
 			}
+
 			break
 		}
 	}

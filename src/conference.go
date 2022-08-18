@@ -26,6 +26,9 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+var ErrNoSuchCall = errors.New("no such call")
+var ErrFoundExistingCallWithSameSessionAndDeviceID = errors.New("found existing call with equal DeviceID and SessionID")
+
 type LocalTrackInfo struct {
 	StreamID string
 	TrackID  string
@@ -62,44 +65,50 @@ type Conference struct {
 func (c *Conference) GetCall(callID string, create bool) (*Call, error) {
 	c.Calls.CallsMu.Lock()
 	defer c.Calls.CallsMu.Unlock()
-	ca := c.Calls.Calls[callID]
-	if ca == nil {
+	call := c.Calls.Calls[callID]
+
+	if call == nil {
 		if create {
-			ca = &Call{
+			call = &Call{
 				CallID: callID,
 				Conf:   c,
 			}
-			c.Calls.Calls[callID] = ca
+			c.Calls.Calls[callID] = call
 		} else {
-			return nil, errors.New("no such call")
+			return nil, ErrNoSuchCall
 		}
 	}
-	return ca, nil
+
+	return call, nil
 }
 
-func (c *Conference) getLocalTrackIndicesByInfo(selectInfo LocalTrackInfo) (tracks []int) {
+func (c *Conference) getLocalTrackIndicesByInfo(selectInfo LocalTrackInfo) []int {
 	c.Tracks.Mutex.Lock()
 	defer c.Tracks.Mutex.Unlock()
 
 	foundIndices := []int{}
+
 	for index, track := range c.Tracks.Tracks {
 		info := track.Info
 		if selectInfo.Call != nil && selectInfo.Call != info.Call {
 			continue
 		}
+
 		if selectInfo.StreamID != "" && selectInfo.StreamID != info.StreamID {
 			continue
 		}
+
 		if selectInfo.TrackID != "" && selectInfo.TrackID != info.TrackID {
 			continue
 		}
+
 		foundIndices = append(foundIndices, index)
 	}
 
 	return foundIndices
 }
 
-func (c *Conference) GetLocalTrackByInfo(selectInfo LocalTrackInfo) (tracks []webrtc.TrackLocal) {
+func (c *Conference) GetLocalTrackByInfo(selectInfo LocalTrackInfo) []webrtc.TrackLocal {
 	indices := c.getLocalTrackIndicesByInfo(selectInfo)
 
 	c.Tracks.Mutex.Lock()
@@ -126,10 +135,18 @@ func (c *Conference) RemoveTracksFromPeerConnectionsByInfo(removeInfo LocalTrack
 		for _, call := range c.Calls.Calls {
 			for _, sender := range call.PeerConnection.GetSenders() {
 				if info.TrackID == sender.Track().ID() {
-					log.Printf("%s | removing %s StreamID %s TrackID %s", call.UserID, sender.Track().Kind(), sender.Track().StreamID(), sender.Track().ID())
+					log.Printf(
+						"%s | removing %s StreamID %s TrackID %s",
+						call.UserID,
+						sender.Track().Kind(),
+						sender.Track().StreamID(),
+						sender.Track().ID(),
+					)
+
 					if err := sender.Stop(); err != nil {
 						log.Printf("%s | failed to stop sender: %s", call.UserID, err)
 					}
+
 					if err := call.PeerConnection.RemoveTrack(sender); err != nil {
 						log.Printf("%s | failed to remove track: %s", call.UserID, err)
 					}
@@ -148,13 +165,16 @@ func (c *Conference) RemoveTracksFromConfByInfo(removeInfo LocalTrackInfo) {
 	defer c.Tracks.Mutex.Unlock()
 
 	newTracks := []LocalTrackWithInfo{}
+
 	for index, track := range c.Tracks.Tracks {
 		keep := true
+
 		for _, indexToRemove := range indicesToRemove {
 			if indexToRemove == index {
 				keep = false
 			}
 		}
+
 		if keep {
 			newTracks = append(newTracks, track)
 		}
@@ -165,15 +185,17 @@ func (c *Conference) RemoveTracksFromConfByInfo(removeInfo LocalTrackInfo) {
 
 func (c *Conference) RemoveOldCallsByDeviceAndSessionIDs(deviceID id.DeviceID, sessionID id.SessionID) error {
 	var err error
+
 	for _, call := range c.Calls.Calls {
 		if call.DeviceID == deviceID {
 			if call.RemoteSessionID == sessionID {
-				err = errors.New("found existing call with equal DeviceID and SessionID")
+				err = ErrFoundExistingCallWithSameSessionAndDeviceID
 			} else {
 				call.Terminate()
 			}
 		}
 	}
+
 	return err
 }
 
@@ -195,10 +217,11 @@ func (c *Conference) UpdateSDPStreamMetadata(deviceID id.DeviceID, metadata even
 }
 
 // Get metadata to send to deviceID. This will not include the device's own
-// metadata and metadata which includes tracks which we have not received yet
+// metadata and metadata which includes tracks which we have not received yet.
 func (c *Conference) GetRemoteMetadataForDevice(deviceID id.DeviceID) event.CallSDPStreamMetadata {
 	// First we copy the metadata
 	metadata := make(event.CallSDPStreamMetadata)
+
 	c.Metadata.Mutex.Lock()
 	for streamID, info := range c.Metadata.Metadata {
 		metadata[streamID] = info
@@ -224,6 +247,7 @@ func (c *Conference) GetRemoteMetadataForDevice(deviceID id.DeviceID) event.Call
 			}
 		}
 	}
+
 	return metadata
 }
 
