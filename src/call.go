@@ -457,7 +457,9 @@ func (c *Call) sendToDevice(callType event.Type, content *event.Content) {
 
 	// TODO: E2EE
 	// TODO: to-device reliability
-	c.Client.SendToDevice(callType, toDevice)
+	if _, err := c.Client.SendToDevice(callType, toDevice); err != nil {
+		log.Printf("%s | error sending to-device %s: %s", c.UserID, callType.Type, err)
+	}
 }
 
 func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
