@@ -1,0 +1,19 @@
+linters-settings:
+  lll:
+    line-length: 120
+  wsl:
+    allow-cuddle-declarations: true
+
+linters:
+  enable-all: true
+  disable:
+    - nlreturn
+    - exhaustivestruct
+    - exhaustruct
+    - cyclop
+    - gochecknoglobals
+    - gomoddirectives
+    - exhaustive
+    - funlen
+    - gofumpt
+    - godox # We ought to enable this at some point

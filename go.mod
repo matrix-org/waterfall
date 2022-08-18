@@ -10,8 +10,6 @@ require (
 	maunium.net/go/mautrix v0.11.0
 )
 
-replace maunium.net/go/mautrix v0.11.0 => ../mautrix-go
-
 require (
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/pion/datachannel v1.5.2 // indirect
@@ -38,3 +36,5 @@ require (
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
+
+replace maunium.net/go/mautrix => github.com/matrix-org/mautrix-go v0.0.0-20220817142816-160ea900a20b

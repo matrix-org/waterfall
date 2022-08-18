@@ -21,11 +21,10 @@ import (
 	"log"
 	"time"
 
+	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-
-	"github.com/pion/webrtc/v3"
 )
 
 type Call struct {
@@ -53,10 +52,12 @@ func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
 			StreamID: trackDesc.StreamID,
 			TrackID:  trackDesc.TrackID,
 		})
+
 		if len(foundTracks) == 0 {
 			log.Printf("%s | no track found StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
 			continue
 		}
+
 		for _, track := range foundTracks {
 			if _, err := c.PeerConnection.AddTrack(track); err == nil {
 				log.Printf("%s | added %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
@@ -84,6 +85,7 @@ func (c *Call) onDCPublish(sdp string) {
 		log.Printf("%s | failed to create answer - ignoring: %s", c.UserID, err)
 		return
 	}
+
 	err = c.PeerConnection.SetLocalDescription(offer)
 	if err != nil {
 		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
@@ -99,13 +101,13 @@ func (c *Call) onDCPublish(sdp string) {
 func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 	for _, trackDesc := range stop {
 		log.Printf("%s | unpublishing StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+
 		if removedTracksCount := c.Conf.RemoveTracksFromPeerConnectionsByInfo(LocalTrackInfo{
 			StreamID: trackDesc.StreamID,
 			TrackID:  trackDesc.TrackID,
 		}); removedTracksCount == 0 {
 			log.Printf("%s | no tracks to remove for: %+v", c.UserID, stop)
 		}
-
 	}
 
 	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -122,6 +124,7 @@ func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 		log.Printf("%s | failed to create answer - ignoring: %s", c.UserID, err)
 		return
 	}
+
 	err = c.PeerConnection.SetLocalDescription(offer)
 	if err != nil {
 		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
@@ -149,34 +152,33 @@ func (c *Call) onDCAnswer(sdp string) {
 
 func (c *Call) onDCAlive() {
 	c.lastKeepAliveTimestamp = time.Now()
-
 }
 
-func (c *Call) onDCMetadata(metadata event.CallSDPStreamMetadata) {
+func (c *Call) onDCMetadata() {
 	log.Printf("%s | received DC metadata", c.UserID)
 
 	c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 }
 
-func (c *Call) dataChannelHandler(d *webrtc.DataChannel) {
-	c.dataChannel = d
+func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
+	c.dataChannel = channel
 
-	d.OnOpen(func() {
+	channel.OnOpen(func() {
 		c.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationMetadata})
 	})
 
-	d.OnError(func(err error) {
+	channel.OnError(func(err error) {
 		log.Fatalf("%s | DC error: %s", c.CallID, err)
 	})
 
-	d.OnMessage(func(m webrtc.DataChannelMessage) {
-		if !m.IsString {
-			log.Printf("%s | inbound message is not string - ignoring: %+v", c.UserID, m)
+	channel.OnMessage(func(marshaledMsg webrtc.DataChannelMessage) {
+		if !marshaledMsg.IsString {
+			log.Printf("%s | inbound message is not string - ignoring: %+v", c.UserID, marshaledMsg)
 			return
 		}
 
 		msg := &event.SFUMessage{}
-		if err := json.Unmarshal(m.Data, msg); err != nil {
+		if err := json.Unmarshal(marshaledMsg.Data, msg); err != nil {
 			log.Printf("%s | failed to unmarshal %+v - ignoring: %s", c.CallID, msg, err)
 			return
 		}
@@ -197,7 +199,7 @@ func (c *Call) dataChannelHandler(d *webrtc.DataChannel) {
 		case event.SFUOperationAlive:
 			c.onDCAlive()
 		case event.SFUOperationMetadata:
-			c.onDCMetadata(msg.Metadata)
+			c.onDCMetadata()
 
 		default:
 			log.Printf("Unknown operation - ignoring: %s", msg.Op)
@@ -217,7 +219,9 @@ func (c *Call) negotiationNeededHandler() {
 		log.Printf("%s | failed to create offer - ignoring: %s", c.UserID, err)
 		return
 	}
+
 	err = c.PeerConnection.SetLocalDescription(offer)
+
 	if err != nil {
 		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
 		return
@@ -257,12 +261,22 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 	c.sendToDevice(event.CallCandidates, candidateEvtContent)
 }
 
-func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPReceiver) {
+func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote) {
 	go WriteRTCP(trackRemote, c.PeerConnection)
 
-	trackLocal, err := webrtc.NewTrackLocalStaticRTP(trackRemote.Codec().RTPCodecCapability, trackRemote.ID(), trackRemote.StreamID())
+	trackLocal, err := webrtc.NewTrackLocalStaticRTP(
+		trackRemote.Codec().RTPCodecCapability,
+		trackRemote.ID(),
+		trackRemote.StreamID(),
+	)
 	if err != nil {
-		log.Printf("%s | failed to create new track local static RTP %+v - ignoring: %s", c.UserID, trackRemote.Codec().RTPCodecCapability, err)
+		log.Printf(
+			"%s | failed to create new track local static RTP %+v - ignoring: %s",
+			c.UserID,
+			trackRemote.Codec().RTPCodecCapability,
+			err,
+		)
+
 		return
 	}
 
@@ -277,7 +291,13 @@ func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote, rec *webrtc.RTPRece
 	})
 	c.Conf.Tracks.Mutex.Unlock()
 
-	log.Printf("%s | published %s StreamID %s TrackID %s", c.UserID, trackLocal.Kind(), trackLocal.StreamID(), trackLocal.ID())
+	log.Printf(
+		"%s | published %s StreamID %s TrackID %s",
+		c.UserID,
+		trackLocal.Kind(),
+		trackLocal.StreamID(),
+		trackLocal.ID(),
+	)
 
 	go c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 	go CopyRemoteToLocal(trackRemote, trackLocal)
@@ -317,10 +337,11 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 	if err != nil {
 		log.Panicf("%s | failed to create new peer connection: %s", c.UserID, err)
 	}
+
 	c.PeerConnection = peerConnection
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		c.trackHandler(track, receiver)
+		c.trackHandler(track)
 	})
 	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
 		c.dataChannelHandler(d)
@@ -352,10 +373,12 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 
 	// TODO: trickle ICE for fast conn setup, rather than block here
 	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+
 	if err = peerConnection.SetLocalDescription(answer); err != nil {
 		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
 		return
 	}
+
 	<-gatherComplete
 
 	answerEvtContent := &event.Content{
@@ -387,7 +410,7 @@ func (c *Call) OnSelectAnswer(content *event.CallSelectAnswerEventContent) {
 	}
 }
 
-func (c *Call) OnHangup(content *event.CallHangupEventContent) {
+func (c *Call) OnHangup() {
 	c.Terminate()
 }
 
@@ -400,6 +423,7 @@ func (c *Call) OnCandidates(content *event.CallCandidatesEventContent) {
 			SDPMLineIndex:    &sdpMLineIndex,
 			UsernameFragment: new(string),
 		}
+
 		if err := c.PeerConnection.AddICECandidate(ice); err != nil {
 			log.Printf("%s | failed to add ICE candidate %+v: %s", c.UserID, content, err)
 		}
@@ -447,6 +471,7 @@ func (c *Call) sendToDevice(callType event.Type, content *event.Content) {
 	if callType.Type != event.CallCandidates.Type {
 		log.Printf("%s | sending to device %s", c.UserID, callType.Type)
 	}
+
 	toDevice := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
 			c.UserID: {
@@ -457,7 +482,9 @@ func (c *Call) sendToDevice(callType event.Type, content *event.Content) {
 
 	// TODO: E2EE
 	// TODO: to-device reliability
-	c.Client.SendToDevice(callType, toDevice)
+	if _, err := c.Client.SendToDevice(callType, toDevice); err != nil {
+		log.Printf("%s | error sending to-device %s: %s", c.UserID, callType.Type, err)
+	}
 }
 
 func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
@@ -492,6 +519,7 @@ func (c *Call) CheckKeepAliveTimestamp() {
 				log.Printf("%s | did not get keep-alive message in the last %s:", c.UserID, timeout)
 				c.Hangup(event.CallHangupKeepAliveTimeout)
 			}
+
 			break
 		}
 	}

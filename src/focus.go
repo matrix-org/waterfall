@@ -26,6 +26,8 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
+var ErrNoSuchConference = errors.New("no such conf")
+
 type Confs struct {
 	confsMu sync.RWMutex
 	confs   map[string]*Conference
@@ -38,33 +40,35 @@ type Focus struct {
 }
 
 func NewFocus(name string, client *mautrix.Client) *Focus {
-	f := new(Focus)
+	focus := new(Focus)
 
-	f.name = name
-	f.client = client
-	f.confs.confs = make(map[string]*Conference)
+	focus.name = name
+	focus.client = client
+	focus.confs.confs = make(map[string]*Conference)
 
-	return f
+	return focus
 }
 
 func (f *Focus) GetConf(confID string, create bool) (*Conference, error) {
 	f.confs.confsMu.Lock()
 	defer f.confs.confsMu.Unlock()
-	co := f.confs.confs[confID]
-	if co == nil {
+	conference := f.confs.confs[confID]
+
+	if conference == nil {
 		if create {
-			co = &Conference{
+			conference = &Conference{
 				ConfID: confID,
 			}
-			f.confs.confs[confID] = co
-			co.Calls.Calls = make(map[string]*Call)
-			co.Tracks.Tracks = []LocalTrackWithInfo{}
-			co.Metadata.Metadata = make(event.CallSDPStreamMetadata)
+			f.confs.confs[confID] = conference
+			conference.Calls.Calls = make(map[string]*Call)
+			conference.Tracks.Tracks = []LocalTrackWithInfo{}
+			conference.Metadata.Metadata = make(event.CallSDPStreamMetadata)
 		} else {
-			return nil, errors.New("no such conf")
+			return nil, ErrNoSuchConference
 		}
 	}
-	return co, nil
+
+	return conference, nil
 }
 
 func (f *Focus) getExistingCall(confID string, callID string) (*Call, error) {
@@ -76,10 +80,12 @@ func (f *Focus) getExistingCall(confID string, callID string) (*Call, error) {
 		log.Printf("failed to get conf %s: %s", confID, err)
 		return nil, err
 	}
+
 	if call, err = conf.GetCall(callID, false); err != nil || call == nil {
 		log.Printf("failed to get call %s: %s", callID, err)
 		return nil, err
 	}
+
 	return call, nil
 }
 
@@ -92,13 +98,17 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 	if !strings.HasPrefix(evt.Type.Type, "m.call.") && !strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
 		log.Printf("received non-call to-device event %s", evt.Type.Type)
 		return
-
 	} else if evt.Type.Type != event.ToDeviceCallCandidates.Type && evt.Type.Type != event.ToDeviceCallSelectAnswer.Type {
 		log.Printf("%s | received to-device event %s", evt.Sender.String(), evt.Type.Type)
 	}
 
 	if evt.Content.Raw["dest_session_id"] != localSessionID {
-		log.Printf("%s | SessionID %s does not match our SessionID - ignoring", evt.Content.Raw["dest_session_id"], localSessionID)
+		log.Printf(
+			"%s | SessionID %s does not match our SessionID - ignoring",
+			evt.Content.Raw["dest_session_id"],
+			localSessionID,
+		)
+
 		return
 	}
 
@@ -113,14 +123,17 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 			log.Printf("%s | failed to create conf %s: %+v", evt.Sender.String(), invite.ConfID, err)
 			return
 		}
+
 		if err := conf.RemoveOldCallsByDeviceAndSessionIDs(invite.DeviceID, invite.SenderSessionID); err != nil {
 			log.Printf("%s | error removing old calls - ignoring call: %+v", evt.Sender.String(), err)
 			return
 		}
+
 		if call, err = conf.GetCall(invite.CallID, true); err != nil || call == nil {
 			log.Printf("%s | failed to create call: %+v", evt.Sender.String(), err)
 			return
 		}
+
 		call.UserID = evt.Sender
 		call.DeviceID = invite.DeviceID
 		// XXX: What if an SFU gets restarted?
@@ -130,22 +143,25 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 		call.OnInvite(invite)
 	case event.ToDeviceCallCandidates.Type:
 		candidates := evt.Content.AsCallCandidates()
-		if call, err = f.getExistingCall((*candidates).ConfID, (*candidates).CallID); err != nil {
+		if call, err = f.getExistingCall(candidates.ConfID, candidates.CallID); err != nil {
 			return
 		}
+
 		call.OnCandidates(candidates)
 	case event.ToDeviceCallSelectAnswer.Type:
 		selectAnswer := evt.Content.AsCallSelectAnswer()
 		if call, err = f.getExistingCall(selectAnswer.ConfID, selectAnswer.CallID); err != nil {
 			return
 		}
+
 		call.OnSelectAnswer(selectAnswer)
 	case event.ToDeviceCallHangup.Type:
 		hangup := evt.Content.AsCallHangup()
 		if call, err = f.getExistingCall(hangup.ConfID, hangup.CallID); err != nil {
 			return
 		}
-		call.OnHangup(hangup)
+
+		call.OnHangup()
 	// Events we don't care about
 	case event.ToDeviceCallNegotiate.Type:
 		log.Printf("%s | ignoring event %s as should be handled over DC", evt.Sender.String(), evt.Type.Type)
