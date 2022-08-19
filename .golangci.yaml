@@ -16,4 +16,5 @@ linters:
     - exhaustive
     - funlen
     - gofumpt
+    - interfacer
     - godox # We ought to enable this at some point
