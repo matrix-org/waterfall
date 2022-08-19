@@ -18,8 +18,8 @@ package main
 
 import (
 	"fmt"
-	"log"
 
+	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 )
 
@@ -28,26 +28,26 @@ const localSessionID = "sfu"
 func InitMatrix() {
 	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
 	if err != nil {
-		log.Fatal("Failed to create client", err)
+		logrus.WithError(err).Fatal("Failed to create client")
 	}
 
 	whoami, err := client.Whoami()
 	if err != nil {
-		log.Fatal("Failed to identify SFU user", err)
+		logrus.WithError(err).Fatal("Failed to identify SFU user")
 	}
 
 	if config.UserID != whoami.UserID {
-		log.Fatalf("Access token is for the wrong user: %s", config.UserID)
+		logrus.WithField("user_id", config.UserID).Fatal("Access token is for the wrong user")
 	}
 
-	log.Printf("Identified SFU as device %s", whoami.DeviceID)
+	logrus.WithField("device_id", whoami.DeviceID).Info("Identified SFU as DeviceID")
 	client.DeviceID = whoami.DeviceID
 
 	focus := NewFocus(fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID), client)
 
 	syncer, ok := client.Syncer.(*mautrix.DefaultSyncer)
 	if !ok {
-		log.Panic("Syncer is not DefaultSyncer")
+		logrus.Panic("Syncer is not DefaultSyncer")
 	}
 
 	syncer.ParseEventContent = true
@@ -56,6 +56,6 @@ func InitMatrix() {
 	syncer.OnEvent(focus.onEvent)
 
 	if err = client.Sync(); err != nil {
-		log.Panic("Sync failed", err)
+		logrus.WithError(err).Panic("Sync failed")
 	}
 }

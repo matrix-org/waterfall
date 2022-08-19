@@ -18,10 +18,10 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"time"
 
 	"github.com/pion/webrtc/v3"
+	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -39,6 +39,7 @@ type Call struct {
 	dataChannel            *webrtc.DataChannel
 	lastKeepAliveTimestamp time.Time
 	sentEndOfCandidates    bool
+	logger                 *logrus.Entry
 }
 
 func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
@@ -47,48 +48,54 @@ func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
 	}
 
 	for _, trackDesc := range start {
-		log.Printf("%s | selecting StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+		trackLogger := c.logger.WithFields(logrus.Fields{
+			"track_id":  trackDesc.TrackID,
+			"stream_id": trackDesc.StreamID,
+		})
+
+		trackLogger.Info("selecting track")
+
 		foundTracks := c.Conf.GetLocalTrackByInfo(LocalTrackInfo{
 			StreamID: trackDesc.StreamID,
 			TrackID:  trackDesc.TrackID,
 		})
 
 		if len(foundTracks) == 0 {
-			log.Printf("%s | no track found StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+			trackLogger.Info("no track found")
 			continue
 		}
 
 		for _, track := range foundTracks {
 			if _, err := c.PeerConnection.AddTrack(track); err == nil {
-				log.Printf("%s | added %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
+				trackLogger.Info("added track")
 			} else {
-				log.Printf("%s | failed to add %s StreamID %s TrackID %s", c.UserID, track.Kind(), track.StreamID(), track.ID())
+				trackLogger.WithError(err).Error("failed to add track")
 			}
 		}
 	}
 }
 
 func (c *Call) onDCPublish(sdp string) {
-	log.Printf("%s | received DC publish", c.UserID)
+	c.logger.Info("received DC publish")
 
 	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  sdp,
 	})
 	if err != nil {
-		log.Printf("%s | failed to set remote description %+v - ignoring: %s", c.UserID, sdp, err)
+		c.logger.WithField("sdp", sdp).WithError(err).Error("failed to set remote description - ignoring")
 		return
 	}
 
 	offer, err := c.PeerConnection.CreateAnswer(nil)
 	if err != nil {
-		log.Printf("%s | failed to create answer - ignoring: %s", c.UserID, err)
+		c.logger.WithError(err).Error("failed to create answer - ignoring")
 		return
 	}
 
 	err = c.PeerConnection.SetLocalDescription(offer)
 	if err != nil {
-		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		c.logger.WithField("sdp", offer.SDP).WithError(err).Error("failed to set local description - ignoring")
 		return
 	}
 
@@ -100,13 +107,18 @@ func (c *Call) onDCPublish(sdp string) {
 
 func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 	for _, trackDesc := range stop {
-		log.Printf("%s | unpublishing StreamID %s TrackID %s", c.UserID, trackDesc.StreamID, trackDesc.TrackID)
+		trackLogger := c.logger.WithFields(logrus.Fields{
+			"track_id":  trackDesc.TrackID,
+			"stream_id": trackDesc.StreamID,
+		})
+
+		trackLogger.Info("unpublishing track")
 
 		if removedTracksCount := c.Conf.RemoveTracksFromPeerConnectionsByInfo(LocalTrackInfo{
 			StreamID: trackDesc.StreamID,
 			TrackID:  trackDesc.TrackID,
 		}); removedTracksCount == 0 {
-			log.Printf("%s | no tracks to remove for: %+v", c.UserID, stop)
+			trackLogger.Info("no tracks to remove")
 		}
 	}
 
@@ -115,19 +127,19 @@ func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 		SDP:  sdp,
 	})
 	if err != nil {
-		log.Printf("%s | failed to set remote description %+v - ignoring: %s", c.UserID, sdp, err)
+		c.logger.WithField("sdp", sdp).WithError(err).Error("failed to set remote description - ignoring")
 		return
 	}
 
 	offer, err := c.PeerConnection.CreateAnswer(nil)
 	if err != nil {
-		log.Printf("%s | failed to create answer - ignoring: %s", c.UserID, err)
+		c.logger.WithError(err).Error("failed to create answer - ignoring")
 		return
 	}
 
 	err = c.PeerConnection.SetLocalDescription(offer)
 	if err != nil {
-		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		c.logger.WithField("sdp", offer.SDP).WithError(err).Error("failed to set local description - ignoring")
 		return
 	}
 
@@ -138,14 +150,14 @@ func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 }
 
 func (c *Call) onDCAnswer(sdp string) {
-	log.Printf("%s | received DC answer", c.UserID)
+	c.logger.Info("received DC answer")
 
 	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeAnswer,
 		SDP:  sdp,
 	})
 	if err != nil {
-		log.Printf("%s | failed to set remote description %+v - ignoring: %s", c.UserID, sdp, err)
+		c.logger.WithField("sdp", sdp).WithError(err).Error("failed to set remote description - ignoring")
 		return
 	}
 }
@@ -155,7 +167,7 @@ func (c *Call) onDCAlive() {
 }
 
 func (c *Call) onDCMetadata() {
-	log.Printf("%s | received DC metadata", c.UserID)
+	c.logger.Info("received DC metadata")
 
 	c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 }
@@ -168,18 +180,18 @@ func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
 	})
 
 	channel.OnError(func(err error) {
-		log.Fatalf("%s | DC error: %s", c.CallID, err)
+		logrus.Fatalf("%s | DC error: %s", c.CallID, err)
 	})
 
 	channel.OnMessage(func(marshaledMsg webrtc.DataChannelMessage) {
 		if !marshaledMsg.IsString {
-			log.Printf("%s | inbound message is not string - ignoring: %+v", c.UserID, marshaledMsg)
+			c.logger.WithField("msg", marshaledMsg).Warn("inbound message is not string - ignoring")
 			return
 		}
 
 		msg := &event.SFUMessage{}
 		if err := json.Unmarshal(marshaledMsg.Data, msg); err != nil {
-			log.Printf("%s | failed to unmarshal %+v - ignoring: %s", c.CallID, msg, err)
+			c.logger.WithField("msg", marshaledMsg).WithError(err).Error("failed to unmarshal - ignoring")
 			return
 		}
 
@@ -202,7 +214,7 @@ func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
 			c.onDCMetadata()
 
 		default:
-			log.Printf("Unknown operation - ignoring: %s", msg.Op)
+			c.logger.WithField("op", msg.Op).Warn("Unknown operation - ignoring")
 			// TODO: hook up msg.Stop to unsubscribe from tracks
 			// TODO: hook cascade back up.
 			// As we're not an AS, we'd rely on the client
@@ -216,14 +228,13 @@ func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
 func (c *Call) negotiationNeededHandler() {
 	offer, err := c.PeerConnection.CreateOffer(nil)
 	if err != nil {
-		log.Printf("%s | failed to create offer - ignoring: %s", c.UserID, err)
+		c.logger.WithError(err).Error("failed to create offer - ignoring")
 		return
 	}
 
 	err = c.PeerConnection.SetLocalDescription(offer)
-
 	if err != nil {
-		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		c.logger.WithField("sdp", offer.SDP).WithError(err).Error("failed to set local description - ignoring")
 		return
 	}
 
@@ -262,7 +273,13 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 }
 
 func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote) {
-	go WriteRTCP(trackRemote, c.PeerConnection)
+	trackLogger := c.logger.WithFields(logrus.Fields{
+		"track_id":   trackRemote.ID(),
+		"track_kind": trackRemote.Kind(),
+		"stream_id":  trackRemote.StreamID(),
+	})
+
+	go WriteRTCP(trackRemote, c.PeerConnection, trackLogger)
 
 	trackLocal, err := webrtc.NewTrackLocalStaticRTP(
 		trackRemote.Codec().RTPCodecCapability,
@@ -270,12 +287,10 @@ func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote) {
 		trackRemote.StreamID(),
 	)
 	if err != nil {
-		log.Printf(
-			"%s | failed to create new track local static RTP %+v - ignoring: %s",
-			c.UserID,
-			trackRemote.Codec().RTPCodecCapability,
-			err,
-		)
+		trackLogger.
+			WithField("capability", trackRemote.Codec().RTPCodecCapability).
+			WithError(err).
+			Error("failed to create new track local static RTP - ignoring")
 
 		return
 	}
@@ -291,16 +306,10 @@ func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote) {
 	})
 	c.Conf.Tracks.Mutex.Unlock()
 
-	log.Printf(
-		"%s | published %s StreamID %s TrackID %s",
-		c.UserID,
-		trackLocal.Kind(),
-		trackLocal.StreamID(),
-		trackLocal.ID(),
-	)
+	trackLogger.Info("published track")
 
 	go c.Conf.SendUpdatedMetadataFromCall(c.CallID)
-	go CopyRemoteToLocal(trackRemote, trackLocal)
+	go CopyRemoteToLocal(trackRemote, trackLocal, trackLogger)
 }
 
 func (c *Call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
@@ -335,7 +344,7 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
-		log.Panicf("%s | failed to create new peer connection: %s", c.UserID, err)
+		logrus.WithError(err).Error("failed to create new peer connection")
 	}
 
 	c.PeerConnection = peerConnection
@@ -361,13 +370,13 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 		SDP:  offer.SDP,
 	})
 	if err != nil {
-		log.Printf("%s | failed to set remote description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		c.logger.WithField("sdp", offer.SDP).WithError(err).Error("failed to set remote description - ignoring")
 		return
 	}
 
 	answer, err := peerConnection.CreateAnswer(nil)
 	if err != nil {
-		log.Printf("%s | failed to create answer - ignoring: %s", c.UserID, err)
+		c.logger.WithError(err).Error("failed to create answer - ignoring")
 		return
 	}
 
@@ -375,7 +384,7 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 
 	if err = peerConnection.SetLocalDescription(answer); err != nil {
-		log.Printf("%s | failed to set local description %+v - ignoring: %s", c.UserID, offer.SDP, err)
+		c.logger.WithField("sdp", offer.SDP).WithError(err).Error("failed to set local description - ignoring")
 		return
 	}
 
@@ -405,8 +414,8 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 func (c *Call) OnSelectAnswer(content *event.CallSelectAnswerEventContent) {
 	selectedPartyID := content.SelectedPartyID
 	if selectedPartyID != string(c.Client.DeviceID) {
+		c.logger.WithField("selected_party_id", selectedPartyID).Warn("call was answered on a different device")
 		c.Terminate()
-		log.Printf("%s | call was answered on a different device: %s", c.UserID, selectedPartyID)
 	}
 }
 
@@ -425,16 +434,16 @@ func (c *Call) OnCandidates(content *event.CallCandidatesEventContent) {
 		}
 
 		if err := c.PeerConnection.AddICECandidate(ice); err != nil {
-			log.Printf("%s | failed to add ICE candidate %+v: %s", c.UserID, content, err)
+			c.logger.WithField("content", content).WithError(err).Error("failed to add ICE candidate")
 		}
 	}
 }
 
 func (c *Call) Terminate() {
-	log.Printf("%s | terminating call", c.UserID)
+	c.logger.Info("terminating call")
 
 	if err := c.PeerConnection.Close(); err != nil {
-		log.Printf("%s | error closing peer connection: %s", c.UserID, err)
+		c.logger.WithError(err).Error("error closing peer connection")
 	}
 
 	c.Conf.Calls.CallsMu.Lock()
@@ -468,8 +477,12 @@ func (c *Call) Hangup(reason event.CallHangupReason) {
 }
 
 func (c *Call) sendToDevice(callType event.Type, content *event.Content) {
+	evtLogger := c.logger.WithFields(logrus.Fields{
+		"type": callType.Type,
+	})
+
 	if callType.Type != event.CallCandidates.Type {
-		log.Printf("%s | sending to device %s", c.UserID, callType.Type)
+		evtLogger.Info("sending to device")
 	}
 
 	toDevice := &mautrix.ReqSendToDevice{
@@ -483,7 +496,7 @@ func (c *Call) sendToDevice(callType event.Type, content *event.Content) {
 	// TODO: E2EE
 	// TODO: to-device reliability
 	if _, err := c.Client.SendToDevice(callType, toDevice); err != nil {
-		log.Printf("%s | error sending to-device %s: %s", c.UserID, callType.Type, err)
+		evtLogger.WithField("content", content).WithError(err).Error("error sending to-device")
 	}
 }
 
@@ -492,6 +505,10 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 		return
 	}
 
+	evtLogger := c.logger.WithFields(logrus.Fields{
+		"op": msg.Op,
+	})
+
 	msg.Metadata = c.Conf.GetRemoteMetadataForDevice(c.DeviceID)
 	if msg.Op == "metadata" && len(msg.Metadata) == 0 {
 		return
@@ -499,16 +516,16 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 
 	marshaled, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("%s | failed to marshal %+v - ignoring: %s", c.UserID, msg, err)
+		evtLogger.WithField("msg", msg).WithError(err).Error("failed to marshal - ignoring")
 		return
 	}
 
 	err = c.dataChannel.SendText(string(marshaled))
 	if err != nil {
-		log.Printf("%s | failed to send %s over DC: %s", c.UserID, msg.Op, err)
+		evtLogger.WithField("msg", msg).WithError(err).Error("failed to send message over DC")
 	}
 
-	log.Printf("%s | sent DC %s", c.UserID, msg.Op)
+	evtLogger.Info("sent message over DC")
 }
 
 func (c *Call) CheckKeepAliveTimestamp() {
@@ -516,7 +533,7 @@ func (c *Call) CheckKeepAliveTimestamp() {
 	for range time.Tick(timeout) {
 		if c.lastKeepAliveTimestamp.Add(timeout).Before(time.Now()) {
 			if c.PeerConnection.ConnectionState() != webrtc.PeerConnectionStateClosed {
-				log.Printf("%s | did not get keep-alive message in the last %s:", c.UserID, timeout)
+				c.logger.WithField("timeout", timeout).Warn("did not get keep-alive message")
 				c.Hangup(event.CallHangupKeepAliveTimeout)
 			}
 

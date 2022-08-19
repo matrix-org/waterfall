@@ -19,18 +19,22 @@ package main
 import (
 	"errors"
 	"io"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
+	"github.com/sirupsen/logrus"
 )
 
 const pliInterval = 200
 const bufferSize = 1500
 
-func CopyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.TrackLocalStaticRTP) {
+func CopyRemoteToLocal(
+	trackRemote *webrtc.TrackRemote,
+	trackLocal *webrtc.TrackLocalStaticRTP,
+	trackLogger *logrus.Entry,
+) {
 	buff := make([]byte, bufferSize)
 
 	for {
@@ -38,7 +42,7 @@ func CopyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.Track
 
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				log.Printf("failed read on StreamID %s TrackID %s: %s", trackLocal.StreamID(), trackRemote.ID(), err)
+				trackLogger.WithError(err).Warn("failed to read track")
 			}
 
 			break
@@ -46,7 +50,7 @@ func CopyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.Track
 
 		if _, err = trackLocal.Write(buff[:index]); err != nil {
 			if !errors.Is(err, io.ErrClosedPipe) {
-				log.Printf("failed write on StreamID %s TrackID %s: %s", trackLocal.StreamID(), trackLocal.ID(), err)
+				trackLogger.WithError(err).Warn("failed to write to track")
 			}
 
 			break
@@ -54,7 +58,11 @@ func CopyRemoteToLocal(trackRemote *webrtc.TrackRemote, trackLocal *webrtc.Track
 	}
 }
 
-func WriteRTCP(trackRemote *webrtc.TrackRemote, peerConnection *webrtc.PeerConnection) {
+func WriteRTCP(
+	trackRemote *webrtc.TrackRemote,
+	peerConnection *webrtc.PeerConnection,
+	trackLogger *logrus.Entry,
+) {
 	if !strings.Contains(trackRemote.Codec().MimeType, "video") {
 		return
 	}
@@ -69,7 +77,7 @@ func WriteRTCP(trackRemote *webrtc.TrackRemote, peerConnection *webrtc.PeerConne
 		err := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(trackRemote.SSRC())}})
 		if err != nil {
 			if !errors.Is(err, io.ErrClosedPipe) {
-				log.Printf("ending RTCP write on TrackID %s: %s", trackRemote.ID(), err)
+				trackLogger.WithError(err).Warn("ending RTCP write on track")
 			}
 
 			break

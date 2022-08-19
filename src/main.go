@@ -20,13 +20,13 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
 	"syscall"
 
+	"github.com/sirupsen/logrus"
 	yaml "gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix/id"
 )
@@ -46,66 +46,66 @@ var cpuProfile = flag.String("cpuProfile", "", "write CPU profile to `file`")
 var memProfile = flag.String("memProfile", "", "write memory profile to `file`")
 
 func initCPUProfiling(cpuProfile *string) func() {
-	log.Print("initializing CPU profiling")
+	logrus.Info("initializing CPU profiling")
 
 	file, err := os.Create(*cpuProfile)
 	if err != nil {
-		log.Fatalf("could not create CPU profile: %s", err)
+		logrus.WithError(err).Fatal("could not create CPU profile")
 	}
 
 	if err := pprof.StartCPUProfile(file); err != nil {
-		log.Fatalf("could not start CPU profile: %s", err)
+		logrus.WithError(err).Fatal("could not start CPU profile")
 	}
 
 	return func() {
 		pprof.StopCPUProfile()
 
 		if err := file.Close(); err != nil {
-			log.Fatalf("could not close CPU profile: %s", err)
+			logrus.WithError(err).Fatal("could not close CPU profile")
 		}
 	}
 }
 
 func initMemoryProfiling(memProfile *string) func() {
-	log.Print("initializing memory profiling")
+	logrus.Info("initializing memory profiling")
 
 	return func() {
 		file, err := os.Create(*memProfile)
 		if err != nil {
-			log.Fatalf("could not create memory profile: %s", err)
+			logrus.WithError(err).Fatal("could not create memory profile")
 		}
 
 		runtime.GC()
 
 		if err := pprof.WriteHeapProfile(file); err != nil {
-			log.Fatalf("could not write memory profile: %s", err)
+			logrus.WithError(err).Fatal("could not write memory profile")
 		}
 
 		if err = file.Close(); err != nil {
-			log.Fatalf("could not close memory profile: %s", err)
+			logrus.WithError(err).Fatal("could not close memory profile")
 		}
 	}
 }
 
 func initLogging(logTime *bool) {
-	log.SetFlags(0)
+	formatter := new(CustomTextFormatter)
 
-	if *logTime {
-		log.SetFlags(log.Ldate | log.Ltime)
-	}
+	formatter.logTime = *logTime
+
+	logrus.SetFormatter(formatter)
 }
 
 func loadConfig(configFilePath string) (*Config, error) {
-	log.Printf("loading %s", configFilePath)
+	logrus.WithField("path", configFilePath).Info("loading config")
 
 	file, err := ioutil.ReadFile(configFilePath)
 	if err != nil {
-		log.Fatalf("failed to read config: %s", err)
+		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 	var config Config
 
 	if err := yaml.Unmarshal(file, &config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal YAML: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
 	}
 
 	return &config, nil
@@ -113,7 +113,6 @@ func loadConfig(configFilePath string) (*Config, error) {
 
 func killListener(c chan os.Signal, beforeExit []func()) {
 	<-c
-	log.Printf("ending program")
 
 	for _, function := range beforeExit {
 		function()
@@ -145,7 +144,7 @@ func main() {
 
 	var err error
 	if config, err = loadConfig(*configFilePath); err != nil {
-		log.Fatalf("failed to load config file: %s", err)
+		logrus.WithError(err).Fatal("failed to load config file")
 	}
 
 	InitMatrix()

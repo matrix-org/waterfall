@@ -18,10 +18,10 @@ package main
 
 import (
 	"errors"
-	"log"
 	"strings"
 	"sync"
 
+	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 )
@@ -37,6 +37,7 @@ type Focus struct {
 	name   string
 	client *mautrix.Client
 	confs  Confs
+	logger *logrus.Entry
 }
 
 func NewFocus(name string, client *mautrix.Client) *Focus {
@@ -45,6 +46,7 @@ func NewFocus(name string, client *mautrix.Client) *Focus {
 	focus.name = name
 	focus.client = client
 	focus.confs.confs = make(map[string]*Conference)
+	focus.logger = logrus.WithFields(logrus.Fields{})
 
 	return focus
 }
@@ -63,6 +65,9 @@ func (f *Focus) GetConf(confID string, create bool) (*Conference, error) {
 			conference.Calls.Calls = make(map[string]*Call)
 			conference.Tracks.Tracks = []LocalTrackWithInfo{}
 			conference.Metadata.Metadata = make(event.CallSDPStreamMetadata)
+			conference.logger = logrus.WithFields(logrus.Fields{
+				"conf_id": confID,
+			})
 		} else {
 			return nil, ErrNoSuchConference
 		}
@@ -77,12 +82,12 @@ func (f *Focus) getExistingCall(confID string, callID string) (*Call, error) {
 	var err error
 
 	if conf, err = f.GetConf(confID, false); err != nil || conf == nil {
-		log.Printf("failed to get conf %s: %s", confID, err)
+		f.logger.Printf("failed to get conf %s: %s", confID, err)
 		return nil, err
 	}
 
 	if call, err = conf.GetCall(callID, false); err != nil || call == nil {
-		log.Printf("failed to get call %s: %s", callID, err)
+		f.logger.Printf("failed to get call %s: %s", callID, err)
 		return nil, err
 	}
 
@@ -95,20 +100,21 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 		return
 	}
 
+	evtLogger := f.logger.WithFields(logrus.Fields{
+		"type":    evt.Type.Type,
+		"user_id": evt.Sender.String(),
+		"conf_id": evt.Content.Raw["conf_id"],
+	})
+
 	if !strings.HasPrefix(evt.Type.Type, "m.call.") && !strings.HasPrefix(evt.Type.Type, "org.matrix.call.") {
-		log.Printf("received non-call to-device event %s", evt.Type.Type)
+		evtLogger.Warn("received non-call to-device event")
 		return
 	} else if evt.Type.Type != event.ToDeviceCallCandidates.Type && evt.Type.Type != event.ToDeviceCallSelectAnswer.Type {
-		log.Printf("%s | received to-device event %s", evt.Sender.String(), evt.Type.Type)
+		evtLogger.Info("received to-device event")
 	}
 
 	if evt.Content.Raw["dest_session_id"] != localSessionID {
-		log.Printf(
-			"%s | SessionID %s does not match our SessionID - ignoring",
-			evt.Content.Raw["dest_session_id"],
-			localSessionID,
-		)
-
+		evtLogger.WithField("dest_session_id", localSessionID).Warn("SessionID does not match our SessionID - ignoring")
 		return
 	}
 
@@ -120,17 +126,20 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 	case event.ToDeviceCallInvite.Type:
 		invite := evt.Content.AsCallInvite()
 		if conf, err = f.GetConf(invite.ConfID, true); err != nil {
-			log.Printf("%s | failed to create conf %s: %+v", evt.Sender.String(), invite.ConfID, err)
+			evtLogger.WithError(err).WithFields(logrus.Fields{
+				"conf_id": invite.ConfID,
+			}).Error("failed to create conf")
+
 			return
 		}
 
 		if err := conf.RemoveOldCallsByDeviceAndSessionIDs(invite.DeviceID, invite.SenderSessionID); err != nil {
-			log.Printf("%s | error removing old calls - ignoring call: %+v", evt.Sender.String(), err)
+			evtLogger.WithError(err).Error("error removing old calls - ignoring call")
 			return
 		}
 
 		if call, err = conf.GetCall(invite.CallID, true); err != nil || call == nil {
-			log.Printf("%s | failed to create call: %+v", evt.Sender.String(), err)
+			evtLogger.WithError(err).Error("failed to create call")
 			return
 		}
 
@@ -140,6 +149,10 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 		call.LocalSessionID = localSessionID
 		call.RemoteSessionID = invite.SenderSessionID
 		call.Client = f.client
+		call.logger = logrus.WithFields(logrus.Fields{
+			"user_id": evt.Sender,
+			"conf_id": invite.ConfID,
+		})
 		call.OnInvite(invite)
 	case event.ToDeviceCallCandidates.Type:
 		candidates := evt.Content.AsCallCandidates()
@@ -164,11 +177,11 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 		call.OnHangup()
 	// Events we don't care about
 	case event.ToDeviceCallNegotiate.Type:
-		log.Printf("%s | ignoring event %s as should be handled over DC", evt.Sender.String(), evt.Type.Type)
+		evtLogger.Warn("ignoring event as it should be handled over DC")
 	case event.ToDeviceCallReject.Type:
 	case event.ToDeviceCallAnswer.Type:
-		log.Printf("%s | ignoring event %s as we are always the ones answering", evt.Sender.String(), evt.Type.Type)
+		evtLogger.Warn("ignoring event as we are always the ones answering")
 	default:
-		log.Printf("%s | ignoring unrecognised to-device event of type %s", evt.Sender.String(), evt.Type.Type)
+		evtLogger.Warn("ignoring unrecognised event")
 	}
 }

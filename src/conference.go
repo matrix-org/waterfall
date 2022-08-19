@@ -18,10 +18,10 @@ package main
 
 import (
 	"errors"
-	"log"
 	"sync"
 
 	"github.com/pion/webrtc/v3"
+	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -60,6 +60,7 @@ type Conference struct {
 	Calls    Calls
 	Tracks   Tracks
 	Metadata Metadata
+	logger   *logrus.Entry
 }
 
 func (c *Conference) GetCall(callID string, create bool) (*Call, error) {
@@ -135,20 +136,20 @@ func (c *Conference) RemoveTracksFromPeerConnectionsByInfo(removeInfo LocalTrack
 		for _, call := range c.Calls.Calls {
 			for _, sender := range call.PeerConnection.GetSenders() {
 				if info.TrackID == sender.Track().ID() {
-					log.Printf(
-						"%s | removing %s StreamID %s TrackID %s",
-						call.UserID,
-						sender.Track().Kind(),
-						sender.Track().StreamID(),
-						sender.Track().ID(),
-					)
+					trackLogger := c.logger.WithFields(logrus.Fields{
+						"user_id":    call.UserID,
+						"track_kind": sender.Track().Kind(),
+						"stream_id":  sender.Track().StreamID(),
+						"track_id":   sender.Track().ID(),
+					})
+					trackLogger.Info("removing track")
 
 					if err := sender.Stop(); err != nil {
-						log.Printf("%s | failed to stop sender: %s", call.UserID, err)
+						trackLogger.WithError(err).Error("failed to stop sender")
 					}
 
 					if err := call.PeerConnection.RemoveTrack(sender); err != nil {
-						log.Printf("%s | failed to remove track: %s", call.UserID, err)
+						trackLogger.WithError(err).Error("failed to remove track")
 					}
 				}
 			}
