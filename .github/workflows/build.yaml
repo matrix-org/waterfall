@@ -14,3 +14,7 @@ jobs:
         uses: actions/setup-go@v3
       - name: Build
         run: "./scripts/build.sh"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bin
+          path: ./dist/bin
