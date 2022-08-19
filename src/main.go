@@ -88,12 +88,9 @@ func initMemoryProfiling(memProfile *string) func() {
 }
 
 func initLogging(logTime *bool) {
-	formatter := new(logrus.TextFormatter)
+	formatter := new(CustomTextFormatter)
 
-	if *logTime {
-		formatter.FullTimestamp = true
-		formatter.TimestampFormat = "2006-01-02 15:04:05"
-	}
+	formatter.logTime = *logTime
 
 	logrus.SetFormatter(formatter)
 }
