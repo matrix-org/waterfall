@@ -1,0 +1,20 @@
+name: Build
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup go
+        uses: actions/setup-go@v3
+      - name: Build
+        run: "./scripts/build.sh"
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bin
+          path: ./dist/bin
