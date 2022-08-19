@@ -46,9 +46,7 @@ func NewFocus(name string, client *mautrix.Client) *Focus {
 	focus.name = name
 	focus.client = client
 	focus.confs.confs = make(map[string]*Conference)
-	focus.logger = logrus.WithFields(logrus.Fields{
-		"name": name,
-	})
+	focus.logger = logrus.WithFields(logrus.Fields{})
 
 	return focus
 }
