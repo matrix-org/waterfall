@@ -509,9 +509,11 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 		"op": msg.Op,
 	})
 
-	msg.Metadata = c.Conf.GetRemoteMetadataForDevice(c.DeviceID)
-	if msg.Op == "metadata" && len(msg.Metadata) == 0 {
-		return
+	if msg.Metadata == nil {
+		msg.Metadata = c.Conf.GetRemoteMetadataForDevice(c.DeviceID)
+		if msg.Op == "metadata" && len(msg.Metadata) == 0 {
+			return
+		}
 	}
 
 	marshaled, err := json.Marshal(msg)
