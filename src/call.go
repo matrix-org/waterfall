@@ -18,6 +18,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pion/webrtc/v3"
@@ -66,10 +68,47 @@ func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
 		}
 
 		for _, track := range foundTracks {
-			if _, err := c.PeerConnection.AddTrack(track); err == nil {
-				trackLogger.Info("added track")
-			} else {
-				trackLogger.WithError(err).Error("failed to add track")
+			for _, sender := range c.PeerConnection.GetSenders() {
+
+				streamID := sender.Track().StreamID()
+				trackID := sender.Track().ID()
+
+				if strings.HasPrefix(sender.Track().ID(), "empty") && sender.Track().Kind() == track.Kind() {
+					sender.ReplaceTrack(track)
+
+					c.logger.WithFields(logrus.Fields{
+						"track_id":  sender.Track().ID(),
+						"stream_id": sender.Track().StreamID(),
+					}).Info("found usable sender")
+
+					var metadata event.CallSDPStreamMetadataObject
+
+					for streamID, meta := range c.Conf.Metadata.Metadata {
+						if streamID == track.StreamID() {
+							metadata = meta
+						}
+
+						break
+					}
+
+					c.SendDataChannelMessage(event.SFUMessage{
+						Op: "metadata",
+						Metadata: event.CallSDPStreamMetadata{
+							streamID: event.CallSDPStreamMetadataObject{
+								UserID:     metadata.UserID,
+								DeviceID:   metadata.DeviceID,
+								Purpose:    metadata.Purpose,
+								AudioMuted: metadata.AudioMuted,
+								VideoMuted: metadata.VideoMuted,
+								Tracks: event.CallSDPStreamMetadataTracks{
+									trackID: {},
+								},
+							},
+						},
+					})
+
+					break
+				}
 			}
 		}
 	}
@@ -372,6 +411,22 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 	if err != nil {
 		c.logger.WithField("sdp", offer.SDP).WithError(err).Error("failed to set remote description - ignoring")
 		return
+	}
+
+	for index, t := range c.PeerConnection.GetTransceivers() {
+		trackLocal, err := webrtc.NewTrackLocalStaticRTP(
+			// FIXME: We naively expect all clients to support this codec for sending
+			t.Receiver().GetParameters().Codecs[0].RTPCodecCapability,
+			"emptyTrack"+fmt.Sprint(index),
+			"emptyStream"+fmt.Sprint(index),
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		c.logger.WithField("id", index).Info("TransID")
+
+		peerConnection.AddTrack(trackLocal)
 	}
 
 	answer, err := peerConnection.CreateAnswer(nil)
