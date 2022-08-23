@@ -63,7 +63,6 @@ func (f *Focus) GetConf(confID string, create bool) (*Conference, error) {
 			}
 			f.confs.confs[confID] = conference
 			conference.Calls.Calls = make(map[string]*Call)
-			conference.Tracks.Tracks = []LocalTrackWithInfo{}
 			conference.Metadata.Metadata = make(event.CallSDPStreamMetadata)
 			conference.logger = logrus.WithFields(logrus.Fields{
 				"conf_id": confID,

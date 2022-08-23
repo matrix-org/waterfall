@@ -18,8 +18,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v3"
@@ -30,6 +29,7 @@ import (
 )
 
 type Call struct {
+	mutex                  sync.RWMutex
 	CallID                 string
 	UserID                 id.UserID
 	DeviceID               id.DeviceID
@@ -38,10 +38,12 @@ type Call struct {
 	Client                 *mautrix.Client
 	PeerConnection         *webrtc.PeerConnection
 	Conf                   *Conference
+	Publishers             []*Publisher
 	dataChannel            *webrtc.DataChannel
 	lastKeepAliveTimestamp time.Time
 	sentEndOfCandidates    bool
 	logger                 *logrus.Entry
+	subscribers            []*Subscriber
 }
 
 func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
@@ -57,91 +59,50 @@ func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
 
 		trackLogger.Info("selecting track")
 
-		foundTracks := c.Conf.GetLocalTrackByInfo(LocalTrackInfo{
-			StreamID: trackDesc.StreamID,
-			TrackID:  trackDesc.TrackID,
-		})
+		for _, publisher := range c.Conf.GetPublishers() {
+			if !publisher.Matches(trackDesc) {
+				continue
+			}
 
-		if len(foundTracks) == 0 {
-			trackLogger.Info("no track found")
-			continue
-		}
+			streamID := ""
 
-		for _, track := range foundTracks {
-			for _, sender := range c.PeerConnection.GetSenders() {
-
-				streamID := sender.Track().StreamID()
-				trackID := sender.Track().ID()
-
-				if strings.HasPrefix(sender.Track().ID(), "empty") && sender.Track().Kind() == track.Kind() {
-					sender.ReplaceTrack(track)
-
-					c.logger.WithFields(logrus.Fields{
-						"track_id":  sender.Track().ID(),
-						"stream_id": sender.Track().StreamID(),
-					}).Info("found usable sender")
-
-					var metadata event.CallSDPStreamMetadataObject
-
-					for streamID, meta := range c.Conf.Metadata.Metadata {
-						if streamID == track.StreamID() {
-							metadata = meta
-						}
-
-						break
-					}
-
-					c.SendDataChannelMessage(event.SFUMessage{
-						Op: "metadata",
-						Metadata: event.CallSDPStreamMetadata{
-							streamID: event.CallSDPStreamMetadataObject{
-								UserID:     metadata.UserID,
-								DeviceID:   metadata.DeviceID,
-								Purpose:    metadata.Purpose,
-								AudioMuted: metadata.AudioMuted,
-								VideoMuted: metadata.VideoMuted,
-								Tracks: event.CallSDPStreamMetadataTracks{
-									trackID: {},
-								},
-							},
-						},
-					})
-
-					break
+			// If there already exists a subscriber subscribing to a publisher
+			// with the same streamID as the publisher we're going to subscribe
+			// to, use its streamID to correctly group tracks
+			for _, subscriber := range c.subscribers {
+				if subscriber.GetPublisher() != nil && subscriber.GetPublisher().track.StreamID() == publisher.track.StreamID() {
+					streamID = subscriber.track.StreamID()
 				}
+			}
+
+			for _, subscriber := range c.subscribers {
+				if !subscriber.CanSubscribe(publisher, streamID) {
+					continue
+				}
+
+				subscriber.Subscribe(publisher)
+
+				c.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationMetadata})
+
+				break
 			}
 		}
 	}
 }
 
-func (c *Call) onDCPublish(sdp string) {
+func (c *Call) onDCPublish(start []event.SFUTrackDescription) {
 	c.logger.Info("received DC publish")
 
-	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
-		SDP:  sdp,
-	})
-	if err != nil {
-		c.logger.WithField("sdp", sdp).WithError(err).Error("failed to set remote description - ignoring")
-		return
+	for _, description := range start {
+		for _, transceiver := range c.PeerConnection.GetTransceivers() {
+			track := transceiver.Receiver().Track()
+			if track.ID() == description.TrackID && track.StreamID() == description.StreamID {
+				// TODO: Start receiver somehow
+				c.trackHandler(track)
+				break
+			}
+		}
 	}
-
-	offer, err := c.PeerConnection.CreateAnswer(nil)
-	if err != nil {
-		c.logger.WithError(err).Error("failed to create answer - ignoring")
-		return
-	}
-
-	err = c.PeerConnection.SetLocalDescription(offer)
-	if err != nil {
-		c.logger.WithField("sdp", offer.SDP).WithError(err).Error("failed to set local description - ignoring")
-		return
-	}
-
-	c.SendDataChannelMessage(event.SFUMessage{
-		Op:  event.SFUOperationAnswer,
-		SDP: offer.SDP,
-	})
 }
 
 func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
@@ -151,14 +112,8 @@ func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 			"stream_id": trackDesc.StreamID,
 		})
 
+		// TODO: This should actually do something
 		trackLogger.Info("unpublishing track")
-
-		if removedTracksCount := c.Conf.RemoveTracksFromPeerConnectionsByInfo(LocalTrackInfo{
-			StreamID: trackDesc.StreamID,
-			TrackID:  trackDesc.TrackID,
-		}); removedTracksCount == 0 {
-			trackLogger.Info("no tracks to remove")
-		}
 	}
 
 	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -215,7 +170,7 @@ func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
 	c.dataChannel = channel
 
 	channel.OnOpen(func() {
-		c.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationMetadata})
+		c.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationPublish})
 	})
 
 	channel.OnError(func(err error) {
@@ -242,7 +197,7 @@ func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
 		case event.SFUOperationSelect:
 			c.onDCSelect(msg.Start)
 		case event.SFUOperationPublish:
-			c.onDCPublish(msg.SDP)
+			c.onDCPublish(msg.Start)
 		case event.SFUOperationUnpublish:
 			c.onDCUnpublish(msg.Stop, msg.SDP)
 		case event.SFUOperationAnswer:
@@ -320,35 +275,15 @@ func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote) {
 
 	go WriteRTCP(trackRemote, c.PeerConnection, trackLogger)
 
-	trackLocal, err := webrtc.NewTrackLocalStaticRTP(
-		trackRemote.Codec().RTPCodecCapability,
-		trackRemote.ID(),
-		trackRemote.StreamID(),
-	)
-	if err != nil {
-		trackLogger.
-			WithField("capability", trackRemote.Codec().RTPCodecCapability).
-			WithError(err).
-			Error("failed to create new track local static RTP - ignoring")
+	publisher := NewPublisher(trackRemote, c)
 
-		return
-	}
-
-	c.Conf.Tracks.Mutex.Lock()
-	c.Conf.Tracks.Tracks = append(c.Conf.Tracks.Tracks, LocalTrackWithInfo{
-		Track: trackLocal,
-		Info: LocalTrackInfo{
-			TrackID:  trackLocal.ID(),
-			StreamID: trackLocal.StreamID(),
-			Call:     c,
-		},
-	})
-	c.Conf.Tracks.Mutex.Unlock()
+	c.mutex.Lock()
+	c.Publishers = append(c.Publishers, publisher)
+	c.mutex.Unlock()
 
 	trackLogger.Info("published track")
 
 	go c.Conf.SendUpdatedMetadataFromCall(c.CallID)
-	go CopyRemoteToLocal(trackRemote, trackLocal, trackLogger)
 }
 
 func (c *Call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
@@ -381,6 +316,7 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 	c.Conf.UpdateSDPStreamMetadata(c.DeviceID, content.SDPStreamMetadata)
 	offer := content.Offer
 
+	//peerConnection, err := c.Conf.api.NewPeerConnection(webrtc.Configuration{})
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		logrus.WithError(err).Error("failed to create new peer connection")
@@ -413,20 +349,57 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 		return
 	}
 
-	for index, t := range c.PeerConnection.GetTransceivers() {
+	lastAudioTrackStreamID := ""
+	lastVideoTrackStreamID := ""
+
+	for _, transceiver := range c.PeerConnection.GetTransceivers() {
+		trackID, err := GenerateID()
+		if err != nil {
+			c.logger.WithError(err).Error("failed to generate trackID")
+		}
+
+		// FIXME: Can this be done any better?
+		streamID := ""
+		if lastAudioTrackStreamID == lastVideoTrackStreamID {
+			streamID, err = GenerateID()
+			if err != nil {
+				c.logger.WithError(err).Error("failed to generate streamID")
+			}
+
+			if transceiver.Kind() == webrtc.RTPCodecTypeAudio {
+				lastAudioTrackStreamID = streamID
+				lastVideoTrackStreamID = ""
+			} else {
+				lastVideoTrackStreamID = streamID
+				lastAudioTrackStreamID = ""
+			}
+		} else if transceiver.Kind() == webrtc.RTPCodecTypeAudio && lastAudioTrackStreamID == "" {
+			streamID = lastVideoTrackStreamID
+			lastAudioTrackStreamID = streamID
+		} else if transceiver.Kind() == webrtc.RTPCodecTypeVideo && lastVideoTrackStreamID == "" {
+			streamID = lastAudioTrackStreamID
+			lastVideoTrackStreamID = streamID
+		}
+
 		trackLocal, err := webrtc.NewTrackLocalStaticRTP(
 			// FIXME: We naively expect all clients to support this codec for sending
-			t.Receiver().GetParameters().Codecs[0].RTPCodecCapability,
-			"emptyTrack"+fmt.Sprint(index),
-			"emptyStream"+fmt.Sprint(index),
+			transceiver.Receiver().GetParameters().Codecs[0].RTPCodecCapability,
+			trackID,
+			streamID,
 		)
 		if err != nil {
 			panic(err)
 		}
 
-		c.logger.WithField("id", index).Info("TransID")
+		if _, err := peerConnection.AddTrack(trackLocal); err != nil {
+			c.logger.WithError(err).Error("Failed to add track during pool setup")
+		}
 
-		peerConnection.AddTrack(trackLocal)
+		subscriber := NewSubscriber(trackLocal, c)
+
+		c.mutex.Lock()
+		c.subscribers = append(c.subscribers, subscriber)
+		c.mutex.Unlock()
 	}
 
 	answer, err := peerConnection.CreateAnswer(nil)
@@ -505,10 +478,16 @@ func (c *Call) Terminate() {
 	delete(c.Conf.Calls.Calls, c.CallID)
 	c.Conf.Calls.CallsMu.Unlock()
 
-	info := LocalTrackInfo{Call: c}
-	c.Conf.RemoveTracksFromPeerConnectionsByInfo(info)
-	c.Conf.RemoveTracksFromConfByInfo(info)
-	c.Conf.RemoveMetadataByDeviceID(c.DeviceID)
+	for _, publisher := range c.Publishers {
+		for _, subscriber := range publisher.GetSubscribers() {
+			subscriber.Unsubscribe()
+		}
+	}
+
+	for _, subscriber := range c.subscribers {
+		subscriber.Unsubscribe()
+	}
+
 	c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 }
 
@@ -560,16 +539,21 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 		return
 	}
 
-	evtLogger := c.logger.WithFields(logrus.Fields{
-		"op": msg.Op,
-	})
-
 	if msg.Metadata == nil {
-		msg.Metadata = c.Conf.GetRemoteMetadataForDevice(c.DeviceID)
-		if msg.Op == "metadata" && len(msg.Metadata) == 0 {
+		if msg.Op == event.SFUOperationPublish {
+			msg.Metadata = c.Conf.GetRemoteMetadataForDevice(c.DeviceID)
+		} else {
+			msg.Metadata = c.GetMetadata()
+		}
+
+		if msg.Op == event.SFUOperationPublish && len(msg.Metadata) == 0 {
 			return
 		}
 	}
+
+	evtLogger := c.logger.WithFields(logrus.Fields{
+		"op": msg.Op,
+	})
 
 	marshaled, err := json.Marshal(msg)
 	if err != nil {
@@ -597,4 +581,38 @@ func (c *Call) CheckKeepAliveTimestamp() {
 			break
 		}
 	}
+}
+
+func (c *Call) GetMetadata() event.CallSDPStreamMetadata {
+	metadata := make(event.CallSDPStreamMetadata)
+
+	for _, subscriber := range c.subscribers {
+		if subscriber.publisher == nil {
+			continue
+		}
+
+		if c.DeviceID == subscriber.publisher.call.DeviceID {
+			continue
+		}
+
+		streamID := subscriber.track.StreamID()
+		trackID := subscriber.track.ID()
+
+		info, exists := metadata[streamID]
+		if exists {
+			info.Tracks[trackID] = event.CallSDPStreamMetadataTrack{}
+			metadata[streamID] = info
+		} else {
+			metadata[streamID] = event.CallSDPStreamMetadataObject{
+				UserID:   subscriber.publisher.call.UserID,
+				DeviceID: subscriber.publisher.call.DeviceID,
+				Purpose:  c.Conf.Metadata.Metadata[streamID].Purpose,
+				Tracks: event.CallSDPStreamMetadataTracks{
+					trackID: {},
+				},
+			}
+		}
+	}
+
+	return metadata
 }

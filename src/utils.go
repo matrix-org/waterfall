@@ -22,40 +22,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pion/randutil"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 )
 
 const pliInterval = 200
-const bufferSize = 1500
+const idLength = 32
+const idRunes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-func CopyRemoteToLocal(
-	trackRemote *webrtc.TrackRemote,
-	trackLocal *webrtc.TrackLocalStaticRTP,
-	trackLogger *logrus.Entry,
-) {
-	buff := make([]byte, bufferSize)
-
-	for {
-		index, _, err := trackRemote.Read(buff)
-
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				trackLogger.WithError(err).Warn("failed to read track")
-			}
-
-			break
-		}
-
-		if _, err = trackLocal.Write(buff[:index]); err != nil {
-			if !errors.Is(err, io.ErrClosedPipe) {
-				trackLogger.WithError(err).Warn("failed to write to track")
-			}
-
-			break
-		}
-	}
+func GenerateID() (string, error) {
+	return randutil.GenerateCryptoRandomString(idLength, idRunes)
 }
 
 func WriteRTCP(
