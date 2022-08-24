@@ -136,7 +136,7 @@ func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 
 		newPublishers := []*Publisher{}
 
-		c.mutex.RLock()
+		c.mutex.Lock()
 		for _, publisher := range c.Publishers {
 			if publisher.Matches(trackDesc) {
 				publisher.Stop()
@@ -144,9 +144,7 @@ func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 				newPublishers = append(newPublishers, publisher)
 			}
 		}
-		c.mutex.RUnlock()
 
-		c.mutex.Lock()
 		c.Publishers = newPublishers
 		c.mutex.Unlock()
 	}
@@ -550,15 +548,13 @@ func (c *Call) CheckKeepAliveTimestamp() {
 func (c *Call) RemoveSubscriber(toDelete *Subscriber) {
 	newSubscribers := []*Subscriber{}
 
-	c.mutex.RLock()
+	c.mutex.Lock()
 	for _, subscriber := range c.Subscribers {
 		if subscriber != toDelete {
 			newSubscribers = append(newSubscribers, subscriber)
 		}
 	}
-	c.mutex.RUnlock()
 
-	c.mutex.Lock()
 	c.Subscribers = newSubscribers
 	c.mutex.Unlock()
 }
