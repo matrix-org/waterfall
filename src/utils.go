@@ -28,35 +28,6 @@ import (
 )
 
 const pliInterval = 200
-const bufferSize = 1500
-
-func CopyRemoteToLocal(
-	trackRemote *webrtc.TrackRemote,
-	trackLocal *webrtc.TrackLocalStaticRTP,
-	trackLogger *logrus.Entry,
-) {
-	buff := make([]byte, bufferSize)
-
-	for {
-		index, _, err := trackRemote.Read(buff)
-
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				trackLogger.WithError(err).Warn("failed to read track")
-			}
-
-			break
-		}
-
-		if _, err = trackLocal.Write(buff[:index]); err != nil {
-			if !errors.Is(err, io.ErrClosedPipe) {
-				trackLogger.WithError(err).Warn("failed to write to track")
-			}
-
-			break
-		}
-	}
-}
 
 func WriteRTCP(
 	trackRemote *webrtc.TrackRemote,

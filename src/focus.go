@@ -58,16 +58,8 @@ func (f *Focus) GetConf(confID string, create bool) (*Conference, error) {
 
 	if conference == nil {
 		if create {
-			conference = &Conference{
-				ConfID: confID,
-			}
+			conference = NewConference(confID)
 			f.confs.confs[confID] = conference
-			conference.Calls.Calls = make(map[string]*Call)
-			conference.Tracks.Tracks = []LocalTrackWithInfo{}
-			conference.Metadata.Metadata = make(event.CallSDPStreamMetadata)
-			conference.logger = logrus.WithFields(logrus.Fields{
-				"conf_id": confID,
-			})
 		} else {
 			return nil, ErrNoSuchConference
 		}
@@ -143,16 +135,7 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 			return
 		}
 
-		call.UserID = evt.Sender
-		call.DeviceID = invite.DeviceID
-		// XXX: What if an SFU gets restarted?
-		call.LocalSessionID = localSessionID
-		call.RemoteSessionID = invite.SenderSessionID
-		call.Client = f.client
-		call.logger = logrus.WithFields(logrus.Fields{
-			"user_id": evt.Sender,
-			"conf_id": invite.ConfID,
-		})
+		call.InitWithInvite(evt, f.client)
 		call.OnInvite(invite)
 	case event.ToDeviceCallCandidates.Type:
 		candidates := evt.Content.AsCallCandidates()
