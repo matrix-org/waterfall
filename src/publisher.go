@@ -53,6 +53,10 @@ func NewPublisher(
 		"stream_id":  track.StreamID(),
 	})
 
+	call.mutex.Lock()
+	call.Publishers = append(call.Publishers, publisher)
+	call.mutex.Unlock()
+
 	go WriteRTCP(track, call.PeerConnection, publisher.logger)
 	go publisher.WriteToSubscribers()
 
@@ -68,10 +72,18 @@ func (p *Publisher) Subscribe(call *Call) {
 }
 
 func (p *Publisher) Stop() {
+	removed := p.Call.RemovePublisher(p)
+
+	if len(p.subscribers) == 0 && !removed {
+		return
+	}
+
 	for _, subscriber := range p.subscribers {
 		subscriber.Unsubscribe()
 		p.RemoveSubscriber(subscriber)
 	}
+
+	p.logger.Info("unpublished track")
 }
 
 func (p *Publisher) AddSubscriber(subscriber *Subscriber) {
@@ -83,15 +95,13 @@ func (p *Publisher) AddSubscriber(subscriber *Subscriber) {
 func (p *Publisher) RemoveSubscriber(toDelete *Subscriber) {
 	newSubscribers := []*Subscriber{}
 
-	p.mutex.RLock()
+	p.mutex.Lock()
 	for _, subscriber := range p.subscribers {
 		if subscriber != toDelete {
 			newSubscribers = append(newSubscribers, subscriber)
 		}
 	}
-	p.mutex.RUnlock()
 
-	p.mutex.Lock()
 	p.subscribers = newSubscribers
 	p.mutex.Unlock()
 }

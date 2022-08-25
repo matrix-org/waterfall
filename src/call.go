@@ -127,26 +127,11 @@ func (c *Call) onDCPublish(sdp string) {
 
 func (c *Call) onDCUnpublish(stop []event.SFUTrackDescription, sdp string) {
 	for _, trackDesc := range stop {
-		trackLogger := c.logger.WithFields(logrus.Fields{
-			"track_id":  trackDesc.TrackID,
-			"stream_id": trackDesc.StreamID,
-		})
-
-		trackLogger.Info("unpublishing track")
-
-		newPublishers := []*Publisher{}
-
-		c.mutex.Lock()
 		for _, publisher := range c.Publishers {
 			if publisher.Matches(trackDesc) {
 				publisher.Stop()
-			} else {
-				newPublishers = append(newPublishers, publisher)
 			}
 		}
-
-		c.Publishers = newPublishers
-		c.mutex.Unlock()
 	}
 
 	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
@@ -300,11 +285,7 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 }
 
 func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote) {
-	publisher := NewPublisher(trackRemote, c)
-
-	c.mutex.Lock()
-	c.Publishers = append(c.Publishers, publisher)
-	c.mutex.Unlock()
+	NewPublisher(trackRemote, c)
 
 	go c.conf.SendUpdatedMetadataFromCall(c.CallID)
 }
@@ -545,16 +526,40 @@ func (c *Call) CheckKeepAliveTimestamp() {
 	}
 }
 
-func (c *Call) RemoveSubscriber(toDelete *Subscriber) {
+func (c *Call) RemoveSubscriber(toDelete *Subscriber) bool {
+	removed := false
 	newSubscribers := []*Subscriber{}
 
 	c.mutex.Lock()
 	for _, subscriber := range c.Subscribers {
 		if subscriber != toDelete {
+			removed = true
+		} else {
 			newSubscribers = append(newSubscribers, subscriber)
 		}
 	}
 
 	c.Subscribers = newSubscribers
 	c.mutex.Unlock()
+
+	return removed
+}
+
+func (c *Call) RemovePublisher(toDelete *Publisher) bool {
+	removed := false
+	newPublishers := []*Publisher{}
+
+	c.mutex.Lock()
+	for _, publisher := range c.Publishers {
+		if publisher == toDelete {
+			removed = true
+		} else {
+			newPublishers = append(newPublishers, publisher)
+		}
+	}
+
+	c.Publishers = newPublishers
+	c.mutex.Unlock()
+
+	return removed
 }
