@@ -39,15 +39,21 @@ func NewSubscriber(call *Call) *Subscriber {
 	subscriber.call = call
 	subscriber.logger = call.logger
 
+	call.mutex.Lock()
+	call.Subscribers = append(call.Subscribers, subscriber)
+	call.mutex.Unlock()
+
 	return subscriber
 }
 
 func (s *Subscriber) initLoggingWithTrack(track *webrtc.TrackRemote) {
+	s.mutex.Lock()
 	s.logger = s.call.logger.WithFields(logrus.Fields{
 		"track_id":   (*track).ID(),
 		"track_kind": (*track).Kind(),
 		"stream_id":  (*track).StreamID(),
 	})
+	s.mutex.Unlock()
 }
 
 func (s *Subscriber) Subscribe(publisher *Publisher) {
@@ -79,6 +85,10 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 }
 
 func (s *Subscriber) Unsubscribe() {
+	if s.publisher == nil {
+		return
+	}
+
 	if s.call.PeerConnection.ConnectionState() != webrtc.PeerConnectionStateClosed {
 		err := s.call.PeerConnection.RemoveTrack(s.sender)
 		if err != nil {
@@ -87,6 +97,10 @@ func (s *Subscriber) Unsubscribe() {
 	}
 
 	s.call.RemoveSubscriber(s)
+
+	s.mutex.Lock()
+	s.publisher = nil
+	s.mutex.Unlock()
 
 	s.logger.Info("unsubscribed")
 }
