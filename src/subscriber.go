@@ -48,12 +48,12 @@ func NewSubscriber(call *Call) *Subscriber {
 
 func (s *Subscriber) initLoggingWithTrack(track *webrtc.TrackRemote) {
 	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.logger = s.call.logger.WithFields(logrus.Fields{
 		"track_id":   (*track).ID(),
 		"track_kind": (*track).Kind(),
 		"stream_id":  (*track).StreamID(),
 	})
-	s.mutex.Unlock()
 }
 
 func (s *Subscriber) Subscribe(publisher *Publisher) {
