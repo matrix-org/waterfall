@@ -19,18 +19,31 @@ package main
 import (
 	"sync"
 
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 )
 
 type Subscriber struct {
-	Track *webrtc.TrackLocalStaticRTP
+	Track     *webrtc.TrackLocalStaticRTP
+	Publisher *Publisher
 
-	mutex     sync.RWMutex
-	logger    *logrus.Entry
-	call      *Call
-	sender    *webrtc.RTPSender
-	publisher *Publisher
+	mutex  sync.RWMutex
+	logger *logrus.Entry
+	call   *Call
+	sender *webrtc.RTPSender
+
+	// The spatial layer from which we would like to read
+	maxSpatialLayer SpatialLayer
+	// The spatial layer from which are actually reading
+	CurrentSpatialLayer SpatialLayer
+
+	// For RTP packet header munging (see WriteRTP())
+	snOffset uint16
+	tsOffset uint32
+	lastSSRC uint32
+	lastSN   uint16
+	lastTS   uint32
 }
 
 func NewSubscriber(call *Call) *Subscriber {
@@ -46,23 +59,23 @@ func NewSubscriber(call *Call) *Subscriber {
 	return subscriber
 }
 
-func (s *Subscriber) initLoggingWithTrack(track *webrtc.TrackRemote) {
+func (s *Subscriber) initLoggingWithTrack(publisher *Publisher) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.logger = s.call.logger.WithFields(logrus.Fields{
-		"track_id":   (*track).ID(),
-		"track_kind": (*track).Kind(),
-		"stream_id":  (*track).StreamID(),
+		"track_id":   publisher.TrackID(),
+		"track_kind": publisher.Kind(),
+		"stream_id":  publisher.StreamID(),
 	})
 }
 
 func (s *Subscriber) Subscribe(publisher *Publisher) {
-	s.initLoggingWithTrack(publisher.Track)
+	s.initLoggingWithTrack(publisher)
 
 	track, err := webrtc.NewTrackLocalStaticRTP(
-		publisher.Track.Codec().RTPCodecCapability,
-		publisher.Track.ID(),
-		publisher.Track.StreamID(),
+		publisher.Codec().RTPCodecCapability,
+		publisher.TrackID(),
+		publisher.StreamID(),
 	)
 	if err != nil {
 		s.logger.WithError(err).Error("failed to create local static RTP track")
@@ -74,10 +87,17 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 	}
 
 	s.mutex.Lock()
+	if publisher.Kind() == webrtc.RTPCodecTypeAudio {
+		s.maxSpatialLayer = DefaultAudioSpatialLayer
+	} else {
+		s.maxSpatialLayer = DefaultVideoSpatialLayer
+	}
 	s.Track = track
+	s.Publisher = publisher
 	s.sender = sender
-	s.publisher = publisher
 	s.mutex.Unlock()
+
+	s.RecalculateCurrentSpatialLayer()
 
 	publisher.AddSubscriber(s)
 
@@ -85,7 +105,7 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 }
 
 func (s *Subscriber) Unsubscribe() {
-	if s.publisher == nil {
+	if s.Publisher == nil {
 		return
 	}
 
@@ -99,8 +119,64 @@ func (s *Subscriber) Unsubscribe() {
 	s.call.RemoveSubscriber(s)
 
 	s.mutex.Lock()
-	s.publisher = nil
+	s.Publisher = nil
 	s.mutex.Unlock()
 
 	s.logger.Info("unsubscribed")
+}
+
+// This method writes a given RTP packet to the subscriber's
+// TrackLocalStaticRTP.
+// If the layer passed to this method does not match the subscriber's layer,
+// the packet will be ignored.
+// Due to layer switching being essentially track switching, this method munges
+// the RTP packet, so that the client doesn't see any jumps in sequence numbers,
+// timestamps or SSRC.
+func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
+	if s.CurrentSpatialLayer != layer {
+		return nil
+	}
+
+	if s.lastSSRC != packet.SSRC {
+		s.logger.Infof("SSRC changed %s != %s", packet.SSRC, s.lastSSRC)
+		s.lastSSRC = packet.SSRC
+
+		s.snOffset = packet.SequenceNumber - s.lastSN - 1
+		s.tsOffset = packet.Timestamp - s.lastTS
+	}
+
+	packet.SSRC = s.lastSSRC
+	packet.SequenceNumber = packet.SequenceNumber - s.snOffset
+	packet.Timestamp = packet.Timestamp - s.tsOffset
+
+	s.lastSN = packet.SequenceNumber
+	s.lastTS = packet.Timestamp
+
+	return s.Track.WriteRTP(packet)
+}
+
+func (s *Subscriber) SetSettings(width int, height int) {
+	if width == 0 || height == 0 {
+		return
+	}
+
+	s.maxSpatialLayer = s.Publisher.ResolutionToLayer(width, height)
+	s.RecalculateCurrentSpatialLayer()
+}
+
+func (s *Subscriber) RecalculateCurrentSpatialLayer() {
+	best := SpatialLayerInvalid
+
+	for _, track := range s.Publisher.Tracks {
+		layer := RIDToSpatialLayer(track.RID())
+		if layer >= best && layer <= s.maxSpatialLayer {
+			best = layer
+		}
+	}
+
+	s.mutex.Lock()
+	s.CurrentSpatialLayer = best
+	s.mutex.Unlock()
+
+	s.logger.WithField("current_spatial_layer", s.CurrentSpatialLayer).Info("changed current spatial layer")
 }

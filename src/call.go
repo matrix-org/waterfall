@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
@@ -43,7 +44,7 @@ type Call struct {
 	mutex  sync.RWMutex
 	logger *logrus.Entry
 	client *mautrix.Client
-	conf   *Conference
+	Conf   *Conference
 
 	dataChannel            *webrtc.DataChannel
 	lastKeepAliveTimestamp time.Time
@@ -54,7 +55,7 @@ func NewCall(callID string, conf *Conference) *Call {
 	call := new(Call)
 
 	call.CallID = callID
-	call.conf = conf
+	call.Conf = conf
 
 	return call
 }
@@ -80,14 +81,30 @@ func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
 	}
 
 	for _, trackDesc := range start {
-		trackLogger := c.logger.WithFields(logrus.Fields{
+		c.logger.WithFields(logrus.Fields{
 			"track_id":  trackDesc.TrackID,
 			"stream_id": trackDesc.StreamID,
-		})
+			"width":     trackDesc.Width,
+			"height":    trackDesc.Height,
+		}).Info("selecting track")
 
-		trackLogger.Info("selecting track")
+		alreadySubscribed := false
 
-		for _, publisher := range c.conf.GetPublishers() {
+		for _, subscriber := range c.Subscribers {
+			if subscriber.Publisher != nil && subscriber.Publisher.Matches(trackDesc) {
+				subscriber.SetSettings(trackDesc.Width, trackDesc.Height)
+
+				alreadySubscribed = true
+
+				break
+			}
+		}
+
+		if alreadySubscribed {
+			break
+		}
+
+		for _, publisher := range c.Conf.GetPublishers() {
 			if publisher.Matches(trackDesc) {
 				publisher.Subscribe(c)
 			}
@@ -181,7 +198,7 @@ func (c *Call) onDCAlive() {
 func (c *Call) onDCMetadata() {
 	c.logger.Info("received DC metadata")
 
-	c.conf.SendUpdatedMetadataFromCall(c.CallID)
+	c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 }
 
 func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
@@ -208,7 +225,7 @@ func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
 		}
 
 		if msg.Metadata != nil {
-			c.conf.Metadata.Update(c.DeviceID, msg.Metadata)
+			c.Conf.Metadata.Update(c.DeviceID, msg.Metadata)
 		}
 
 		switch msg.Op {
@@ -267,7 +284,7 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 		Parsed: event.CallCandidatesEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
 				CallID:          c.CallID,
-				ConfID:          c.conf.ConfID,
+				ConfID:          c.Conf.ConfID,
 				DeviceID:        c.client.DeviceID,
 				SenderSessionID: c.LocalSessionID,
 				DestSessionID:   c.RemoteSessionID,
@@ -285,9 +302,72 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 }
 
 func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote) {
+	for _, publisher := range c.Publishers {
+		if publisher.TryToAddTrack(trackRemote) {
+			return
+		}
+	}
+
 	NewPublisher(trackRemote, c)
 
-	go c.conf.SendUpdatedMetadataFromCall(c.CallID)
+	go c.Conf.SendUpdatedMetadataFromCall(c.CallID)
+}
+
+func (c *Call) createPeerConnection() {
+	mediaEngine := &webrtc.MediaEngine{}
+	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
+		c.logger.WithError(err).Error("failed to create media engine")
+	}
+
+	// Enable extension headers needed for simulcast
+	for _, extension := range []string{
+		"urn:ietf:params:rtp-hdrext:sdes:mid",
+		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
+	} {
+		if err := mediaEngine.RegisterHeaderExtension(
+			webrtc.RTPHeaderExtensionCapability{URI: extension},
+			webrtc.RTPCodecTypeVideo,
+		); err != nil {
+			c.logger.WithError(err).Error("failed to register simulcast extension")
+		}
+	}
+
+	// Create a InterceptorRegistry. This is the user configurable RTP/RTCP
+	// Pipeline. This provides NACKs, RTCP Reports and other features. If you
+	// use `webrtc.NewPeerConnection` this is enabled by default. If you are
+	// manually managing You MUST create a InterceptorRegistry for each
+	// PeerConnection.
+	interceptor := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, interceptor); err != nil {
+		c.logger.WithError(err).Error("failed to set default interceptors")
+	}
+
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(interceptor))
+
+	peerConnection, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		c.logger.WithError(err).Error("failed to create new peer connection")
+	}
+
+	c.PeerConnection = peerConnection
+
+	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		c.trackHandler(track)
+	})
+
+	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
+		c.dataChannelHandler(d)
+	})
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		c.iceCandidateHandler(candidate)
+	})
+	peerConnection.OnNegotiationNeeded(func() {
+		c.negotiationNeededHandler()
+	})
+	peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		c.iceConnectionStateHandler(state)
+	})
 }
 
 func (c *Call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
@@ -300,7 +380,7 @@ func (c *Call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
 				Parsed: event.CallCandidatesEventContent{
 					BaseCallEventContent: event.BaseCallEventContent{
 						CallID:          c.CallID,
-						ConfID:          c.conf.ConfID,
+						ConfID:          c.Conf.ConfID,
 						DeviceID:        c.client.DeviceID,
 						SenderSessionID: c.LocalSessionID,
 						DestSessionID:   c.RemoteSessionID,
@@ -317,33 +397,12 @@ func (c *Call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
 }
 
 func (c *Call) OnInvite(content *event.CallInviteEventContent) {
-	c.conf.Metadata.Update(c.DeviceID, content.SDPStreamMetadata)
+	c.Conf.Metadata.Update(c.DeviceID, content.SDPStreamMetadata)
 	offer := content.Offer
 
-	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
-	if err != nil {
-		logrus.WithError(err).Error("failed to create new peer connection")
-	}
+	c.createPeerConnection()
 
-	c.PeerConnection = peerConnection
-
-	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		c.trackHandler(track)
-	})
-	peerConnection.OnDataChannel(func(d *webrtc.DataChannel) {
-		c.dataChannelHandler(d)
-	})
-	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		c.iceCandidateHandler(candidate)
-	})
-	peerConnection.OnNegotiationNeeded(func() {
-		c.negotiationNeededHandler()
-	})
-	peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		c.iceConnectionStateHandler(state)
-	})
-
-	err = peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+	err := c.PeerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  offer.SDP,
 	})
@@ -352,16 +411,16 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 		return
 	}
 
-	answer, err := peerConnection.CreateAnswer(nil)
+	answer, err := c.PeerConnection.CreateAnswer(nil)
 	if err != nil {
 		c.logger.WithError(err).Error("failed to create answer - ignoring")
 		return
 	}
 
 	// TODO: trickle ICE for fast conn setup, rather than block here
-	gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
+	gatherComplete := webrtc.GatheringCompletePromise(c.PeerConnection)
 
-	if err = peerConnection.SetLocalDescription(answer); err != nil {
+	if err = c.PeerConnection.SetLocalDescription(answer); err != nil {
 		c.logger.WithField("sdp", offer.SDP).WithError(err).Error("failed to set local description - ignoring")
 		return
 	}
@@ -372,7 +431,7 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 		Parsed: event.CallAnswerEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
 				CallID:          c.CallID,
-				ConfID:          c.conf.ConfID,
+				ConfID:          c.Conf.ConfID,
 				DeviceID:        c.client.DeviceID,
 				SenderSessionID: c.LocalSessionID,
 				DestSessionID:   c.RemoteSessionID,
@@ -381,9 +440,9 @@ func (c *Call) OnInvite(content *event.CallInviteEventContent) {
 			},
 			Answer: event.CallData{
 				Type: "answer",
-				SDP:  peerConnection.LocalDescription().SDP,
+				SDP:  c.PeerConnection.LocalDescription().SDP,
 			},
-			SDPStreamMetadata: c.conf.Metadata.GetForDevice(c.DeviceID),
+			SDPStreamMetadata: c.Conf.Metadata.GetForDevice(c.DeviceID),
 		},
 	}
 	c.sendToDevice(event.CallAnswer, answerEvtContent)
@@ -424,9 +483,9 @@ func (c *Call) Terminate() {
 		c.logger.WithError(err).Error("error closing peer connection")
 	}
 
-	c.conf.mutex.Lock()
-	delete(c.conf.Calls, c.CallID)
-	c.conf.mutex.Unlock()
+	c.Conf.mutex.Lock()
+	delete(c.Conf.Calls, c.CallID)
+	c.Conf.mutex.Unlock()
 
 	for _, publisher := range c.Publishers {
 		publisher.Stop()
@@ -436,7 +495,7 @@ func (c *Call) Terminate() {
 		subscriber.Unsubscribe()
 	}
 
-	c.conf.SendUpdatedMetadataFromCall(c.CallID)
+	c.Conf.SendUpdatedMetadataFromCall(c.CallID)
 }
 
 func (c *Call) Hangup(reason event.CallHangupReason) {
@@ -444,7 +503,7 @@ func (c *Call) Hangup(reason event.CallHangupReason) {
 		Parsed: event.CallHangupEventContent{
 			BaseCallEventContent: event.BaseCallEventContent{
 				CallID:          c.CallID,
-				ConfID:          c.conf.ConfID,
+				ConfID:          c.Conf.ConfID,
 				DeviceID:        c.client.DeviceID,
 				SenderSessionID: c.LocalSessionID,
 				DestSessionID:   c.RemoteSessionID,
@@ -492,7 +551,7 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 	})
 
 	if msg.Metadata == nil {
-		msg.Metadata = c.conf.Metadata.GetForDevice(c.DeviceID)
+		msg.Metadata = c.Conf.Metadata.GetForDevice(c.DeviceID)
 		if msg.Op == event.SFUOperationMetadata && len(msg.Metadata) == 0 {
 			return
 		}

@@ -26,11 +26,9 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
-const bufferSize = 1500
-
 type Publisher struct {
-	Track *webrtc.TrackRemote
-	Call  *Call
+	Tracks []*webrtc.TrackRemote
+	Call   *Call
 
 	mutex       sync.RWMutex
 	logger      *logrus.Entry
@@ -43,7 +41,7 @@ func NewPublisher(
 ) *Publisher {
 	publisher := new(Publisher)
 
-	publisher.Track = track
+	publisher.Tracks = []*webrtc.TrackRemote{}
 	publisher.Call = call
 
 	publisher.subscribers = []*Subscriber{}
@@ -57,18 +55,73 @@ func NewPublisher(
 	call.Publishers = append(call.Publishers, publisher)
 	call.mutex.Unlock()
 
-	go WriteRTCP(track, call.PeerConnection, publisher.logger)
-	go publisher.WriteToSubscribers()
-
-	publisher.logger.Info("published track")
+	publisher.addTrack(track)
 
 	return publisher
+}
+
+func (p *Publisher) TrackID() string {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	return p.Tracks[0].ID()
+}
+
+func (p *Publisher) StreamID() string {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	return p.Tracks[0].StreamID()
+}
+
+func (p *Publisher) Kind() webrtc.RTPCodecType {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	return p.Tracks[0].Kind()
+}
+
+func (p *Publisher) Codec() webrtc.RTPCodecParameters {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+
+	return p.Tracks[0].Codec()
+}
+
+func (p *Publisher) TrackInfo() event.CallSDPStreamMetadataTrack {
+	return p.Call.Conf.Metadata.GetTrackInfo(p.StreamID(), p.TrackID())
+}
+
+func (p *Publisher) ResolutionToLayer(width int, height int) SpatialLayer {
+	widthRatio := p.TrackInfo().Width / width
+	heightRatio := p.TrackInfo().Height / height
+
+	if widthRatio >= 4 || heightRatio >= 4 {
+		return SpatialLayerQuarter
+	} else if widthRatio >= 2 || heightRatio >= 2 {
+		return SpatialLayerHalf
+	} else {
+		return SpatialLayerFull
+	}
+}
+
+// Adds track and returns true if trackID and streamID match, otherwise returns
+// false.
+func (p *Publisher) TryToAddTrack(track *webrtc.TrackRemote) bool {
+	if p.Matches(event.SFUTrackDescription{
+		TrackID:  track.ID(),
+		StreamID: track.StreamID(),
+	}) {
+		p.addTrack(track)
+		return true
+	}
+
+	return false
 }
 
 func (p *Publisher) Subscribe(call *Call) {
 	subscriber := NewSubscriber(call)
 	subscriber.Subscribe(p)
-	p.AddSubscriber(subscriber)
 }
 
 func (p *Publisher) Stop() {
@@ -107,22 +160,24 @@ func (p *Publisher) RemoveSubscriber(toDelete *Subscriber) {
 }
 
 func (p *Publisher) Matches(trackDescription event.SFUTrackDescription) bool {
-	if p.Track.ID() != trackDescription.TrackID {
+	if p.Tracks[0] == nil {
 		return false
 	}
 
-	if p.Track.StreamID() != trackDescription.StreamID {
+	if p.TrackID() != trackDescription.TrackID {
+		return false
+	}
+
+	if p.StreamID() != trackDescription.StreamID {
 		return false
 	}
 
 	return true
 }
 
-func (p *Publisher) WriteToSubscribers() {
-	buff := make([]byte, bufferSize)
-
+func (p *Publisher) writeToSubscribers(track *webrtc.TrackRemote) {
 	for {
-		index, _, err := p.Track.Read(buff)
+		packet, _, err := track.ReadRTP()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				p.Stop()
@@ -133,16 +188,31 @@ func (p *Publisher) WriteToSubscribers() {
 		}
 
 		for _, subscriber := range p.subscribers {
-			if _, err = subscriber.Track.Write(buff[:index]); err != nil {
+			if err = subscriber.WriteRTP(packet, RIDToSpatialLayer(track.RID())); err != nil {
 				if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 					subscriber.Unsubscribe()
 					p.RemoveSubscriber(subscriber)
 
-					return
+					break
 				}
 
 				p.logger.WithError(err).Warn("failed to write to track")
 			}
 		}
 	}
+}
+
+func (p *Publisher) addTrack(track *webrtc.TrackRemote) {
+	p.mutex.Lock()
+	p.Tracks = append(p.Tracks, track)
+	p.mutex.Unlock()
+
+	p.logger.WithField("rid", track.RID()).Info("published track")
+
+	for _, subscriber := range p.subscribers {
+		subscriber.RecalculateCurrentSpatialLayer()
+	}
+
+	go WriteRTCP(track, p.Call.PeerConnection, p.logger)
+	go p.writeToSubscribers(track)
 }

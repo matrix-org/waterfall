@@ -79,13 +79,21 @@ func (m *Metadata) GetForDevice(deviceID id.DeviceID) event.CallSDPStreamMetadat
 			continue
 		}
 
-		streamID := publisher.Track.StreamID()
-		trackID := publisher.Track.ID()
+		streamID := publisher.StreamID()
+		trackID := publisher.TrackID()
 
-		info, exists := metadata[streamID]
-		if exists {
-			info.Tracks[publisher.Track.ID()] = event.CallSDPStreamMetadataTrack{}
-			metadata[streamID] = info
+		streamInfo, streamExists := metadata[streamID]
+		if streamExists {
+			trackInfo, trackExists := streamInfo.Tracks[trackID]
+			if trackExists {
+				streamInfo.Tracks[trackID] = trackInfo
+			} else {
+				streamInfo.Tracks[trackID] = event.CallSDPStreamMetadataTrack{
+					Kind: publisher.Kind().String(),
+				}
+			}
+
+			metadata[streamID] = streamInfo
 		} else {
 			metadata[streamID] = event.CallSDPStreamMetadataObject{
 				UserID:     publisher.Call.UserID,
@@ -94,11 +102,22 @@ func (m *Metadata) GetForDevice(deviceID id.DeviceID) event.CallSDPStreamMetadat
 				AudioMuted: m.data[streamID].AudioMuted,
 				VideoMuted: m.data[streamID].VideoMuted,
 				Tracks: event.CallSDPStreamMetadataTracks{
-					trackID: {},
+					trackID: {
+						Kind:   publisher.Kind().String(),
+						Width:  m.data[streamID].Tracks[trackID].Width,
+						Height: m.data[streamID].Tracks[trackID].Height,
+					},
 				},
 			}
 		}
 	}
 
 	return metadata
+}
+
+func (m *Metadata) GetTrackInfo(streamID string, trackID string) event.CallSDPStreamMetadataTrack {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	return m.data[streamID].Tracks[trackID]
 }
