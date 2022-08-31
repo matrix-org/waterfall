@@ -1,8 +1,8 @@
-# SFU-to-SFU
+# Waterfall
 
 ## Why
 
-`SFU-to-SFU` is an example of a cascaded decentralised SFU. The intention is to
+Waterfall is a cascaded, decentralised SFU. The intention is to
 be a implementation of Matrix's [MSC3401: Native Group VoIP
 signalling](https://github.com/matrix-org/matrix-spec-proposals/blob/matthew/group-voip/proposals/3401-group-voip.md).
 This example is self contained and doesn't require any external software. The
@@ -18,8 +18,9 @@ project was informed by the following goals.
 * **Client Simplicity** - Clients will need to be created on lots of platforms.
   We should aim to use native WebRTC features as much as possible.
 
-This implements the MSC only roughly - given the current experimental nature of
-this projects, it deviates in certain areas from the MSC.
+This project is at an early stage and implements the MSC only roughly - given
+the current experimental nature of this projects, it deviates in certain areas
+from the MSC.
 
 ## How
 
