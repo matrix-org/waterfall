@@ -81,13 +81,6 @@ func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
 	}
 
 	for _, trackDesc := range start {
-		c.logger.WithFields(logrus.Fields{
-			"track_id":  trackDesc.TrackID,
-			"stream_id": trackDesc.StreamID,
-			"width":     trackDesc.Width,
-			"height":    trackDesc.Height,
-		}).Info("selecting track")
-
 		alreadySubscribed := false
 
 		for _, subscriber := range c.Subscribers {
@@ -103,6 +96,13 @@ func (c *Call) onDCSelect(start []event.SFUTrackDescription) {
 		if alreadySubscribed {
 			break
 		}
+
+		c.logger.WithFields(logrus.Fields{
+			"track_id":  trackDesc.TrackID,
+			"stream_id": trackDesc.StreamID,
+			"width":     trackDesc.Width,
+			"height":    trackDesc.Height,
+		}).Info("selecting track")
 
 		for _, publisher := range c.Conf.GetPublishers() {
 			if publisher.Matches(trackDesc) {
