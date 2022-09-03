@@ -160,8 +160,11 @@ func (s *Subscriber) SetSettings(width int, height int) {
 		return
 	}
 
-	s.maxSpatialLayer = s.Publisher.ResolutionToLayer(width, height)
-	s.RecalculateCurrentSpatialLayer()
+	newLayer := s.Publisher.ResolutionToLayer(width, height)
+	if newLayer != s.maxSpatialLayer {
+		s.maxSpatialLayer = newLayer
+		s.RecalculateCurrentSpatialLayer()
+	}
 }
 
 func (s *Subscriber) RecalculateCurrentSpatialLayer() {
