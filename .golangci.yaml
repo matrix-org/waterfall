@@ -17,5 +17,5 @@ linters:
     - funlen
     - gofumpt
     - interfacer
-    - malaligned
+    - maligned
     - godox # We ought to enable this at some point
