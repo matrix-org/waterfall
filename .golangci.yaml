@@ -18,4 +18,5 @@ linters:
     - gofumpt
     - interfacer
     - maligned
+    - wrapcheck
     - godox # We ought to enable this at some point
