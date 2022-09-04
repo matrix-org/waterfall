@@ -148,7 +148,7 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 	if s.lastSSRC != packet.SSRC {
 		s.lastSSRC = packet.SSRC
 
-		s.snOffset = packet.SequenceNumber - s.lastSN - 1
+		s.snOffset = packet.SequenceNumber - s.lastSN
 		s.tsOffset = packet.Timestamp - s.lastTS
 
 		// Manually request a keyframe from the sender since waiting for the
