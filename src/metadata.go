@@ -84,12 +84,12 @@ func (m *Metadata) GetForDevice(deviceID id.DeviceID) event.CallSDPStreamMetadat
 
 		streamInfo, streamExists := metadata[streamID]
 		if streamExists {
-			trackInfo, trackExists := streamInfo.Tracks[trackID]
-			if trackExists {
-				streamInfo.Tracks[trackID] = trackInfo
-			} else {
+			_, trackExists := streamInfo.Tracks[trackID]
+			if !trackExists {
 				streamInfo.Tracks[trackID] = event.CallSDPStreamMetadataTrack{
-					Kind: publisher.Kind().String(),
+					Kind:   publisher.Kind().String(),
+					Width:  m.data[streamID].Tracks[trackID].Width,
+					Height: m.data[streamID].Tracks[trackID].Height,
 				}
 			}
 
