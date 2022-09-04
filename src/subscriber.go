@@ -17,8 +17,11 @@ limitations under the License.
 package main
 
 import (
+	"errors"
+	"io"
 	"sync"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -41,6 +44,7 @@ type Subscriber struct {
 	// For RTP packet header munging (see WriteRTP())
 	snOffset uint16
 	tsOffset uint32
+	ssrc     uint32
 	lastSSRC uint32
 	lastSN   uint16
 	lastTS   uint32
@@ -95,9 +99,12 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 	s.Track = track
 	s.Publisher = publisher
 	s.sender = sender
+	s.ssrc = uint32(sender.GetParameters().Encodings[0].SSRC)
 	s.mutex.Unlock()
 
 	s.RecalculateCurrentSpatialLayer()
+
+	go s.writeRTCP()
 
 	publisher.AddSubscriber(s)
 
@@ -138,7 +145,6 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 	}
 
 	if s.lastSSRC != packet.SSRC {
-		s.logger.Infof("SSRC changed %s != %s", packet.SSRC, s.lastSSRC)
 		s.lastSSRC = packet.SSRC
 
 		s.snOffset = packet.SequenceNumber - s.lastSN - 1
@@ -181,5 +187,52 @@ func (s *Subscriber) RecalculateCurrentSpatialLayer() {
 	s.CurrentSpatialLayer = best
 	s.mutex.Unlock()
 
-	s.logger.WithField("current_spatial_layer", s.CurrentSpatialLayer).Info("changed current spatial layer")
+	s.logger.WithField("layer", s.CurrentSpatialLayer).Info("changed current spatial layer")
+}
+
+func (s *Subscriber) writeRTCP() {
+	if s.Track.Kind() != webrtc.RTPCodecTypeVideo {
+		return
+	}
+
+	for {
+		packets, _, err := s.sender.ReadRTCP()
+		if err != nil {
+			if errors.Is(err, io.ErrClosedPipe) {
+				return
+			}
+
+			s.logger.WithError(err).Warn("failed to read RTCP on track")
+		}
+
+		packetsToForward := []rtcp.Packet{}
+		for _, packet := range packets {
+			switch typedPacket := packet.(type) {
+			// We mung the packets here, so that the SSRCs match what the
+			// receiver expects
+			case *rtcp.PictureLossIndication:
+				typedPacket.SenderSSRC = s.ssrc
+				typedPacket.MediaSSRC = s.lastSSRC
+				packetsToForward = append(packetsToForward, typedPacket)
+			case *rtcp.FullIntraRequest:
+				typedPacket.SenderSSRC = s.ssrc
+				typedPacket.MediaSSRC = s.lastSSRC
+				packetsToForward = append(packetsToForward, typedPacket)
+			}
+			// TODO: Change layers based on RTCP
+		}
+
+		if len(packetsToForward) < 1 {
+			continue
+		}
+
+		err = s.Publisher.Call.PeerConnection.WriteRTCP(packetsToForward)
+		if err != nil {
+			if errors.Is(err, io.ErrClosedPipe) {
+				return
+			}
+
+			s.logger.WithError(err).Warn("failed to write RTCP on track")
+		}
+	}
 }

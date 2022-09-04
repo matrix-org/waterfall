@@ -213,6 +213,5 @@ func (p *Publisher) addTrack(track *webrtc.TrackRemote) {
 		subscriber.RecalculateCurrentSpatialLayer()
 	}
 
-	go WriteRTCP(track, p.Call.PeerConnection, p.logger)
 	go p.writeToSubscribers(track)
 }

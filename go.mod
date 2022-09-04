@@ -38,4 +38,4 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
 
-replace maunium.net/go/mautrix => github.com/matrix-org/mautrix-go v0.0.0-20220817142816-160ea900a20b
+replace maunium.net/go/mautrix => github.com/matrix-org/mautrix-go v0.0.0-20220904084133-8d4de1f22501
