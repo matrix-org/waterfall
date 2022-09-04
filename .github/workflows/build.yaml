@@ -16,5 +16,5 @@ jobs:
         run: "./scripts/build.sh"
       - uses: actions/upload-artifact@v3
         with:
-          name: bin
+          name: waterfall
           path: ./dist/waterfall
