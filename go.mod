@@ -1,4 +1,4 @@
-module github.com/matrix-org/sfu-to-sfu
+module github.com/matrix-org/waterfall
 
 go 1.18
 
