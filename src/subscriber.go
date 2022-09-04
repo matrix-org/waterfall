@@ -145,11 +145,13 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 		return nil
 	}
 
-	if s.lastSSRC != packet.SSRC {
+	if s.lastSSRC == 0 {
+		s.lastSSRC = packet.SSRC
+	} else if s.lastSSRC != packet.SSRC {
 		s.lastSSRC = packet.SSRC
 
-		s.snOffset = packet.SequenceNumber - s.lastSN
-		s.tsOffset = packet.Timestamp - s.lastTS
+		s.snOffset = packet.SequenceNumber - s.lastSN - 1
+		s.tsOffset = packet.Timestamp - s.lastTS - 1
 
 		// Manually request a keyframe from the sender since waiting for the
 		// receiver to send a PLI would take too long and result in a few
