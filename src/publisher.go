@@ -96,11 +96,12 @@ func (p *Publisher) ResolutionToLayer(width int, height int) SpatialLayer {
 	widthRatio := p.TrackInfo().Width / width
 	heightRatio := p.TrackInfo().Height / height
 
-	if widthRatio >= 4 || heightRatio >= 4 {
+	switch {
+	case widthRatio >= 4 || heightRatio >= 4:
 		return SpatialLayerQuarter
-	} else if widthRatio >= 2 || heightRatio >= 2 {
+	case widthRatio >= 2 || heightRatio >= 2:
 		return SpatialLayerHalf
-	} else {
+	default:
 		return SpatialLayerFull
 	}
 }

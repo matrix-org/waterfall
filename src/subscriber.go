@@ -96,6 +96,7 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 	} else {
 		s.maxSpatialLayer = DefaultVideoSpatialLayer
 	}
+
 	s.Track = track
 	s.Publisher = publisher
 	s.sender = sender
@@ -152,8 +153,8 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 	}
 
 	packet.SSRC = s.lastSSRC
-	packet.SequenceNumber = packet.SequenceNumber - s.snOffset
-	packet.Timestamp = packet.Timestamp - s.tsOffset
+	packet.SequenceNumber -= s.snOffset
+	packet.Timestamp -= s.tsOffset
 
 	s.lastSN = packet.SequenceNumber
 	s.lastTS = packet.Timestamp
@@ -206,6 +207,7 @@ func (s *Subscriber) writeRTCP() {
 		}
 
 		packetsToForward := []rtcp.Packet{}
+
 		for _, packet := range packets {
 			switch typedPacket := packet.(type) {
 			// We mung the packets here, so that the SSRCs match what the
@@ -219,8 +221,9 @@ func (s *Subscriber) writeRTCP() {
 				typedPacket.MediaSSRC = s.lastSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			}
-			// TODO: Change layers based on RTCP
 		}
+
+		// TODO: Change layers based on RTCP
 
 		if len(packetsToForward) < 1 {
 			continue
