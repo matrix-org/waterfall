@@ -542,7 +542,7 @@ func (c *Call) sendToDevice(callType event.Type, content *event.Content) {
 }
 
 func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
-	if c.dataChannel == nil {
+	if c.dataChannel == nil || c.dataChannel.ReadyState() == webrtc.DataChannelStateClosed {
 		return
 	}
 
