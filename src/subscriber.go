@@ -163,6 +163,7 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 
 			s.logger.WithError(err).Warn("failed to write RTCP on track")
 		}
+		s.logger.Info("SSRC changed: sending PLI")
 	}
 
 	packet.SSRC = s.lastSSRC
@@ -241,6 +242,8 @@ func (s *Subscriber) writeRTCP() {
 		if len(packetsToForward) < 1 {
 			continue
 		}
+
+		s.logger.Info("forwarding RTCP")
 
 		err = s.Publisher.Call.PeerConnection.WriteRTCP(packetsToForward)
 		if err != nil {
