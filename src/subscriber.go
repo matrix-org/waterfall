@@ -150,6 +150,19 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 
 		s.snOffset = packet.SequenceNumber - s.lastSN - 1
 		s.tsOffset = packet.Timestamp - s.lastTS
+
+		// Manually request a keyframe from the sender since waiting for the
+		// receiver to send a PLI would take too long and result in a few
+		// second freeze of the video
+		if err := s.Publisher.Call.PeerConnection.WriteRTCP([]rtcp.Packet{
+			&rtcp.PictureLossIndication{MediaSSRC: s.lastSSRC, SenderSSRC: s.ssrc},
+		}); err != nil {
+			if errors.Is(err, io.ErrClosedPipe) {
+				return err
+			}
+
+			s.logger.WithError(err).Warn("failed to write RTCP on track")
+		}
 	}
 
 	packet.SSRC = s.lastSSRC
