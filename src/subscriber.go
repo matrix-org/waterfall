@@ -152,7 +152,9 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 
 		s.snOffset = packet.SequenceNumber - s.lastSN - 1
 		s.tsOffset = packet.Timestamp - s.lastTS - 1
+	}
 
+	if s.lastSSRC == 0 || s.lastSSRC != packet.SSRC {
 		// Manually request a keyframe from the sender since waiting for the
 		// receiver to send a PLI would take too long and result in a few
 		// second freeze of the video
