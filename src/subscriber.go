@@ -20,6 +20,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -145,21 +146,26 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 		return nil
 	}
 
-	if s.lastSSRC == 0 {
-		s.lastSSRC = packet.SSRC
-	} else if s.lastSSRC != packet.SSRC {
-		s.lastSSRC = packet.SSRC
+	lastSSRC := atomic.LoadUint32(&s.lastSSRC)
+	sendPLI := false
+
+	if lastSSRC == 0 {
+		lastSSRC = packet.SSRC
+		sendPLI = true
+	} else if lastSSRC != packet.SSRC {
+		lastSSRC = packet.SSRC
+		sendPLI = true
 
 		s.snOffset = packet.SequenceNumber - s.lastSN - 1
 		s.tsOffset = packet.Timestamp - s.lastTS - 1
 	}
 
-	if s.lastSSRC == 0 || s.lastSSRC != packet.SSRC {
+	if sendPLI {
 		// Manually request a keyframe from the sender since waiting for the
 		// receiver to send a PLI would take too long and result in a few
 		// second freeze of the video
 		if err := s.Publisher.Call.PeerConnection.WriteRTCP([]rtcp.Packet{
-			&rtcp.PictureLossIndication{MediaSSRC: s.lastSSRC, SenderSSRC: s.ssrc},
+			&rtcp.PictureLossIndication{MediaSSRC: packet.SSRC, SenderSSRC: s.ssrc},
 		}); err != nil {
 			if errors.Is(err, io.ErrClosedPipe) {
 				return err
@@ -167,15 +173,17 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 
 			s.logger.WithError(err).Warn("failed to write RTCP on track")
 		}
+
 		s.logger.Info("SSRC changed: sending PLI")
 	}
 
-	packet.SSRC = s.lastSSRC
+	packet.SSRC = lastSSRC
 	packet.SequenceNumber -= s.snOffset
 	packet.Timestamp -= s.tsOffset
 
 	s.lastSN = packet.SequenceNumber
 	s.lastTS = packet.Timestamp
+	atomic.StoreUint32(&s.lastSSRC, lastSSRC)
 
 	return s.Track.WriteRTP(packet)
 }
@@ -225,6 +233,7 @@ func (s *Subscriber) writeRTCP() {
 		}
 
 		packetsToForward := []rtcp.Packet{}
+		lastSSRC := atomic.LoadUint32(&s.lastSSRC)
 
 		for _, packet := range packets {
 			switch typedPacket := packet.(type) {
@@ -232,11 +241,11 @@ func (s *Subscriber) writeRTCP() {
 			// receiver expects
 			case *rtcp.PictureLossIndication:
 				typedPacket.SenderSSRC = s.ssrc
-				typedPacket.MediaSSRC = s.lastSSRC
+				typedPacket.MediaSSRC = lastSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			case *rtcp.FullIntraRequest:
 				typedPacket.SenderSSRC = s.ssrc
-				typedPacket.MediaSSRC = s.lastSSRC
+				typedPacket.MediaSSRC = lastSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			}
 		}
