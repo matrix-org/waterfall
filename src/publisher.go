@@ -191,7 +191,6 @@ func (p *Publisher) writeToSubscribers(track *webrtc.TrackRemote) {
 			if err = subscriber.WriteRTP(packet, RIDToSpatialLayer(track.RID())); err != nil {
 				if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 					subscriber.Unsubscribe()
-
 					break
 				}
 
