@@ -126,6 +126,7 @@ func (s *Subscriber) Unsubscribe() {
 		}
 	}
 
+	s.Publisher.RemoveSubscriber(s)
 	s.call.RemoveSubscriber(s)
 
 	s.mutex.Lock()
