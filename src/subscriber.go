@@ -39,9 +39,9 @@ type Subscriber struct {
 	sender *webrtc.RTPSender
 
 	// The spatial layer from which we would like to read
-	maxSpatialLayer int32
+	maxSpatialLayer atomic.Int32
 	// The spatial layer from which are actually reading
-	currentSpatialLayer int32
+	currentSpatialLayer atomic.Int32
 
 	// For RTP packet header munging (see WriteRTP())
 	snOffset uint16
@@ -93,9 +93,9 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 	}
 
 	if publisher.Kind() == webrtc.RTPCodecTypeAudio {
-		atomic.StoreInt32(&s.maxSpatialLayer, int32(DefaultAudioSpatialLayer))
+		s.maxSpatialLayer.Store(int32(DefaultAudioSpatialLayer))
 	} else {
-		atomic.StoreInt32(&s.maxSpatialLayer, int32(DefaultVideoSpatialLayer))
+		s.maxSpatialLayer.Store(int32(DefaultVideoSpatialLayer))
 	}
 
 	s.mutex.Lock()
@@ -144,7 +144,7 @@ func (s *Subscriber) Unsubscribe() {
 // the RTP packet, so that the client doesn't see any jumps in sequence numbers,
 // timestamps or SSRC.
 func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
-	if SpatialLayer(atomic.LoadInt32(&s.currentSpatialLayer)) != layer {
+	if SpatialLayer(s.currentSpatialLayer.Load()) != layer {
 		return nil
 	}
 
@@ -194,8 +194,8 @@ func (s *Subscriber) SetSettings(width int, height int) {
 	}
 
 	newLayer := s.Publisher.ResolutionToLayer(width, height)
-	if newLayer != SpatialLayer(atomic.LoadInt32(&s.maxSpatialLayer)) {
-		atomic.StoreInt32(&s.maxSpatialLayer, int32(newLayer))
+	if newLayer != SpatialLayer(s.maxSpatialLayer.Load()) {
+		s.maxSpatialLayer.Store(int32(newLayer))
 		s.RecalculateCurrentSpatialLayer()
 	}
 }
@@ -209,14 +209,14 @@ func (s *Subscriber) RecalculateCurrentSpatialLayer() {
 
 	for _, track := range s.Publisher.Tracks {
 		layer := RIDToSpatialLayer(track.RID())
-		if layer >= best && layer <= SpatialLayer(atomic.LoadInt32(&s.maxSpatialLayer)) {
+		if layer >= best && layer <= SpatialLayer(s.maxSpatialLayer.Load()) {
 			best = layer
 		}
 	}
 
-	if best != SpatialLayer(atomic.LoadInt32(&s.currentSpatialLayer)) {
-		atomic.StoreInt32(&s.currentSpatialLayer, int32(best))
-		s.logger.WithField("layer", s.currentSpatialLayer).Info("changed current spatial layer")
+	if best != SpatialLayer(s.currentSpatialLayer.Load()) {
+		s.currentSpatialLayer.Store(int32(best))
+		s.logger.WithField("layer", s.currentSpatialLayer.Load()).Info("changed current spatial layer")
 	}
 }
 
