@@ -119,19 +119,19 @@ func (s *Subscriber) Unsubscribe() {
 		return
 	}
 
-	if s.call.PeerConnection.ConnectionState() != webrtc.PeerConnectionStateClosed {
-		err := s.call.PeerConnection.RemoveTrack(s.sender)
-		if err != nil {
-			s.logger.WithError(err).Error("failed to remove track")
-		}
-	}
-
 	s.Publisher.RemoveSubscriber(s)
 	s.call.RemoveSubscriber(s)
 
 	s.mutex.Lock()
 	s.Publisher = nil
 	s.mutex.Unlock()
+
+	if s.call.PeerConnection.ConnectionState() != webrtc.PeerConnectionStateClosed {
+		err := s.call.PeerConnection.RemoveTrack(s.sender)
+		if err != nil {
+			s.logger.WithError(err).Error("failed to remove track")
+		}
+	}
 
 	s.logger.Info("unsubscribed")
 }

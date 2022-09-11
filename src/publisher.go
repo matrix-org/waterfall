@@ -134,7 +134,6 @@ func (p *Publisher) Stop() {
 
 	for _, subscriber := range p.subscribers {
 		subscriber.Unsubscribe()
-		p.RemoveSubscriber(subscriber)
 	}
 
 	p.logger.Info("unpublished track")
@@ -192,7 +191,6 @@ func (p *Publisher) writeToSubscribers(track *webrtc.TrackRemote) {
 			if err = subscriber.WriteRTP(packet, RIDToSpatialLayer(track.RID())); err != nil {
 				if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 					subscriber.Unsubscribe()
-					p.RemoveSubscriber(subscriber)
 
 					break
 				}
