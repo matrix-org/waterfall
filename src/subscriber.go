@@ -42,12 +42,15 @@ type Subscriber struct {
 	maxSpatialLayer atomic.Int32
 	// The spatial layer from which are actually reading
 	currentSpatialLayer atomic.Int32
+	// The last SSRC we read from
+	lastSSRC atomic.Uint32
+	// Weather or not we're waiting for a keyframe from a new source
+	waitingForKeyFrame atomic.Bool
 
 	// For RTP packet header munging (see WriteRTP())
 	snOffset uint16
 	tsOffset uint32
 	ssrc     uint32
-	lastSSRC uint32
 	lastSN   uint16
 	lastTS   uint32
 }
@@ -148,31 +151,21 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 		return nil
 	}
 
-	isKeyFrame := utils.IsRTPPacketKeyFrame(s.Track.Codec().MimeType, packet.Payload)
-	lastSSRC := atomic.LoadUint32(&s.lastSSRC)
-
-	if lastSSRC != packet.SSRC {
-		// Manually request a keyframe from the sender since waiting for the
-		// receiver to send a PLI would take too long and result in a few
-		// second freeze of the video
-		if s.Track.Kind() == webrtc.RTPCodecTypeVideo && !isKeyFrame {
-			err := s.Publisher.Call.PeerConnection.WriteRTCP([]rtcp.Packet{
-				&rtcp.PictureLossIndication{MediaSSRC: packet.SSRC, SenderSSRC: s.ssrc},
-			})
-			if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				s.logger.WithError(err).Warn("failed to write RTCP on track")
-			}
-
-			return err
+	if s.waitingForKeyFrame.Load() {
+		if utils.IsRTPPacketKeyFrame(s.Track.Codec().MimeType, packet.Payload) {
+			s.waitingForKeyFrame.Store(false)
+		} else {
+			return nil
 		}
-
-		if lastSSRC != 0 {
-			s.snOffset = packet.SequenceNumber - s.lastSN - 1
-			s.tsOffset = packet.Timestamp - s.lastTS - 1
-		}
-
-		atomic.StoreUint32(&s.lastSSRC, packet.SSRC)
 	}
+
+	lastSSRC := s.lastSSRC.Load()
+	if lastSSRC != packet.SSRC && lastSSRC != 0 {
+		s.snOffset = packet.SequenceNumber - s.lastSN - 1
+		s.tsOffset = packet.Timestamp - s.lastTS - 1
+	}
+
+	s.lastSSRC.Store(packet.SSRC)
 
 	packet.SSRC = s.ssrc
 	packet.SequenceNumber -= s.snOffset
@@ -205,18 +198,32 @@ func (s *Subscriber) RecalculateCurrentSpatialLayer() {
 		return
 	}
 
-	best := SpatialLayerInvalid
+	bestLayer := SpatialLayerInvalid
+	layerSSRC := uint32(0)
 
 	for _, track := range s.Publisher.Tracks {
 		layer := RIDToSpatialLayer(track.RID())
-		if layer >= best && layer <= SpatialLayer(s.maxSpatialLayer.Load()) {
-			best = layer
+		if layer >= bestLayer && layer <= SpatialLayer(s.maxSpatialLayer.Load()) {
+			bestLayer = layer
+			layerSSRC = uint32(track.SSRC())
 		}
 	}
 
-	if best != SpatialLayer(s.currentSpatialLayer.Load()) {
-		s.currentSpatialLayer.Store(int32(best))
+	if bestLayer != SpatialLayer(s.currentSpatialLayer.Load()) {
 		s.logger.WithField("layer", s.currentSpatialLayer.Load()).Info("changed current spatial layer")
+
+		// Manually request a keyframe from the sender since waiting for the
+		// receiver to send a PLI would take too long and result in a few
+		// second freeze of the video
+		err := s.Publisher.Call.PeerConnection.WriteRTCP([]rtcp.Packet{
+			&rtcp.PictureLossIndication{MediaSSRC: layerSSRC, SenderSSRC: s.ssrc},
+		})
+		if err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			s.logger.WithError(err).Warn("failed to write RTCP on track")
+		}
+
+		s.waitingForKeyFrame.Store(true)
+		s.currentSpatialLayer.Store(int32(bestLayer))
 	}
 }
 
@@ -226,7 +233,7 @@ func (s *Subscriber) writeRTCP() {
 	}
 
 	for {
-		lastSSRC := atomic.LoadUint32(&s.lastSSRC)
+		lastSSRC := s.lastSSRC.Load()
 		if lastSSRC == 0 {
 			continue
 		}
