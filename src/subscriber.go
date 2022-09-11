@@ -22,6 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/matrix-org/waterfall/src/utils"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -38,9 +39,9 @@ type Subscriber struct {
 	sender *webrtc.RTPSender
 
 	// The spatial layer from which we would like to read
-	maxSpatialLayer SpatialLayer
+	maxSpatialLayer int32
 	// The spatial layer from which are actually reading
-	CurrentSpatialLayer SpatialLayer
+	currentSpatialLayer int32
 
 	// For RTP packet header munging (see WriteRTP())
 	snOffset uint16
@@ -91,13 +92,13 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 		s.logger.WithError(err).Error("failed to add track to peer connection")
 	}
 
-	s.mutex.Lock()
 	if publisher.Kind() == webrtc.RTPCodecTypeAudio {
-		s.maxSpatialLayer = DefaultAudioSpatialLayer
+		atomic.StoreInt32(&s.maxSpatialLayer, int32(DefaultAudioSpatialLayer))
 	} else {
-		s.maxSpatialLayer = DefaultVideoSpatialLayer
+		atomic.StoreInt32(&s.maxSpatialLayer, int32(DefaultVideoSpatialLayer))
 	}
 
+	s.mutex.Lock()
 	s.Track = track
 	s.Publisher = publisher
 	s.sender = sender
@@ -142,79 +143,80 @@ func (s *Subscriber) Unsubscribe() {
 // the RTP packet, so that the client doesn't see any jumps in sequence numbers,
 // timestamps or SSRC.
 func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
-	if s.CurrentSpatialLayer != layer {
+	if SpatialLayer(atomic.LoadInt32(&s.currentSpatialLayer)) != layer {
 		return nil
 	}
 
+	isKeyFrame := utils.IsRTPPacketKeyFrame(s.Track.Codec().MimeType, packet.Payload)
 	lastSSRC := atomic.LoadUint32(&s.lastSSRC)
-	sendPLI := false
 
-	if lastSSRC == 0 {
-		lastSSRC = packet.SSRC
-		sendPLI = true
-	} else if lastSSRC != packet.SSRC {
-		lastSSRC = packet.SSRC
-		sendPLI = true
-
-		s.snOffset = packet.SequenceNumber - s.lastSN - 1
-		s.tsOffset = packet.Timestamp - s.lastTS - 1
-	}
-
-	if sendPLI {
+	if lastSSRC != packet.SSRC {
 		// Manually request a keyframe from the sender since waiting for the
 		// receiver to send a PLI would take too long and result in a few
 		// second freeze of the video
-		if err := s.Publisher.Call.PeerConnection.WriteRTCP([]rtcp.Packet{
-			&rtcp.PictureLossIndication{MediaSSRC: packet.SSRC, SenderSSRC: s.ssrc},
-		}); err != nil {
-			if errors.Is(err, io.ErrClosedPipe) {
-				return err
+		if s.Track.Kind() == webrtc.RTPCodecTypeVideo && !isKeyFrame {
+			err := s.Publisher.Call.PeerConnection.WriteRTCP([]rtcp.Packet{
+				&rtcp.PictureLossIndication{MediaSSRC: packet.SSRC, SenderSSRC: s.ssrc},
+			})
+			if err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				s.logger.WithError(err).Warn("failed to write RTCP on track")
 			}
 
-			s.logger.WithError(err).Warn("failed to write RTCP on track")
+			return err
 		}
 
-		s.logger.Info("SSRC changed: sending PLI")
+		if lastSSRC != 0 {
+			s.snOffset = packet.SequenceNumber - s.lastSN - 1
+			s.tsOffset = packet.Timestamp - s.lastTS - 1
+		}
+
+		atomic.StoreUint32(&s.lastSSRC, packet.SSRC)
 	}
 
-	packet.SSRC = lastSSRC
+	packet.SSRC = s.ssrc
 	packet.SequenceNumber -= s.snOffset
 	packet.Timestamp -= s.tsOffset
 
 	s.lastSN = packet.SequenceNumber
 	s.lastTS = packet.Timestamp
-	atomic.StoreUint32(&s.lastSSRC, lastSSRC)
 
 	return s.Track.WriteRTP(packet)
 }
 
 func (s *Subscriber) SetSettings(width int, height int) {
+	if s.Publisher.Kind() != webrtc.RTPCodecTypeVideo {
+		return
+	}
+
 	if width == 0 || height == 0 {
 		return
 	}
 
 	newLayer := s.Publisher.ResolutionToLayer(width, height)
-	if newLayer != s.maxSpatialLayer {
-		s.maxSpatialLayer = newLayer
+	if newLayer != SpatialLayer(atomic.LoadInt32(&s.maxSpatialLayer)) {
+		atomic.StoreInt32(&s.maxSpatialLayer, int32(newLayer))
 		s.RecalculateCurrentSpatialLayer()
 	}
 }
 
 func (s *Subscriber) RecalculateCurrentSpatialLayer() {
+	if s.Publisher.Kind() != webrtc.RTPCodecTypeVideo {
+		return
+	}
+
 	best := SpatialLayerInvalid
 
 	for _, track := range s.Publisher.Tracks {
 		layer := RIDToSpatialLayer(track.RID())
-		if layer >= best && layer <= s.maxSpatialLayer {
+		if layer >= best && layer <= SpatialLayer(atomic.LoadInt32(&s.maxSpatialLayer)) {
 			best = layer
 		}
 	}
 
-	s.mutex.Lock()
-	s.CurrentSpatialLayer = best
-	s.mutex.Unlock()
-
-	s.logger.WithField("layer", s.CurrentSpatialLayer).Info("changed current spatial layer")
+	if best != SpatialLayer(atomic.LoadInt32(&s.currentSpatialLayer)) {
+		atomic.StoreInt32(&s.currentSpatialLayer, int32(best))
+		s.logger.WithField("layer", s.currentSpatialLayer).Info("changed current spatial layer")
+	}
 }
 
 func (s *Subscriber) writeRTCP() {
@@ -223,6 +225,11 @@ func (s *Subscriber) writeRTCP() {
 	}
 
 	for {
+		lastSSRC := atomic.LoadUint32(&s.lastSSRC)
+		if lastSSRC == 0 {
+			continue
+		}
+
 		packets, _, err := s.sender.ReadRTCP()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -233,7 +240,6 @@ func (s *Subscriber) writeRTCP() {
 		}
 
 		packetsToForward := []rtcp.Packet{}
-		lastSSRC := atomic.LoadUint32(&s.lastSSRC)
 
 		for _, packet := range packets {
 			switch typedPacket := packet.(type) {
@@ -255,8 +261,6 @@ func (s *Subscriber) writeRTCP() {
 		if len(packetsToForward) < 1 {
 			continue
 		}
-
-		s.logger.Info("forwarding RTCP")
 
 		err = s.Publisher.Call.PeerConnection.WriteRTCP(packetsToForward)
 		if err != nil {
