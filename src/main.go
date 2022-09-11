@@ -19,7 +19,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
@@ -98,7 +97,7 @@ func initLogging(logTime *bool) {
 func loadConfig(configFilePath string) (*Config, error) {
 	logrus.WithField("path", configFilePath).Info("loading config")
 
-	file, err := ioutil.ReadFile(configFilePath)
+	file, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
