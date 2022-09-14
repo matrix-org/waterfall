@@ -19,4 +19,5 @@ linters:
     - interfacer
     - maligned
     - wrapcheck
+    - gosec
     - godox # We ought to enable this at some point

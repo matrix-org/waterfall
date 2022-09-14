@@ -22,7 +22,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/matrix-org/waterfall/src/utils"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -44,8 +43,6 @@ type Subscriber struct {
 	currentSpatialLayer atomic.Int32
 	// The last SSRC we read from
 	lastSSRC atomic.Uint32
-	// Weather or not we're waiting for a keyframe from a new source
-	waitingForKeyFrame atomic.Bool
 
 	// For RTP packet header munging (see WriteRTP())
 	snOffset uint16
@@ -97,8 +94,10 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 
 	if publisher.Kind() == webrtc.RTPCodecTypeAudio {
 		s.maxSpatialLayer.Store(int32(DefaultAudioSpatialLayer))
+		s.currentSpatialLayer.Store(int32(DefaultAudioSpatialLayer))
 	} else {
 		s.maxSpatialLayer.Store(int32(DefaultVideoSpatialLayer))
+		s.currentSpatialLayer.Store(int32(SpatialLayerInvalid))
 	}
 
 	s.mutex.Lock()
@@ -151,14 +150,8 @@ func (s *Subscriber) WriteRTP(packet *rtp.Packet, layer SpatialLayer) error {
 		return nil
 	}
 
-	if s.waitingForKeyFrame.Load() {
-		if utils.IsRTPPacketKeyFrame(s.Track.Codec().MimeType, packet.Payload) {
-			s.waitingForKeyFrame.Store(false)
-		} else {
-			return nil
-		}
-	}
-
+	// If we changed tracks, calculate an offset by which we shift the sequence
+	// numbers and timestamps
 	lastSSRC := s.lastSSRC.Load()
 	if lastSSRC != packet.SSRC && lastSSRC != 0 {
 		s.snOffset = packet.SequenceNumber - s.lastSN - 1
@@ -199,32 +192,23 @@ func (s *Subscriber) RecalculateCurrentSpatialLayer() {
 	}
 
 	bestLayer := SpatialLayerInvalid
-	layerSSRC := uint32(0)
 
 	for _, track := range s.Publisher.Tracks {
 		layer := RIDToSpatialLayer(track.RID())
-		if layer >= bestLayer && layer <= SpatialLayer(s.maxSpatialLayer.Load()) {
+		if layer > bestLayer && layer <= SpatialLayer(s.maxSpatialLayer.Load()) {
 			bestLayer = layer
-			layerSSRC = uint32(track.SSRC())
 		}
 	}
 
 	if bestLayer != SpatialLayer(s.currentSpatialLayer.Load()) {
-		s.logger.WithField("layer", s.currentSpatialLayer.Load()).Info("changed current spatial layer")
-
-		// Manually request a keyframe from the sender since waiting for the
-		// receiver to send a PLI would take too long and result in a few
-		// second freeze of the video
-		err := s.Publisher.Call.PeerConnection.WriteRTCP([]rtcp.Packet{
-			&rtcp.PictureLossIndication{MediaSSRC: layerSSRC, SenderSSRC: s.ssrc},
-		})
-		if err != nil && !errors.Is(err, io.ErrClosedPipe) {
-			s.logger.WithError(err).Warn("failed to write RTCP on track")
-		}
-
-		s.waitingForKeyFrame.Store(true)
-		s.currentSpatialLayer.Store(int32(bestLayer))
+		s.logger.WithField("layer", bestLayer).Info("switching current spatial layer")
+		s.Publisher.RequestLayerSwitch(s, bestLayer)
 	}
+}
+
+func (s *Subscriber) SetNewCurrentSpatialLayer(layer SpatialLayer) {
+	s.currentSpatialLayer.Store(int32(layer))
+	s.logger.WithField("layer", layer).Info("switched current spatial layer")
 }
 
 func (s *Subscriber) writeRTCP() {
@@ -248,6 +232,7 @@ func (s *Subscriber) writeRTCP() {
 		}
 
 		packetsToForward := []rtcp.Packet{}
+		readSSRC := s.lastSSRC.Load()
 
 		for _, packet := range packets {
 			switch typedPacket := packet.(type) {
@@ -255,11 +240,11 @@ func (s *Subscriber) writeRTCP() {
 			// receiver expects
 			case *rtcp.PictureLossIndication:
 				typedPacket.SenderSSRC = s.ssrc
-				typedPacket.MediaSSRC = lastSSRC
+				typedPacket.MediaSSRC = readSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			case *rtcp.FullIntraRequest:
 				typedPacket.SenderSSRC = s.ssrc
-				typedPacket.MediaSSRC = lastSSRC
+				typedPacket.MediaSSRC = readSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			}
 		}
@@ -270,13 +255,6 @@ func (s *Subscriber) writeRTCP() {
 			continue
 		}
 
-		err = s.Publisher.Call.PeerConnection.WriteRTCP(packetsToForward)
-		if err != nil {
-			if errors.Is(err, io.ErrClosedPipe) {
-				return
-			}
-
-			s.logger.WithError(err).Warn("failed to write RTCP on track")
-		}
+		s.Publisher.WriteRTCP(packetsToForward)
 	}
 }

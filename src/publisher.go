@@ -19,12 +19,19 @@ package main
 import (
 	"errors"
 	"io"
+	"math/rand"
 	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/matrix-org/waterfall/src/utils"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )
+
+const minimalPLIInterval = time.Millisecond * 500
 
 type Publisher struct {
 	Tracks []*webrtc.TrackRemote
@@ -33,6 +40,10 @@ type Publisher struct {
 	mutex       sync.RWMutex
 	logger      *logrus.Entry
 	subscribers []*Subscriber
+
+	lastPLI atomic.Int64
+
+	subscribersWaitingForKeyFrames map[SpatialLayer][]*Subscriber
 }
 
 func NewPublisher(
@@ -50,6 +61,8 @@ func NewPublisher(
 		"track_kind": track.Kind(),
 		"stream_id":  track.StreamID(),
 	})
+
+	publisher.subscribersWaitingForKeyFrames = make(map[SpatialLayer][]*Subscriber)
 
 	call.mutex.Lock()
 	call.Publishers = append(call.Publishers, publisher)
@@ -175,7 +188,67 @@ func (p *Publisher) Matches(trackDescription event.SFUTrackDescription) bool {
 	return true
 }
 
+func (p *Publisher) RequestLayerSwitch(switchingSubscriber *Subscriber, targetLayer SpatialLayer) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	newSubscribersWaitingForKeyFrames := make(map[SpatialLayer][]*Subscriber)
+
+	for layer, subscribers := range p.subscribersWaitingForKeyFrames {
+		for _, subscriber := range subscribers {
+			// Nothing to do
+			if subscriber == switchingSubscriber && layer == targetLayer {
+				return
+			}
+
+			if subscriber != switchingSubscriber {
+				newSubscribersWaitingForKeyFrames[layer] = append(newSubscribersWaitingForKeyFrames[layer], subscriber)
+			}
+		}
+	}
+
+	p.subscribersWaitingForKeyFrames = newSubscribersWaitingForKeyFrames
+
+	p.subscribersWaitingForKeyFrames[targetLayer] = append(
+		p.subscribersWaitingForKeyFrames[targetLayer],
+		switchingSubscriber,
+	)
+}
+
+func (p *Publisher) WriteRTCP(packets []rtcp.Packet) {
+	packetsToSend := []rtcp.Packet{}
+
+	for _, packet := range packets {
+		// Since we sometimes spam the sender with PLIs, make sure we don't send
+		// them way too often
+		if _, ok := packet.(*rtcp.PictureLossIndication); ok {
+			if time.Now().UnixNano()-p.lastPLI.Load() < minimalPLIInterval.Nanoseconds() {
+				continue
+			}
+
+			// FIXME: This should be a map, so that the layers are separated
+			p.lastPLI.Store(time.Now().UnixNano())
+		}
+
+		packetsToSend = append(packetsToSend, packet)
+	}
+
+	if len(packetsToSend) < 1 {
+		return
+	}
+
+	if err := p.Call.PeerConnection.WriteRTCP(packetsToSend); err != nil {
+		if errors.Is(err, io.ErrClosedPipe) {
+			return
+		}
+
+		p.logger.WithError(err).Warn("failed to write RTCP on track")
+	}
+}
+
 func (p *Publisher) writeToSubscribers(track *webrtc.TrackRemote) {
+	layer := RIDToSpatialLayer(track.RID())
+
 	for {
 		packet, _, err := track.ReadRTP()
 		if err != nil {
@@ -185,6 +258,21 @@ func (p *Publisher) writeToSubscribers(track *webrtc.TrackRemote) {
 			}
 
 			p.logger.WithError(err).Warn("failed to read track")
+		}
+
+		subscribers, ok := p.subscribersWaitingForKeyFrames[layer]
+		if ok && len(subscribers) > 0 && p.Kind() == webrtc.RTPCodecTypeVideo {
+			if utils.IsRTPPacketKeyFrame(p.Codec().MimeType, packet.Payload) {
+				for _, subscriber := range p.subscribersWaitingForKeyFrames[layer] {
+					subscriber.SetNewCurrentSpatialLayer(layer)
+				}
+
+				p.mutex.Lock()
+				p.subscribersWaitingForKeyFrames[layer] = []*Subscriber{}
+				p.mutex.Unlock()
+			} else {
+				p.sendPLI(uint32(track.SSRC()))
+			}
 		}
 
 		for _, subscriber := range p.subscribers {
@@ -212,4 +300,10 @@ func (p *Publisher) addTrack(track *webrtc.TrackRemote) {
 	}
 
 	go p.writeToSubscribers(track)
+}
+
+func (p *Publisher) sendPLI(ssrc uint32) {
+	p.WriteRTCP([]rtcp.Packet{
+		&rtcp.PictureLossIndication{MediaSSRC: ssrc, SenderSSRC: rand.Uint32()},
+	})
 }
