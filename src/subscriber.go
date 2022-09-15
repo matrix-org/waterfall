@@ -237,7 +237,7 @@ func (s *Subscriber) writeRTCP() {
 
 		packets, _, err := s.sender.ReadRTCP()
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 				return
 			}
 
