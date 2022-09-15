@@ -191,7 +191,20 @@ func (s *Subscriber) RecalculateCurrentSpatialLayer() {
 		return
 	}
 
-	bestLayer := SpatialLayerInvalid
+	// First we find the worst layer, which we will use as a fallback, this is
+	// useful for case where the max layer is e.g. 0 but the worst available one
+	// is 1
+	worstLayer := SpatialLayerInvalid
+
+	for _, track := range s.Publisher.Tracks {
+		layer := RIDToSpatialLayer(track.RID())
+		if worstLayer == SpatialLayerInvalid || layer < worstLayer {
+			worstLayer = layer
+		}
+	}
+
+	// Then we try to find the best layer which is less than maximum
+	bestLayer := worstLayer
 
 	for _, track := range s.Publisher.Tracks {
 		layer := RIDToSpatialLayer(track.RID())
