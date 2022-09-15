@@ -299,7 +299,6 @@ func (p *Publisher) addTrack(track *webrtc.TrackRemote) {
 		subscriber.RecalculateCurrentSpatialLayer()
 	}
 
-	go p.sendPLI(uint32(track.SSRC()))
 	go p.writeToSubscribers(track)
 }
 
