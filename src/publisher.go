@@ -271,7 +271,7 @@ func (p *Publisher) writeToSubscribers(track *webrtc.TrackRemote) {
 				p.subscribersWaitingForKeyFrames[layer] = []*Subscriber{}
 				p.mutex.Unlock()
 			} else {
-				p.sendPLI(uint32(track.SSRC()))
+				p.sendPLI(packet.SSRC)
 			}
 		}
 
