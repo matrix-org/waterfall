@@ -44,3 +44,19 @@ from the MSC.
 * `./scripts/build.sh`
 * `./dist/bin`
 * Access at <http://localhost:8080>
+
+## Docker
+
+In order to build a docker image, run the following in the root directory:
+
+`$ docker build . -t matrix/materwall`
+
+To run the image from the current directory assuming that there is a `config.yaml`:
+
+```
+$ docker run \
+    -v $(pwd)/config.yaml:/config.yaml \
+    --network host \
+    -it --rm matrix/waterfall \
+    sfu --config config.yaml
+```
