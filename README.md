@@ -47,9 +47,19 @@ from the MSC.
 
 ## Docker
 
+### Building
+
 In order to build a docker image, run the following in the root directory:
 
 `$ docker build . -t matrix/materwall`
+
+### Running
+
+#### Easy Way
+
+Just use `docker-compose up` and you're good to go.
+
+#### Hard Way
 
 To run the image from the current directory assuming that there is a `config.yaml`:
 

@@ -24,6 +24,8 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/sirupsen/logrus"
@@ -95,6 +97,42 @@ func initLogging(logTime *bool) {
 	logrus.SetFormatter(formatter)
 }
 
+// / Tries to load the config from environment variables.
+// / Returns an error if not all environment variables are set.
+func loadConfigFromEnv() (*Config, error) {
+	userID := strings.TrimSpace(os.Getenv("USER_ID"))
+	if userID == "" {
+		return nil, fmt.Errorf("USER_ID environment variable not set")
+	}
+
+	homeserverURL := strings.TrimSpace(os.Getenv("HOMESERVER_URL"))
+	if homeserverURL == "" {
+		return nil, fmt.Errorf("HOMESERVER_URL environment variable not set")
+	}
+
+	accessToken := strings.TrimSpace(os.Getenv("ACCESS_TOKEN"))
+	if accessToken == "" {
+		return nil, fmt.Errorf("ACCESS_TOKEN environment variable not set")
+	}
+
+	timeoutStr := strings.TrimSpace(os.Getenv("TIMEOUT"))
+	if timeoutStr == "" {
+		return nil, fmt.Errorf("TIMEOUT environment variable not set")
+	}
+
+	timeout, err := strconv.Atoi(timeoutStr)
+	if err != nil {
+		return nil, fmt.Errorf("TIMEOUT environment variable is not a number")
+	}
+
+	return &Config{
+		UserID:        id.UserID(userID),
+		HomeserverURL: homeserverURL,
+		AccessToken:   accessToken,
+		Timeout:       timeout,
+	}, nil
+}
+
 func loadConfig(configFilePath string) (*Config, error) {
 	logrus.WithField("path", configFilePath).Info("loading config")
 
@@ -143,8 +181,13 @@ func main() {
 	go killListener(c, beforeExit)
 
 	var err error
-	if config, err = loadConfig(*configFilePath); err != nil {
-		logrus.WithError(err).Fatal("failed to load config file")
+	config, err = loadConfigFromEnv()
+	if err != nil {
+		logrus.WithError(err).Info("failed to load config from environment variables, trying to load from file")
+
+		if config, err = loadConfig(*configFilePath); err != nil {
+			logrus.WithError(err).Fatal("failed to load config file")
+		}
 	}
 
 	InitMatrix()

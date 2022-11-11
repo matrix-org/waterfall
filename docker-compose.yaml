@@ -1,0 +1,12 @@
+version: "3.3"
+services:
+  waterfall:
+    container_name: waterfall
+    image: matrix/waterfall # TODO: replace with the image of the waterfall (e.g. GitHub container registry)
+    network_mode: host
+    restart: always
+    environment:
+      USER_ID: "@sfu:shadowfax"
+      HOMESERVER_URL: "http://localhost:8008"
+      ACCESS_TOKEN: "..."
+      TIMEOUT: 30
