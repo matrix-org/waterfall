@@ -17,9 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
@@ -97,32 +97,38 @@ func initLogging(logTime *bool) {
 	logrus.SetFormatter(formatter)
 }
 
+var ErrEnvVarNotSet = errors.New("environment variable not set or invalid")
+
+func EnvVarNotSetError(variable string) error {
+	return fmt.Errorf("%s: %w", variable, ErrEnvVarNotSet)
+}
+
 // / Tries to load the config from environment variables.
 // / Returns an error if not all environment variables are set.
 func loadConfigFromEnv() (*Config, error) {
 	userID := strings.TrimSpace(os.Getenv("USER_ID"))
 	if userID == "" {
-		return nil, fmt.Errorf("USER_ID environment variable not set")
+		return nil, EnvVarNotSetError("USER_ID")
 	}
 
 	homeserverURL := strings.TrimSpace(os.Getenv("HOMESERVER_URL"))
 	if homeserverURL == "" {
-		return nil, fmt.Errorf("HOMESERVER_URL environment variable not set")
+		return nil, EnvVarNotSetError("HOMESERVER_URL")
 	}
 
 	accessToken := strings.TrimSpace(os.Getenv("ACCESS_TOKEN"))
 	if accessToken == "" {
-		return nil, fmt.Errorf("ACCESS_TOKEN environment variable not set")
+		return nil, EnvVarNotSetError("ACCESS_TOKEN")
 	}
 
 	timeoutStr := strings.TrimSpace(os.Getenv("TIMEOUT"))
 	if timeoutStr == "" {
-		return nil, fmt.Errorf("TIMEOUT environment variable not set")
+		return nil, EnvVarNotSetError("TIMEOUT")
 	}
 
 	timeout, err := strconv.Atoi(timeoutStr)
 	if err != nil {
-		return nil, fmt.Errorf("TIMEOUT environment variable is not a number")
+		return nil, EnvVarNotSetError("TIMEOUT Format")
 	}
 
 	return &Config{
@@ -136,7 +142,7 @@ func loadConfigFromEnv() (*Config, error) {
 func loadConfig(configFilePath string) (*Config, error) {
 	logrus.WithField("path", configFilePath).Info("loading config")
 
-	file, err := ioutil.ReadFile(configFilePath)
+	file, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
@@ -181,6 +187,7 @@ func main() {
 	go killListener(c, beforeExit)
 
 	var err error
+
 	config, err = loadConfigFromEnv()
 	if err != nil {
 		logrus.WithError(err).Info("failed to load config from environment variables, trying to load from file")
