@@ -2,7 +2,7 @@ version: "3.3"
 services:
   waterfall:
     container_name: waterfall
-    image: matrix/waterfall # TODO: replace with the image of the waterfall (e.g. GitHub container registry)
+    image: ghcr.io/matrix-org/waterfall:main
     network_mode: host
     restart: always
     environment:
