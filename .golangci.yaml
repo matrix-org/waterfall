@@ -1,20 +1,32 @@
 linters-settings:
-  lll:
-    line-length: 120
+  nlreturn:
+    block-size: 2
   wsl:
-    allow-cuddle-declarations: true
+    enforce-err-cuddling: true
+  funlen:
+    lines: 100
+    statements: 50
+  gomoddirectives:
+    replace-allow-list:
+      - maunium.net/go/mautrix # currently needed for the PoC to work (custom mautrix)
 
 linters:
   enable-all: true
   disable:
-    - nlreturn
-    - exhaustivestruct
-    - exhaustruct
-    - cyclop
-    - gochecknoglobals
-    - gomoddirectives
-    - exhaustive
-    - funlen
-    - gofumpt
-    - interfacer
-    - godox # We ought to enable this at some point
+    - ifshort # deprecated
+    - nosnakecase # deprecated
+    - interfacer # deprecated
+    - deadcode # deprecated
+    - exhaustivestruct # deprecated
+    - varcheck # deprecated
+    - structcheck # deprecated
+    - maligned # deprecated
+    - scopelint # deprecated
+    - golint # deprecated
+    - rowserrcheck # https://github.com/golangci/golangci-lint/issues/2649
+    - sqlclosecheck # https://github.com/golangci/golangci-lint/issues/2649
+    - wastedassign # https://github.com/golangci/golangci-lint/issues/2649
+    - gomnd # we use status code numbers and for our use case it's not practical
+    - godox # we have TODOs at this stage of the project, enable in future
+    - forbidigo # we use things like fmt.Printf for debugging, enable in future
+  fast: true
