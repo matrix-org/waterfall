@@ -17,28 +17,15 @@ limitations under the License.
 package main
 
 import (
-	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
-	"strconv"
-	"strings"
 	"syscall"
 
 	"github.com/sirupsen/logrus"
-	yaml "gopkg.in/yaml.v3"
-	"maunium.net/go/mautrix/id"
 )
-
-type Config struct {
-	UserID        id.UserID
-	HomeserverURL string
-	AccessToken   string
-	Timeout       int
-}
 
 var config *Config
 
@@ -97,64 +84,6 @@ func initLogging(logTime *bool) {
 	logrus.SetFormatter(formatter)
 }
 
-var ErrEnvVarNotSet = errors.New("environment variable not set or invalid")
-
-func EnvVarNotSetError(variable string) error {
-	return fmt.Errorf("%s: %w", variable, ErrEnvVarNotSet)
-}
-
-// / Tries to load the config from environment variables.
-// / Returns an error if not all environment variables are set.
-func loadConfigFromEnv() (*Config, error) {
-	userID := strings.TrimSpace(os.Getenv("USER_ID"))
-	if userID == "" {
-		return nil, EnvVarNotSetError("USER_ID")
-	}
-
-	homeserverURL := strings.TrimSpace(os.Getenv("HOMESERVER_URL"))
-	if homeserverURL == "" {
-		return nil, EnvVarNotSetError("HOMESERVER_URL")
-	}
-
-	accessToken := strings.TrimSpace(os.Getenv("ACCESS_TOKEN"))
-	if accessToken == "" {
-		return nil, EnvVarNotSetError("ACCESS_TOKEN")
-	}
-
-	timeoutStr := strings.TrimSpace(os.Getenv("TIMEOUT"))
-	if timeoutStr == "" {
-		return nil, EnvVarNotSetError("TIMEOUT")
-	}
-
-	timeout, err := strconv.Atoi(timeoutStr)
-	if err != nil {
-		return nil, EnvVarNotSetError("TIMEOUT Format")
-	}
-
-	return &Config{
-		UserID:        id.UserID(userID),
-		HomeserverURL: homeserverURL,
-		AccessToken:   accessToken,
-		Timeout:       timeout,
-	}, nil
-}
-
-func loadConfig(configFilePath string) (*Config, error) {
-	logrus.WithField("path", configFilePath).Info("loading config")
-
-	file, err := os.ReadFile(configFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-	var config Config
-
-	if err := yaml.Unmarshal(file, &config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
-	}
-
-	return &config, nil
-}
-
 func killListener(c chan os.Signal, beforeExit []func()) {
 	<-c
 
@@ -192,7 +121,7 @@ func main() {
 	if err != nil {
 		logrus.WithError(err).Info("failed to load config from environment variables, trying to load from file")
 
-		if config, err = loadConfig(*configFilePath); err != nil {
+		if config, err = loadConfigFromPath(*configFilePath); err != nil {
 			logrus.WithError(err).Fatal("failed to load config file")
 		}
 	}
