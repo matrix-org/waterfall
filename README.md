@@ -59,6 +59,14 @@ In order to build a docker image, run the following in the root directory:
 
 Just use `docker-compose up` and you're good to go.
 
+Or `docker-compose up -d` if you're running it on a server in a detached state.
+
+You can then find your container ID by checking `docker container ls`.
+
+Which could then be used to e.g. check the container logs with `docker container logs <ID>`.
+
+If you're developing locally, you can replace the path to the image with your own image tag, e.g. `matrix/waterfall`.
+
 #### Hard Way
 
 To run the image from the current directory assuming that there is a `config.yaml`:
