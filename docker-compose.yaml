@@ -1,0 +1,13 @@
+version: "3.3"
+services:
+  waterfall:
+    container_name: waterfall
+    image: ghcr.io/matrix-org/waterfall:main
+    network_mode: host
+    restart: always
+    environment:
+      CONFIG: |
+        homeserverurl: "http://localhost:8008"
+        userid: "@sfu:shadowfax"
+        accesstoken: "..."
+        timeout: 30

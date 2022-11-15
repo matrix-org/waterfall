@@ -513,7 +513,7 @@ func (c *Call) SendDataChannelMessage(msg event.SFUMessage) {
 }
 
 func (c *Call) CheckKeepAliveTimestamp() {
-	timeout := time.Second * time.Duration(config.Timeout)
+	timeout := time.Second * time.Duration(config.KeepAliveTimeout)
 	for range time.Tick(timeout) {
 		if c.lastKeepAliveTimestamp.Add(timeout).Before(time.Now()) {
 			if c.PeerConnection.ConnectionState() != webrtc.PeerConnectionStateClosed {

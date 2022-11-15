@@ -18,8 +18,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
@@ -27,16 +25,7 @@ import (
 	"syscall"
 
 	"github.com/sirupsen/logrus"
-	yaml "gopkg.in/yaml.v3"
-	"maunium.net/go/mautrix/id"
 )
-
-type Config struct {
-	UserID        id.UserID
-	HomeserverURL string
-	AccessToken   string
-	Timeout       int
-}
 
 var config *Config
 
@@ -95,22 +84,6 @@ func initLogging(logTime *bool) {
 	logrus.SetFormatter(formatter)
 }
 
-func loadConfig(configFilePath string) (*Config, error) {
-	logrus.WithField("path", configFilePath).Info("loading config")
-
-	file, err := ioutil.ReadFile(configFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-	var config Config
-
-	if err := yaml.Unmarshal(file, &config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
-	}
-
-	return &config, nil
-}
-
 func killListener(c chan os.Signal, beforeExit []func()) {
 	<-c
 
@@ -143,8 +116,10 @@ func main() {
 	go killListener(c, beforeExit)
 
 	var err error
-	if config, err = loadConfig(*configFilePath); err != nil {
-		logrus.WithError(err).Fatal("failed to load config file")
+	config, err = loadConfig(*configFilePath)
+
+	if err != nil {
+		logrus.WithError(err).Fatal("could not load config")
 	}
 
 	InitMatrix()
