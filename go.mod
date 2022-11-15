@@ -1,6 +1,6 @@
-module github.com/matrix-org/sfu-to-sfu
+module github.com/matrix-org/waterfall
 
-go 1.18
+go 1.19
 
 require github.com/pion/webrtc/v3 v3.1.31
 
