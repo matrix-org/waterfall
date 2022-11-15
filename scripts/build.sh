@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-go build -o dist/bin src/*.go
+go build -o dist/waterfall ./src
