@@ -47,13 +47,13 @@ from the MSC.
 
 ## Docker
 
-### Building
+### Building docker image
 
 In order to build a docker image, run the following in the root directory:
 
-`$ docker build . -t matrix/materwall`
+`$ docker build . -t matrix/waterfall`
 
-### Running
+### Running docker image
 
 #### Easy Way
 
@@ -71,8 +71,8 @@ If you're developing locally, you can replace the path to the image with your ow
 
 To run the image from the current directory assuming that there is a `config.yaml`:
 
-```
-$ docker run \
+```sh
+docker run \
     -v $(pwd)/config.yaml:/config.yaml \
     --network host \
     -it --rm matrix/waterfall \
