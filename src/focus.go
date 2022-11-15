@@ -38,15 +38,17 @@ type Focus struct {
 	client *mautrix.Client
 	confs  Confs
 	logger *logrus.Entry
+	config *ConferenceConfig
 }
 
-func NewFocus(name string, client *mautrix.Client) *Focus {
+func NewFocus(name string, client *mautrix.Client, config *ConferenceConfig) *Focus {
 	focus := new(Focus)
 
 	focus.name = name
 	focus.client = client
 	focus.confs.confs = make(map[string]*Conference)
 	focus.logger = logrus.WithFields(logrus.Fields{})
+	focus.config = config
 
 	return focus
 }
@@ -58,7 +60,7 @@ func (f *Focus) GetConf(confID string, create bool) (*Conference, error) {
 
 	if conference == nil {
 		if create {
-			conference = NewConference(confID)
+			conference = NewConference(confID, f.config)
 			f.confs.confs[confID] = conference
 		} else {
 			return nil, ErrNoSuchConference
@@ -69,9 +71,11 @@ func (f *Focus) GetConf(confID string, create bool) (*Conference, error) {
 }
 
 func (f *Focus) getExistingCall(confID string, callID string) (*Call, error) {
-	var conf *Conference
-	var call *Call
-	var err error
+	var (
+		conf *Conference
+		call *Call
+		err  error
+	)
 
 	if conf, err = f.GetConf(confID, false); err != nil || conf == nil {
 		f.logger.Printf("failed to get conf %s: %s", confID, err)
@@ -110,9 +114,11 @@ func (f *Focus) onEvent(_ mautrix.EventSource, evt *event.Event) {
 		return
 	}
 
-	var conf *Conference
-	var call *Call
-	var err error
+	var (
+		conf *Conference
+		call *Call
+		err  error
+	)
 
 	switch evt.Type.Type {
 	case event.ToDeviceCallInvite.Type:

@@ -25,7 +25,7 @@ import (
 
 const localSessionID = "sfu"
 
-func InitMatrix() {
+func InitMatrix(config *Config) {
 	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
 	if err != nil {
 		logrus.WithError(err).Fatal("Failed to create client")
@@ -43,7 +43,11 @@ func InitMatrix() {
 	logrus.WithField("device_id", whoami.DeviceID).Info("Identified SFU as DeviceID")
 	client.DeviceID = whoami.DeviceID
 
-	focus := NewFocus(fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID), client)
+	focus := NewFocus(
+		fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID),
+		client,
+		&ConferenceConfig{KeepAliveTimeout: config.KeepAliveTimeout},
+	)
 
 	syncer, ok := client.Syncer.(*mautrix.DefaultSyncer)
 	if !ok {

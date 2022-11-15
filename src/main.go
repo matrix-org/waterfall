@@ -27,13 +27,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var config *Config
-
-var logTime = flag.Bool("logTime", false, "whether or not to print time and date in logs")
-var configFilePath = flag.String("config", "config.yaml", "configuration file path")
-var cpuProfile = flag.String("cpuProfile", "", "write CPU profile to `file`")
-var memProfile = flag.String("memProfile", "", "write memory profile to `file`")
-
 func initCPUProfiling(cpuProfile *string) func() {
 	logrus.Info("initializing CPU profiling")
 
@@ -95,6 +88,13 @@ func killListener(c chan os.Signal, beforeExit []func()) {
 }
 
 func main() {
+	var (
+		logTime        = flag.Bool("logTime", false, "whether or not to print time and date in logs")
+		configFilePath = flag.String("config", "config.yaml", "configuration file path")
+		cpuProfile     = flag.String("cpuProfile", "", "write CPU profile to `file`")
+		memProfile     = flag.String("memProfile", "", "write memory profile to `file`")
+	)
+
 	flag.Parse()
 
 	initLogging(logTime)
@@ -115,12 +115,10 @@ func main() {
 
 	go killListener(c, beforeExit)
 
-	var err error
-	config, err = loadConfig(*configFilePath)
-
+	config, err := loadConfig(*configFilePath)
 	if err != nil {
 		logrus.WithError(err).Fatal("could not load config")
 	}
 
-	InitMatrix()
+	InitMatrix(config)
 }

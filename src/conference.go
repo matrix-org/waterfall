@@ -25,21 +25,32 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-var ErrNoSuchCall = errors.New("no such call")
-var ErrFoundExistingCallWithSameSessionAndDeviceID = errors.New("found existing call with equal DeviceID and SessionID")
+var (
+	ErrNoSuchCall                                  = errors.New("no such call")
+	ErrFoundExistingCallWithSameSessionAndDeviceID = errors.New("found existing call with equal DeviceID and SessionID")
+)
+
+// Configuration for the group conferences (calls).
+type ConferenceConfig struct {
+	// Keep-alive timeout for WebRTC connections. If no keep-alive has been received
+	// from the client for this duration, the connection is considered dead.
+	KeepAliveTimeout int
+}
 
 type Conference struct {
 	ConfID string
-	Calls  map[string]*Call // By callID
+	Calls  map[string]*Call  // By callID
+	Config *ConferenceConfig // TODO: this must be protected by a mutex actually
 
 	mutex    sync.RWMutex
 	logger   *logrus.Entry
 	Metadata *Metadata
 }
 
-func NewConference(confID string) *Conference {
+func NewConference(confID string, config *ConferenceConfig) *Conference {
 	conference := new(Conference)
 
+	conference.Config = config
 	conference.ConfID = confID
 	conference.Calls = make(map[string]*Call)
 	conference.Metadata = NewMetadata(conference)
