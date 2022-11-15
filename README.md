@@ -47,13 +47,13 @@ from the MSC.
 
 ## Docker
 
-### Building
+### Building docker image
 
 In order to build a docker image, run the following in the root directory:
 
 `$ docker build . -t matrix/waterfall`
 
-### Running
+### Running docker image
 
 #### Easy Way
 
