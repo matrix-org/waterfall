@@ -17,8 +17,11 @@ limitations under the License.
 package main
 
 import (
+	"errors"
+	"io"
 	"sync"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 )
@@ -31,6 +34,8 @@ type Subscriber struct {
 	call      *Call
 	sender    *webrtc.RTPSender
 	publisher *Publisher
+
+	ssrc uint32
 }
 
 func NewSubscriber(call *Call) *Subscriber {
@@ -76,8 +81,11 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 	s.mutex.Lock()
 	s.Track = track
 	s.sender = sender
+	s.ssrc = uint32(sender.GetParameters().Encodings[0].SSRC)
 	s.publisher = publisher
 	s.mutex.Unlock()
+
+	go s.writeRTCP()
 
 	publisher.AddSubscriber(s)
 
@@ -103,4 +111,45 @@ func (s *Subscriber) Unsubscribe() {
 	s.mutex.Unlock()
 
 	s.logger.Info("unsubscribed")
+}
+
+func (s *Subscriber) writeRTCP() {
+	if s.Track.Kind() != webrtc.RTPCodecTypeVideo {
+		return
+	}
+
+	for {
+		packets, _, err := s.sender.ReadRTCP()
+		if err != nil {
+			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
+				return
+			}
+
+			s.logger.WithError(err).Warn("failed to read RTCP on track")
+		}
+
+		packetsToForward := []rtcp.Packet{}
+		readSSRC := uint32(s.publisher.Track.SSRC())
+
+		for _, packet := range packets {
+			switch typedPacket := packet.(type) {
+			// We mung the packets here, so that the SSRCs match what the
+			// receiver expects
+			case *rtcp.PictureLossIndication:
+				typedPacket.SenderSSRC = s.ssrc
+				typedPacket.MediaSSRC = readSSRC
+				packetsToForward = append(packetsToForward, typedPacket)
+			case *rtcp.FullIntraRequest:
+				typedPacket.SenderSSRC = s.ssrc
+				typedPacket.MediaSSRC = readSSRC
+				packetsToForward = append(packetsToForward, typedPacket)
+			}
+		}
+
+		if len(packetsToForward) < 1 {
+			continue
+		}
+
+		s.publisher.WriteRTCP(packetsToForward)
+	}
 }

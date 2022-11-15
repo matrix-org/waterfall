@@ -20,13 +20,19 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )
 
-const bufferSize = 1500
+const (
+	minimalPLIInterval = time.Millisecond * 500
+	bufferSize         = 1500
+)
 
 type Publisher struct {
 	Track *webrtc.TrackRemote
@@ -35,6 +41,8 @@ type Publisher struct {
 	mutex       sync.RWMutex
 	logger      *logrus.Entry
 	subscribers []*Subscriber
+
+	lastPLI atomic.Int64
 }
 
 func NewPublisher(
@@ -57,7 +65,6 @@ func NewPublisher(
 	call.Publishers = append(call.Publishers, publisher)
 	call.mutex.Unlock()
 
-	go WriteRTCP(track, call.PeerConnection, publisher.logger)
 	go publisher.WriteToSubscribers()
 
 	publisher.logger.Info("published track")
@@ -116,6 +123,36 @@ func (p *Publisher) Matches(trackDescription event.SFUTrackDescription) bool {
 	}
 
 	return true
+}
+
+func (p *Publisher) WriteRTCP(packets []rtcp.Packet) {
+	packetsToSend := []rtcp.Packet{}
+
+	for _, packet := range packets {
+		// Since we sometimes spam the sender with PLIs, make sure we don't send
+		// them way too often
+		if _, ok := packet.(*rtcp.PictureLossIndication); ok {
+			if time.Now().UnixNano()-p.lastPLI.Load() < minimalPLIInterval.Nanoseconds() {
+				continue
+			}
+
+			p.lastPLI.Store(time.Now().UnixNano())
+		}
+
+		packetsToSend = append(packetsToSend, packet)
+	}
+
+	if len(packetsToSend) < 1 {
+		return
+	}
+
+	if err := p.Call.PeerConnection.WriteRTCP(packetsToSend); err != nil {
+		if errors.Is(err, io.ErrClosedPipe) {
+			return
+		}
+
+		p.logger.WithError(err).Warn("failed to write RTCP on track")
+	}
 }
 
 func (p *Publisher) WriteToSubscribers() {
