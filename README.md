@@ -51,7 +51,7 @@ from the MSC.
 
 In order to build a docker image, run the following in the root directory:
 
-`$ docker build . -t matrix/materwall`
+`$ docker build . -t matrix/waterfall`
 
 ### Running
 
