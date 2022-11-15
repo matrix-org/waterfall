@@ -23,23 +23,27 @@ type Config struct {
 	KeepAliveTimeout int
 }
 
-// Load config from the provided string.
-// Returns an error if the string is not a valid YAML.
-func loadConfigFromString(configString string) (*Config, error) {
-	logrus.Info("loading config from string")
+// Tries to load a config from the `CONFIG` environment variable.
+// If the environment variable is not set, tries to load a config from the
+// provided path to the config file (YAML). Returns an error if the config could
+// not be loaded.
+func loadConfig(path string) (*Config, error) {
+	config, err := loadConfigFromEnv()
+	if err != nil {
+		if !errors.Is(err, ErrNoConfigEnvVar) {
+			return nil, err
+		}
 
-	var config Config
-	if err := yaml.Unmarshal([]byte(configString), &config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
+		return loadConfigFromPath(path)
 	}
 
-	return &config, nil
+	return config, nil
 }
 
 // ErrNoConfigEnvVar is returned when the CONFIG environment variable is not set.
 var ErrNoConfigEnvVar = errors.New("environment variable not set or invalid")
 
-// Tries to load the config from environment variables.
+// Tries to load the config from environment variable (`CONFIG`).
 // Returns an error if not all environment variables are set.
 func loadConfigFromEnv() (*Config, error) {
 	configEnv := os.Getenv("CONFIG")
@@ -60,4 +64,17 @@ func loadConfigFromPath(path string) (*Config, error) {
 	}
 
 	return loadConfigFromString(string(file))
+}
+
+// Load config from the provided string.
+// Returns an error if the string is not a valid YAML.
+func loadConfigFromString(configString string) (*Config, error) {
+	logrus.Info("loading config from string")
+
+	var config Config
+	if err := yaml.Unmarshal([]byte(configString), &config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
+	}
+
+	return &config, nil
 }

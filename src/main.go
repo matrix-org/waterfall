@@ -116,14 +116,10 @@ func main() {
 	go killListener(c, beforeExit)
 
 	var err error
+	config, err = loadConfig(*configFilePath)
 
-	config, err = loadConfigFromEnv()
 	if err != nil {
-		logrus.WithError(err).Info("failed to load config from environment variables, trying to load from file")
-
-		if config, err = loadConfigFromPath(*configFilePath); err != nil {
-			logrus.WithError(err).Fatal("failed to load config file")
-		}
+		logrus.WithError(err).Fatal("could not load config")
 	}
 
 	InitMatrix()
