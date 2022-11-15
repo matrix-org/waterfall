@@ -71,8 +71,8 @@ If you're developing locally, you can replace the path to the image with your ow
 
 To run the image from the current directory assuming that there is a `config.yaml`:
 
-```
-$ docker run \
+```sh
+docker run \
     -v $(pwd)/config.yaml:/config.yaml \
     --network host \
     -it --rm matrix/waterfall \
