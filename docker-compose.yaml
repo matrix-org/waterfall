@@ -2,10 +2,12 @@ version: "3.3"
 services:
   waterfall:
     container_name: waterfall
-    image: ghcr.io/matrix-org/waterfall:main
+    # Use a proper commit hash for specific deployments.
+    image: ghcr.io/matrix-org/waterfall:sha-b64edee
     network_mode: host
     restart: always
     environment:
+      # Set the `CONFIG` to the configuration you want.
       CONFIG: |
         homeserverurl: "http://localhost:8008"
         userid: "@sfu:shadowfax"
