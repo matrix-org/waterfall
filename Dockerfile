@@ -26,6 +26,7 @@ FROM ubuntu:22.04
 RUN apt update \
     && apt install -y --no-install-recommends \
     dumb-init \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /
