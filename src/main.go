@@ -36,16 +36,16 @@ func main() {
 	flag.Parse()
 
 	// Initialize logging subsystem (formatting, global logging framework etc).
-	initLogging(*logTime)
+	InitLogging(*logTime)
 
 	// Define functions that are called before exiting.
 	// This is useful to stop the profiler if it's enabled.
 	deferred_functions := []func(){}
 	if *cpuProfile != "" {
-		deferred_functions = append(deferred_functions, initCPUProfiling(cpuProfile))
+		deferred_functions = append(deferred_functions, InitCPUProfiling(cpuProfile))
 	}
 	if *memProfile != "" {
-		deferred_functions = append(deferred_functions, initMemoryProfiling(memProfile))
+		deferred_functions = append(deferred_functions, InitMemoryProfiling(memProfile))
 	}
 
 	// Handle signal interruptions.
@@ -65,5 +65,5 @@ func main() {
 		logrus.WithError(err).Fatal("could not load config")
 	}
 
-	RunSFU(config)
+	RunServer(config)
 }

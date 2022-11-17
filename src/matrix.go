@@ -17,15 +17,15 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
-
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 )
 
-const localSessionID = "sfu"
+const LocalSessionID = "sfu"
 
-func RunSFU(config *Config) {
+// Starts the Matrix client and connects to the homeserver,
+// runs the SFU. Returns only when the sync with Matrix fails.
+func RunServer(config *Config) {
 	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
 	if err != nil {
 		logrus.WithError(err).Fatal("Failed to create client")
@@ -43,10 +43,9 @@ func RunSFU(config *Config) {
 	logrus.WithField("device_id", whoami.DeviceID).Info("Identified SFU as DeviceID")
 	client.DeviceID = whoami.DeviceID
 
-	focus := NewFocus(
-		fmt.Sprintf("%s (%s)", config.UserID, client.DeviceID),
+	focus := NewSFU(
 		client,
-		&ConferenceConfig{KeepAliveTimeout: config.KeepAliveTimeout},
+		&CallConfig{KeepAliveTimeout: config.KeepAliveTimeout},
 	)
 
 	syncer, ok := client.Syncer.(*mautrix.DefaultSyncer)
@@ -55,10 +54,11 @@ func RunSFU(config *Config) {
 	}
 
 	syncer.ParseEventContent = true
+	syncer.OnEvent(focus.onMatrixEvent)
 
-	// TODO: E2EE
-	syncer.OnEvent(focus.onEvent)
-
+	// TODO: We may want to reconnect if `Sync()` fails instead of ending the SFU
+	//       as ending here will essentially drop all conferences which may not necessarily
+	// 	     be what we want for the existing running conferences.
 	if err = client.Sync(); err != nil {
 		logrus.WithError(err).Panic("Sync failed")
 	}
