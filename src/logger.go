@@ -22,6 +22,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func initLogging(logTime bool) {
+	formatter := new(CustomTextFormatter)
+	formatter.logTime = logTime
+	logrus.SetFormatter(formatter)
+}
+
 type CustomTextFormatter struct {
 	logrus.TextFormatter
 	logTime bool
