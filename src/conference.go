@@ -31,7 +31,7 @@ var (
 )
 
 // Configuration for the group conferences (calls).
-type ConferenceConfig struct {
+type CallConfig struct {
 	// Keep-alive timeout for WebRTC connections. If no keep-alive has been received
 	// from the client for this duration, the connection is considered dead.
 	KeepAliveTimeout int
@@ -39,17 +39,16 @@ type ConferenceConfig struct {
 
 type Conference struct {
 	ConfID string
-	Calls  map[string]*Call  // By callID
-	Config *ConferenceConfig // TODO: this must be protected by a mutex actually
+	Calls  map[string]*Call // By callID
+	Config *CallConfig      // TODO: this must be protected by a mutex actually
 
 	mutex    sync.RWMutex
 	logger   *logrus.Entry
 	Metadata *Metadata
 }
 
-func NewConference(confID string, config *ConferenceConfig) *Conference {
+func NewConference(confID string, config *CallConfig) *Conference {
 	conference := new(Conference)
-
 	conference.Config = config
 	conference.ConfID = confID
 	conference.Calls = make(map[string]*Call)
@@ -94,7 +93,7 @@ func (c *Conference) RemoveOldCallsByDeviceAndSessionIDs(deviceID id.DeviceID, s
 	return err
 }
 
-func (c *Conference) SendUpdatedMetadataFromCall(callID string) {
+func (c *Conference) SendUpdatedMetadataFromPeer(callID string) {
 	for _, call := range c.Calls {
 		if call.CallID != callID {
 			call.SendDataChannelMessage(event.SFUMessage{Op: event.SFUOperationMetadata})

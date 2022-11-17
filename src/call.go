@@ -65,7 +65,7 @@ func (c *Call) InitWithInvite(evt *event.Event, client *mautrix.Client) {
 	c.UserID = evt.Sender
 	c.DeviceID = invite.DeviceID
 	// XXX: What if an SFU gets restarted?
-	c.LocalSessionID = localSessionID
+	c.LocalSessionID = LocalSessionID
 	c.RemoteSessionID = invite.SenderSessionID
 	c.client = client
 	c.logger = logrus.WithFields(logrus.Fields{
@@ -181,7 +181,7 @@ func (c *Call) onDCAlive() {
 func (c *Call) onDCMetadata() {
 	c.logger.Info("received DC metadata")
 
-	c.conf.SendUpdatedMetadataFromCall(c.CallID)
+	c.conf.SendUpdatedMetadataFromPeer(c.CallID)
 }
 
 func (c *Call) dataChannelHandler(channel *webrtc.DataChannel) {
@@ -287,7 +287,7 @@ func (c *Call) iceCandidateHandler(candidate *webrtc.ICECandidate) {
 func (c *Call) trackHandler(trackRemote *webrtc.TrackRemote) {
 	NewPublisher(trackRemote, c)
 
-	go c.conf.SendUpdatedMetadataFromCall(c.CallID)
+	go c.conf.SendUpdatedMetadataFromPeer(c.CallID)
 }
 
 func (c *Call) iceConnectionStateHandler(state webrtc.ICEConnectionState) {
@@ -436,7 +436,7 @@ func (c *Call) Terminate() {
 		subscriber.Unsubscribe()
 	}
 
-	c.conf.SendUpdatedMetadataFromCall(c.CallID)
+	c.conf.SendUpdatedMetadataFromPeer(c.CallID)
 }
 
 func (c *Call) Hangup(reason event.CallHangupReason) {
