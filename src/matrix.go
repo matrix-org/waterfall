@@ -25,7 +25,7 @@ import (
 
 const localSessionID = "sfu"
 
-func InitMatrix(config *Config) {
+func RunSFU(config *Config) {
 	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
 	if err != nil {
 		logrus.WithError(err).Fatal("Failed to create client")
