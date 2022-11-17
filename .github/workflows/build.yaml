@@ -3,7 +3,8 @@ name: Build
 on:
   pull_request: {}
   push:
-    branches: [main]
+    branches:
+      - "**"
 jobs:
   build:
     name: Build
