@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"github.com/matrix-org/waterfall/src/conference"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 )
@@ -45,7 +46,7 @@ func RunServer(config *Config) {
 
 	focus := NewSFU(
 		client,
-		&CallConfig{KeepAliveTimeout: config.KeepAliveTimeout},
+		&conference.CallConfig{KeepAliveTimeout: config.KeepAliveTimeout},
 	)
 
 	syncer, ok := client.Syncer.(*mautrix.DefaultSyncer)
