@@ -19,9 +19,12 @@ package main
 import (
 	"errors"
 
+	"github.com/matrix-org/waterfall/src/conference"
+	"github.com/matrix-org/waterfall/src/peer"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 )
 
 var ErrNoSuchConference = errors.New("no such conference")
@@ -34,140 +37,193 @@ type SFU struct {
 	// Matrix client.
 	client *mautrix.Client
 	// All calls currently forwarded by this SFU.
-	conferences map[string]*Conference
-	// Structured logging for the SFU.
-	logger *logrus.Entry
+	conferences map[string]*conference.Conference
 	// Configuration for the calls.
-	config *CallConfig
+	config *conference.CallConfig
 }
 
 // Creates a new instance of the SFU with the given configuration.
-func NewSFU(client *mautrix.Client, config *CallConfig) *SFU {
+func NewSFU(client *mautrix.Client, config *conference.CallConfig) *SFU {
 	return &SFU{
 		client:      client,
-		conferences: make(map[string]*Conference),
-		logger:      logrus.WithField("module", "sfu"),
+		conferences: make(map[string]*conference.Conference),
 		config:      config,
 	}
 }
 
-// Returns a conference by its `id`, or creates a new one if it doesn't exist yet.
-func (f *SFU) GetOrCreateConference(confID string, create bool) (*Conference, error) {
-	if conference := f.conferences[confID]; conference != nil {
-		return conference, nil
-	}
-
-	if create {
-		f.logger.Printf("creating new conference %s", confID)
-		conference := NewConference(confID, f.config)
-		f.conferences[confID] = conference
-		return conference, nil
-	}
-
-	return nil, ErrNoSuchConference
-}
-
-func (f *SFU) GetCall(confID string, callID string) (*Call, error) {
-	var (
-		conf *Conference
-		call *Call
-		err  error
-	)
-
-	if conf, err = f.GetOrCreateConference(confID, false); err != nil || conf == nil {
-		f.logger.Printf("failed to get conf %s: %s", confID, err)
-		return nil, err
-	}
-
-	if call, err = conf.GetCall(callID, false); err != nil || call == nil {
-		f.logger.Printf("failed to get call %s: %s", callID, err)
-		return nil, err
-	}
-
-	return call, nil
-}
-
 // Handles To-Device events that the SFU receives from clients.
+//
+//nolint:funlen
 func (f *SFU) onMatrixEvent(_ mautrix.EventSource, evt *event.Event) {
 	// We only care about to-device events.
 	if evt.Type.Class != event.ToDeviceEventType {
-		f.logger.Warn("ignoring a not to-device event")
+		logrus.Warn("ignoring a not to-device event")
 		return
 	}
 
-	evtLogger := f.logger.WithFields(logrus.Fields{
+	// TODO: Don't create logger again and again, it might be a bit expensive.
+	logger := logrus.WithFields(logrus.Fields{
 		"type":    evt.Type.Type,
 		"user_id": evt.Sender.String(),
 		"conf_id": evt.Content.Raw["conf_id"],
 	})
 
 	if evt.Content.Raw["dest_session_id"] != LocalSessionID {
-		evtLogger.WithField("dest_session_id", LocalSessionID).Warn("SessionID does not match our SessionID - ignoring")
+		logger.WithField("dest_session_id", LocalSessionID).Warn("SessionID does not match our SessionID - ignoring")
 		return
 	}
 
-	var (
-		conference *Conference
-		call       *Call
-		err        error
-	)
-
 	switch evt.Type.Type {
+	// Someone tries to participate in a call (join a call).
 	case event.ToDeviceCallInvite.Type:
 		invite := evt.Content.AsCallInvite()
 		if invite == nil {
-			evtLogger.Error("failed to parse invite")
+			logger.Error("failed to parse invite")
 			return
 		}
 
-		if conference, err = f.GetOrCreateConference(invite.ConfID, true); err != nil {
-			evtLogger.WithError(err).WithFields(logrus.Fields{
-				"conf_id": invite.ConfID,
-			}).Error("failed to create conf")
-
-			return
+		// If there is an invitation sent and the conf does not exist, create one.
+		if conf := f.conferences[invite.ConfID]; conf == nil {
+			logger.Infof("creating new conference %s", invite.ConfID)
+			f.conferences[invite.ConfID] = conference.NewConference(invite.ConfID, f.config)
 		}
 
-		if err := conference.RemoveOldCallsByDeviceAndSessionIDs(invite.DeviceID, invite.SenderSessionID); err != nil {
-			evtLogger.WithError(err).Error("error removing old calls - ignoring call")
-			return
+		peerID := peer.ID{
+			UserID:   evt.Sender,
+			DeviceID: invite.DeviceID,
 		}
 
-		if call, err = conference.GetCall(invite.CallID, true); err != nil || call == nil {
-			evtLogger.WithError(err).Error("failed to create call")
-			return
-		}
+		// Inform conference about incoming participant.
+		f.conferences[invite.ConfID].OnNewParticipant(peerID, invite)
 
-		call.InitWithInvite(evt, f.client)
-		call.OnInvite(invite)
+	// Someone tries to send ICE candidates to the existing call.
 	case event.ToDeviceCallCandidates.Type:
 		candidates := evt.Content.AsCallCandidates()
-		if call, err = f.GetCall(candidates.ConfID, candidates.CallID); err != nil {
+		if candidates == nil {
+			logger.Error("failed to parse candidates")
 			return
 		}
 
-		call.OnCandidates(candidates)
+		conference := f.conferences[candidates.ConfID]
+		if conference == nil {
+			logger.Errorf("received candidates for unknown conference %s", candidates.ConfID)
+			return
+		}
+
+		peerID := peer.ID{
+			UserID:   evt.Sender,
+			DeviceID: candidates.DeviceID,
+		}
+
+		conference.OnCandidates(peerID, candidates)
+
+	// Someone informs us about them accepting our (SFU's) SDP answer for an existing call.
 	case event.ToDeviceCallSelectAnswer.Type:
 		selectAnswer := evt.Content.AsCallSelectAnswer()
-		if call, err = f.GetCall(selectAnswer.ConfID, selectAnswer.CallID); err != nil {
+		if selectAnswer == nil {
+			logger.Error("failed to parse select_answer")
 			return
 		}
 
-		call.OnSelectAnswer(selectAnswer)
+		conference := f.conferences[selectAnswer.ConfID]
+		if conference == nil {
+			logger.Errorf("received select_answer for unknown conference %s", selectAnswer.ConfID)
+			return
+		}
+
+		peerID := peer.ID{
+			UserID:   evt.Sender,
+			DeviceID: selectAnswer.DeviceID,
+		}
+
+		conference.OnSelectAnswer(peerID, selectAnswer)
+
+	// Someone tries to inform us about leaving an existing call.
 	case event.ToDeviceCallHangup.Type:
 		hangup := evt.Content.AsCallHangup()
-		if call, err = f.GetCall(hangup.ConfID, hangup.CallID); err != nil {
+		if hangup == nil {
+			logger.Error("failed to parse hangup")
 			return
 		}
 
-		call.OnHangup()
+		conference := f.conferences[hangup.ConfID]
+		if conference == nil {
+			logger.Errorf("received hangup for unknown conference %s", hangup.ConfID)
+			return
+		}
+
+		peerID := peer.ID{
+			UserID:   evt.Sender,
+			DeviceID: hangup.DeviceID,
+		}
+
+		conference.OnHangup(peerID, hangup)
+
 	// Events that we **should not** receive!
 	case event.ToDeviceCallNegotiate.Type:
-		evtLogger.Warn("ignoring event as it should be handled over DC")
+		logger.Warn("ignoring negotiate event that must be handled over the data channel")
 	case event.ToDeviceCallReject.Type:
+		logger.Warn("ignoring reject event that must be handled over the data channel")
 	case event.ToDeviceCallAnswer.Type:
-		evtLogger.Warn("ignoring event as we are always the ones answering")
+		logger.Warn("ignoring event as we are always the ones sending the SDP answer at the moment")
 	default:
-		evtLogger.Warnf("ignoring unexpected event: %s", evt.Type.Type)
+		logger.Warnf("ignoring unexpected event: %s", evt.Type.Type)
+	}
+}
+
+func (f *SFU) createSDPAnswerEvent(
+	conferenceID string,
+	destSessionID id.SessionID,
+	peerID peer.ID,
+	sdp string,
+	streamMetadata event.CallSDPStreamMetadata,
+) *event.Content {
+	return &event.Content{
+		Parsed: event.CallAnswerEventContent{
+			BaseCallEventContent: createBaseEventContent(conferenceID, f.client.DeviceID, peerID.DeviceID, destSessionID),
+			Answer: event.CallData{
+				Type: "answer",
+				SDP:  sdp,
+			},
+			SDPStreamMetadata: streamMetadata,
+		},
+	}
+}
+
+func createBaseEventContent(
+	conferenceID string,
+	sfuDeviceID id.DeviceID,
+	destDeviceID id.DeviceID,
+	destSessionID id.SessionID,
+) event.BaseCallEventContent {
+	return event.BaseCallEventContent{
+		CallID:          conferenceID,
+		ConfID:          conferenceID,
+		DeviceID:        sfuDeviceID,
+		SenderSessionID: LocalSessionID,
+		DestSessionID:   destSessionID,
+		PartyID:         string(destDeviceID),
+		Version:         event.CallVersion("1"),
+	}
+}
+
+// Sends a to-device event to the given user.
+func (f *SFU) sendToDevice(participantID peer.ID, ev *event.Event) {
+	// TODO: Don't create logger again and again, it might be a bit expensive.
+	logger := logrus.WithFields(logrus.Fields{
+		"user_id":   participantID.UserID,
+		"device_id": participantID.DeviceID,
+	})
+
+	sendRequest := &mautrix.ReqSendToDevice{
+		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
+			participantID.UserID: {
+				participantID.DeviceID: &ev.Content,
+			},
+		},
+	}
+
+	if _, err := f.client.SendToDevice(ev.Type, sendRequest); err != nil {
+		logger.Errorf("failed to send to-device event: %w", err)
 	}
 }
