@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package signaling
 
 import (
 	"errors"
@@ -29,11 +29,11 @@ import (
 
 var ErrNoSuchConference = errors.New("no such conference")
 
-// The top-level state of the SFU.
-// Note that in Matrix MSCs, the term "focus" is used to refer to the SFU. But since "focus" is a very
-// generic name and only makes sense in a certain context, we use the term "SFU" instead to avoid confusion
-// given that this particular part is just the SFU logic (and not the "focus" selection algorithm etc).
-type SFU struct {
+// The top-level state of the SignalingServer.
+// Note that in Matrix MSCs, the term "focus" is used to refer to the SignalingServer. But since "focus" is a very
+// generic name and only makes sense in a certain context, we use the term "SignalingServer" instead to avoid confusion
+// given that this particular part is just the SignalingServer logic (and not the "focus" selection algorithm etc).
+type SignalingServer struct {
 	// Matrix client.
 	client *mautrix.Client
 	// All calls currently forwarded by this SFU.
@@ -43,8 +43,8 @@ type SFU struct {
 }
 
 // Creates a new instance of the SFU with the given configuration.
-func NewSFU(client *mautrix.Client, config *conference.CallConfig) *SFU {
-	return &SFU{
+func NewSignalingServer(client *mautrix.Client, config *conference.CallConfig) *SignalingServer {
+	return &SignalingServer{
 		client:      client,
 		conferences: make(map[string]*conference.Conference),
 		config:      config,
@@ -54,7 +54,7 @@ func NewSFU(client *mautrix.Client, config *conference.CallConfig) *SFU {
 // Handles To-Device events that the SFU receives from clients.
 //
 //nolint:funlen
-func (f *SFU) onMatrixEvent(_ mautrix.EventSource, evt *event.Event) {
+func (f *SignalingServer) onMatrixEvent(_ mautrix.EventSource, evt *event.Event) {
 	// We only care about to-device events.
 	if evt.Type.Class != event.ToDeviceEventType {
 		logrus.Warn("ignoring a not to-device event")
@@ -171,7 +171,7 @@ func (f *SFU) onMatrixEvent(_ mautrix.EventSource, evt *event.Event) {
 	}
 }
 
-func (f *SFU) createSDPAnswerEvent(
+func (f *SignalingServer) createSDPAnswerEvent(
 	conferenceID string,
 	destSessionID id.SessionID,
 	peerID peer.ID,
@@ -208,7 +208,7 @@ func createBaseEventContent(
 }
 
 // Sends a to-device event to the given user.
-func (f *SFU) sendToDevice(participantID peer.ID, ev *event.Event) {
+func (f *SignalingServer) sendToDevice(participantID peer.ID, ev *event.Event) {
 	// TODO: Don't create logger again and again, it might be a bit expensive.
 	logger := logrus.WithFields(logrus.Fields{
 		"user_id":   participantID.UserID,
