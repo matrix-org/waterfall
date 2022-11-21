@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package signaling
 
 import (
 	"github.com/matrix-org/waterfall/src/conference"
+	"github.com/matrix-org/waterfall/src/config"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 )
@@ -26,7 +27,7 @@ const LocalSessionID = "sfu"
 
 // Starts the Matrix client and connects to the homeserver,
 // runs the SFU. Returns only when the sync with Matrix fails.
-func RunServer(config *Config) {
+func RunServer(config *config.Config) {
 	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
 	if err != nil {
 		logrus.WithError(err).Fatal("Failed to create client")
@@ -44,7 +45,7 @@ func RunServer(config *Config) {
 	logrus.WithField("device_id", whoami.DeviceID).Info("Identified SFU as DeviceID")
 	client.DeviceID = whoami.DeviceID
 
-	focus := NewSFU(
+	focus := NewSignalingServer(
 		client,
 		&conference.CallConfig{KeepAliveTimeout: config.KeepAliveTimeout},
 	)

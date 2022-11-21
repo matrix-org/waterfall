@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"errors"
@@ -27,14 +27,14 @@ type Config struct {
 // If the environment variable is not set, tries to load a config from the
 // provided path to the config file (YAML). Returns an error if the config could
 // not be loaded.
-func loadConfig(path string) (*Config, error) {
-	config, err := loadConfigFromEnv()
+func LoadConfig(path string) (*Config, error) {
+	config, err := LoadConfigFromEnv()
 	if err != nil {
 		if !errors.Is(err, ErrNoConfigEnvVar) {
 			return nil, err
 		}
 
-		return loadConfigFromPath(path)
+		return LoadConfigFromPath(path)
 	}
 
 	return config, nil
@@ -45,17 +45,17 @@ var ErrNoConfigEnvVar = errors.New("environment variable not set or invalid")
 
 // Tries to load the config from environment variable (`CONFIG`).
 // Returns an error if not all environment variables are set.
-func loadConfigFromEnv() (*Config, error) {
+func LoadConfigFromEnv() (*Config, error) {
 	configEnv := os.Getenv("CONFIG")
 	if configEnv == "" {
 		return nil, ErrNoConfigEnvVar
 	}
 
-	return loadConfigFromString(configEnv)
+	return LoadConfigFromString(configEnv)
 }
 
 // Tries to load a config from the provided path.
-func loadConfigFromPath(path string) (*Config, error) {
+func LoadConfigFromPath(path string) (*Config, error) {
 	logrus.WithField("path", path).Info("loading config")
 
 	file, err := os.ReadFile(path)
@@ -63,12 +63,12 @@ func loadConfigFromPath(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	return loadConfigFromString(string(file))
+	return LoadConfigFromString(string(file))
 }
 
 // Load config from the provided string.
 // Returns an error if the string is not a valid YAML.
-func loadConfigFromString(configString string) (*Config, error) {
+func LoadConfigFromString(configString string) (*Config, error) {
 	logrus.Info("loading config from string")
 
 	var config Config

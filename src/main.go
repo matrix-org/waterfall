@@ -22,6 +22,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/matrix-org/waterfall/src/config"
+	"github.com/matrix-org/waterfall/src/signaling"
 	"github.com/sirupsen/logrus"
 )
 
@@ -60,10 +62,10 @@ func main() {
 	}()
 
 	// Load the config file from the environment variable or path.
-	config, err := loadConfig(*configFilePath)
+	config, err := config.LoadConfig(*configFilePath)
 	if err != nil {
 		logrus.WithError(err).Fatal("could not load config")
 	}
 
-	RunServer(config)
+	signaling.RunServer(config)
 }
