@@ -65,7 +65,15 @@ func main() {
 	config, err := config.LoadConfig(*configFilePath)
 	if err != nil {
 		logrus.WithError(err).Fatal("could not load config")
+		return
 	}
 
-	signaling.RunServer(config)
+	// Create matrix client.
+	matrixClient := signaling.NewMatrixClient(config.Matrix)
+
+	// Create a router to route incoming To-Device messages to the right conference.
+	router := newRouter(matrixClient, config.Conference)
+
+	// Start matrix client sync. This function will block until the sync fails.
+	matrixClient.RunSync(router.handleMatrixEvent)
 }

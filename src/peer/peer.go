@@ -15,6 +15,7 @@ var (
 	ErrCantSetLocalDescription    = errors.New("can't set local description")
 	ErrCantCreateLocalDescription = errors.New("can't create local description")
 	ErrDataChannelNotAvailable    = errors.New("data channel is not available")
+	ErrDataChannelNotReady        = errors.New("data channel is not ready")
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
 )
 
@@ -103,7 +104,7 @@ func (p *Peer) Terminate() {
 		p.logger.WithError(err).Error("failed to close peer connection")
 	}
 
-	p.notify <- PeerLeftTheCall{Sender: p.id}
+	p.notify <- LeftTheCall{Sender: p.id}
 }
 
 func (p *Peer) AddICECandidates(candidates []webrtc.ICECandidateInit) {
@@ -133,8 +134,26 @@ func (p *Peer) SendOverDataChannel(json string) error {
 		return ErrDataChannelNotAvailable
 	}
 
+	if p.dataChannel.ReadyState() != webrtc.DataChannelStateOpen {
+		p.logger.Error("can't send data over data channel: data channel is not open")
+		return ErrDataChannelNotReady
+	}
+
 	if err := p.dataChannel.SendText(json); err != nil {
 		p.logger.WithError(err).Error("failed to send data over data channel")
+	}
+
+	return nil
+}
+
+func (p *Peer) NewSDPAnswerReceived(sdpAnswer string) error {
+	err := p.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeAnswer,
+		SDP:  sdpAnswer,
+	})
+	if err != nil {
+		p.logger.WithError(err).Error("failed to set remote description")
+		return ErrCantSetRemoteDecsription
 	}
 
 	return nil

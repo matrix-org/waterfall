@@ -18,46 +18,33 @@ package conference
 
 import (
 	"github.com/matrix-org/waterfall/src/peer"
+	"github.com/matrix-org/waterfall/src/signaling"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 )
 
-// Configuration for the group conferences (calls).
-type CallConfig struct {
-	// Keep-alive timeout for WebRTC connections. If no keep-alive has been received
-	// from the client for this duration, the connection is considered dead.
-	KeepAliveTimeout int
-}
-
-type Participant struct {
-	Peer *peer.Peer
-	Data *ParticipantData
-}
-
-type ParticipantData struct {
-	RemoteSessionID id.SessionID
-	StreamMetadata  event.CallSDPStreamMetadata
-}
-
 type Conference struct {
-	conferenceID        string
-	config              *CallConfig
-	participants        map[peer.ID]*Participant
-	participantsChannel peer.MessageChannel
-	logger              *logrus.Entry
+	id               string
+	config           Config
+	signaling        signaling.MatrixSignaling
+	participants     map[peer.ID]*Participant
+	peerEventsStream chan peer.Message
+	logger           *logrus.Entry
 }
 
-func NewConference(confID string, config *CallConfig) *Conference {
-	conference := new(Conference)
-	conference.config = config
-	conference.conferenceID = confID
-	conference.participants = make(map[peer.ID]*Participant)
-	conference.participantsChannel = make(peer.MessageChannel)
-	conference.logger = logrus.WithFields(logrus.Fields{
-		"conf_id": confID,
-	})
+func NewConference(confID string, config Config, signaling signaling.MatrixSignaling) *Conference {
+	conference := &Conference{
+		id:               confID,
+		config:           config,
+		signaling:        signaling,
+		participants:     make(map[peer.ID]*Participant),
+		peerEventsStream: make(chan peer.Message),
+		logger:           logrus.WithFields(logrus.Fields{"conf_id": confID}),
+	}
+
+	// Start conference "main loop".
+	go conference.processMessages()
 	return conference
 }
 
@@ -66,41 +53,43 @@ func (c *Conference) OnNewParticipant(participantID peer.ID, inviteEvent *event.
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
 	// any existing calls from this device in this call should be terminated.
 	// TODO: Implement this.
-	/*
-		for _, participant := range c.participants {
-			if participant.data.DeviceID == inviteEvent.DeviceID {
-				if participant.data.RemoteSessionID == inviteEvent.SenderSessionID {
-					c.logger.WithFields(logrus.Fields{
-						"device_id":  inviteEvent.DeviceID,
-						"session_id": inviteEvent.SenderSessionID,
-					}).Errorf("Found existing participant with equal DeviceID and SessionID")
-					return
-				} else {
-					participant.Terminate()
-					delete(c.participants, participant.data.UserID)
-				}
+	for id, participant := range c.participants {
+		if id.DeviceID == inviteEvent.DeviceID {
+			if participant.remoteSessionID == inviteEvent.SenderSessionID {
+				c.logger.WithFields(logrus.Fields{
+					"device_id":  inviteEvent.DeviceID,
+					"session_id": inviteEvent.SenderSessionID,
+				}).Errorf("Found existing participant with equal DeviceID and SessionID")
+				return
+			} else {
+				participant.peer.Terminate()
 			}
 		}
-	*/
+	}
 
-	peer, _, err := peer.NewPeer(participantID, c.conferenceID, inviteEvent.Offer.SDP, c.participantsChannel)
+	peer, sdpOffer, err := peer.NewPeer(participantID, c.id, inviteEvent.Offer.SDP, c.peerEventsStream)
 	if err != nil {
 		c.logger.WithError(err).Errorf("Failed to create new peer")
 		return
 	}
 
-	participantData := &ParticipantData{
-		RemoteSessionID: inviteEvent.SenderSessionID,
-		StreamMetadata:  inviteEvent.SDPStreamMetadata,
+	participant := &Participant{
+		id:              participantID,
+		peer:            peer,
+		remoteSessionID: inviteEvent.SenderSessionID,
+		streamMetadata:  inviteEvent.SDPStreamMetadata,
+		publishedTracks: make(map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP),
 	}
 
-	c.participants[participantID] = &Participant{Peer: peer, Data: participantData}
+	c.participants[participantID] = participant
 
-	// TODO: Send the SDP answer back to the participant's device.
+	recipient := participant.asMatrixRecipient()
+	streamMetadata := c.getStreamsMetadata(participantID)
+	c.signaling.SendSDPAnswer(recipient, streamMetadata, sdpOffer.SDP)
 }
 
 func (c *Conference) OnCandidates(peerID peer.ID, candidatesEvent *event.CallCandidatesEventContent) {
-	if participant := c.getParticipant(peerID); participant != nil {
+	if participant := c.getParticipant(peerID, nil); participant != nil {
 		// Convert the candidates to the WebRTC format.
 		candidates := make([]webrtc.ICECandidateInit, len(candidatesEvent.Candidates))
 		for i, candidate := range candidatesEvent.Candidates {
@@ -112,36 +101,23 @@ func (c *Conference) OnCandidates(peerID peer.ID, candidatesEvent *event.CallCan
 			}
 		}
 
-		participant.Peer.AddICECandidates(candidates)
+		participant.peer.AddICECandidates(candidates)
 	}
 }
 
 func (c *Conference) OnSelectAnswer(peerID peer.ID, selectAnswerEvent *event.CallSelectAnswerEventContent) {
-	if participant := c.getParticipant(peerID); participant != nil {
+	if participant := c.getParticipant(peerID, nil); participant != nil {
 		if selectAnswerEvent.SelectedPartyID != peerID.DeviceID.String() {
 			c.logger.WithFields(logrus.Fields{
 				"device_id": selectAnswerEvent.SelectedPartyID,
 			}).Errorf("Call was answered on a different device, kicking this peer")
-			participant.Peer.Terminate()
+			participant.peer.Terminate()
 		}
 	}
 }
 
 func (c *Conference) OnHangup(peerID peer.ID, hangupEvent *event.CallHangupEventContent) {
-	if participant := c.getParticipant(peerID); participant != nil {
-		participant.Peer.Terminate()
+	if participant := c.getParticipant(peerID, nil); participant != nil {
+		participant.peer.Terminate()
 	}
-}
-
-func (c *Conference) getParticipant(peerID peer.ID) *Participant {
-	participant, ok := c.participants[peerID]
-	if !ok {
-		c.logger.WithFields(logrus.Fields{
-			"user_id":   peerID.UserID,
-			"device_id": peerID.DeviceID,
-		}).Errorf("Failed to find participant")
-		return nil
-	}
-
-	return participant
 }

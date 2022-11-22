@@ -4,13 +4,13 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-type MessageChannel chan interface{}
+type Message = interface{}
 
-type PeerJoinedTheCall struct {
+type JoinedTheCall struct {
 	Sender ID
 }
 
-type PeerLeftTheCall struct {
+type LeftTheCall struct {
 	Sender ID
 }
 
@@ -33,17 +33,9 @@ type ICEGatheringComplete struct {
 	Sender ID
 }
 
-type NewOffer struct {
+type RenegotiationRequired struct {
 	Sender ID
 	Offer  *webrtc.SessionDescription
-}
-
-type DataChannelOpened struct {
-	Sender ID
-}
-
-type DataChannelClosed struct {
-	Sender ID
 }
 
 type DataChannelMessage struct {
@@ -51,7 +43,6 @@ type DataChannelMessage struct {
 	Message string
 }
 
-type DataChannelError struct {
+type DataChannelAvailable struct {
 	Sender ID
-	Err    error
 }
