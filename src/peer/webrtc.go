@@ -93,7 +93,7 @@ func (p *Peer) onNegotiationNeeded() {
 		return
 	}
 
-	p.notify <- NewOffer{Sender: p.id, Offer: &offer}
+	p.notify <- RenegotiationRequired{Sender: p.id, Offer: &offer}
 }
 
 // A callback that is called once we receive an ICE connection state change for this peer connection.
@@ -132,9 +132,9 @@ func (p *Peer) onConnectionStateChanged(state webrtc.PeerConnectionState) {
 
 	switch state {
 	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateClosed:
-		p.notify <- PeerLeftTheCall{Sender: p.id}
+		p.notify <- LeftTheCall{Sender: p.id}
 	case webrtc.PeerConnectionStateConnected:
-		p.notify <- PeerJoinedTheCall{Sender: p.id}
+		p.notify <- JoinedTheCall{Sender: p.id}
 	}
 }
 
@@ -154,12 +154,7 @@ func (p *Peer) onDataChannelReady(dc *webrtc.DataChannel) {
 
 	dc.OnOpen(func() {
 		p.logger.Info("data channel opened")
-		p.notify <- DataChannelOpened{Sender: p.id}
-	})
-
-	dc.OnClose(func() {
-		p.logger.Info("data channel closed")
-		p.notify <- DataChannelClosed{Sender: p.id}
+		p.notify <- DataChannelAvailable{Sender: p.id}
 	})
 
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -173,6 +168,9 @@ func (p *Peer) onDataChannelReady(dc *webrtc.DataChannel) {
 
 	dc.OnError(func(err error) {
 		p.logger.WithError(err).Error("data channel error")
-		p.notify <- DataChannelError{Sender: p.id, Err: err}
+	})
+
+	dc.OnClose(func() {
+		p.logger.Info("data channel closed")
 	})
 }

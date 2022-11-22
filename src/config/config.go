@@ -5,22 +5,18 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/matrix-org/waterfall/src/conference"
+	"github.com/matrix-org/waterfall/src/signaling"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
-	"maunium.net/go/mautrix/id"
 )
 
-// The mandatory SFU configuration.
+// SFU configuration.
 type Config struct {
-	// The Matrix ID (MXID) of the SFU.
-	UserID id.UserID
-	// The ULR of the homeserver that SFU talks to.
-	HomeserverURL string
-	// The access token for the Matrix SDK.
-	AccessToken string
-	// Keep-alive timeout for WebRTC connections. If no keep-alive has been received
-	// from the client for this duration, the connection is considered dead.
-	KeepAliveTimeout int
+	// Matrix configuration.
+	Matrix signaling.Config `yaml:"matrix"`
+	// Conference (call) configuration.
+	Conference conference.Config `yaml:"conference"`
 }
 
 // Tries to load a config from the `CONFIG` environment variable.
@@ -74,6 +70,13 @@ func LoadConfigFromString(configString string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal([]byte(configString), &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
+	}
+
+	if config.Matrix.UserID == "" ||
+		config.Matrix.HomeserverURL == "" ||
+		config.Matrix.AccessToken == "" ||
+		config.Conference.KeepAliveTimeout == 0 {
+		return nil, errors.New("invalid config values")
 	}
 
 	return &config, nil

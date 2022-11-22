@@ -1,4 +1,6 @@
-homeserverurl: "http://localhost:8008"
-userid: "@sfu:shadowfax"
-accesstoken: "..."
-timeout: 30
+matrix:
+  homeserverurl: "http://localhost:8008"
+  userid: "@sfu:shadowfax"
+  accesstoken: "..."
+conference:
+  timeout: 30
