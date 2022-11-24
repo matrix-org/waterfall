@@ -49,7 +49,6 @@ func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver 
 
 		for {
 			index, _, readErr := remoteTrack.Read(rtpBuf)
-			// TODO: inform the conference that this publisher's track is not available anymore.
 			if readErr != nil {
 				if readErr == io.EOF { // finished, no more data, no error, inform others
 					p.logger.Info("remote track closed")
@@ -100,18 +99,15 @@ func (p *Peer[ID]) onNegotiationNeeded() {
 func (p *Peer[ID]) onICEConnectionStateChanged(state webrtc.ICEConnectionState) {
 	p.logger.WithField("state", state).Debug("ICE connection state changed")
 
+	// TODO: Ask Simon if we should do it here as in the previous implementation of the
+	//       `waterfall` or the way I did it in this new implementation.
 	switch state {
 	case webrtc.ICEConnectionStateFailed, webrtc.ICEConnectionStateDisconnected:
 		// TODO: We may want to treat it as an opportunity for the ICE restart instead.
-		// TODO: Ask Simon if we should do it here as in the previous implementation of the
-		//      `waterfall` or the way I did it in this new implementation.
 		// p.notify <- PeerLeftTheCall{sender: p.data}
 	case webrtc.ICEConnectionStateCompleted, webrtc.ICEConnectionStateConnected:
 		// TODO: Start keep-alive timer over the data channel to check the connecitons that hanged.
-		// TODO: Ask Simon if we should do it here as in the previous implementation of the
-		//       `waterfall` or the way I did it in this new implementation.
 		// p.notify <- PeerJoinedTheCall{sender: p.data}
-		p.sink.Send(ICEGatheringComplete{})
 	}
 }
 

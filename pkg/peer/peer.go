@@ -157,8 +157,7 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 		return nil, ErrCantSetLocalDescription
 	}
 
-	// TODO: Do we really need to call `webrtc.GatheringCompletePromise`
-	//       as in the previous version of the `waterfall` here?
+	// TODO: Do we really need to call `webrtc.GatheringCompletePromise` here?
 
 	sdpAnswer := p.peerConnection.LocalDescription()
 	if sdpAnswer == nil {

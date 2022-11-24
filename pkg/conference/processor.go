@@ -11,12 +11,13 @@ import (
 
 func (c *Conference) processMessages() {
 	for {
-		// Read a message from the stream (of type peer.Message) and process it.
+		// Read a message from the participant in the room (our local counterpart of it)
 		message := <-c.peerEvents
 		c.processPeerMessage(message)
 	}
 }
 
+// Process a message from a local peer.
 func (c *Conference) processPeerMessage(message common.Message[ParticipantID, peer.MessageContent]) {
 	participant := c.getParticipant(message.Sender, errors.New("received a message from a deleted participant"))
 	if participant == nil {
@@ -86,15 +87,10 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		c.handleDataChannelMessage(participant, sfuMessage)
 
 	case peer.DataChannelAvailable:
-		toSend := event.SFUMessage{
+		participant.sendDataChannelMessage(event.SFUMessage{
 			Op:       event.SFUOperationMetadata,
 			Metadata: c.getAvailableStreamsFor(participant.id),
-		}
-
-		if err := participant.sendDataChannelMessage(toSend); err != nil {
-			c.logger.Errorf("Failed to send SFU message to open data channel: %v", err)
-			return
-		}
+		})
 
 	default:
 		c.logger.Errorf("Unknown message type: %T", msg)
@@ -108,42 +104,47 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 		// Get the tracks that correspond to the tracks that the participant wants to receive.
 		for _, track := range c.getTracks(sfuMessage.Start) {
 			if err := participant.peer.SubscribeTo(track); err != nil {
-				c.logger.Errorf("Failed to subscribe to track: %v", err)
+				participant.logger.Errorf("Failed to subscribe to track: %v", err)
 				return
 			}
 		}
 
 	case event.SFUOperationAnswer:
 		if err := participant.peer.ProcessSDPAnswer(sfuMessage.SDP); err != nil {
-			c.logger.Errorf("Failed to set SDP answer: %v", err)
+			participant.logger.Errorf("Failed to set SDP answer: %v", err)
 			return
 		}
 
-	// TODO: Clarify the semantics of publish (just a new sdp offer?).
 	case event.SFUOperationPublish:
-	// TODO: Clarify the semantics of publish (how is it different from unpublish?).
+		answer, err := participant.peer.ProcessSDPOffer(sfuMessage.SDP)
+		if err != nil {
+			participant.logger.Errorf("Failed to set SDP offer: %v", err)
+			return
+		}
+
+		participant.sendDataChannelMessage(event.SFUMessage{
+			Op:  event.SFUOperationAnswer,
+			SDP: answer.SDP,
+		})
+
 	case event.SFUOperationUnpublish:
-	// TODO: Handle the heartbeat message here (updating the last timestamp etc).
+		// TODO: Clarify the semantics of unpublish.
 	case event.SFUOperationAlive:
+		// TODO: Handle the heartbeat message here (updating the last timestamp etc).
 	case event.SFUOperationMetadata:
 		participant.streamMetadata = sfuMessage.Metadata
 
 		// Inform all participants about new metadata available.
-		for id, participant := range c.participants {
+		for _, otherParticipant := range c.participants {
 			// Skip ourselves.
-			if id == participant.id {
+			if participant.id == otherParticipant.id {
 				continue
 			}
 
-			toSend := event.SFUMessage{
+			otherParticipant.sendDataChannelMessage(event.SFUMessage{
 				Op:       event.SFUOperationMetadata,
-				Metadata: c.getAvailableStreamsFor(id),
-			}
-
-			if err := participant.sendDataChannelMessage(toSend); err != nil {
-				c.logger.Errorf("Failed to send SFU message: %v", err)
-				return
-			}
+				Metadata: c.getAvailableStreamsFor(otherParticipant.id),
+			})
 		}
 	}
 }
