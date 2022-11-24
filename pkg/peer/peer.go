@@ -81,11 +81,23 @@ func (p *Peer[ID]) Terminate() {
 
 // Adds given track to our peer connection, so that it can be sent to the remote peer.
 func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
-	_, err := p.peerConnection.AddTrack(track)
+	rtpSender, err := p.peerConnection.AddTrack(track)
 	if err != nil {
 		p.logger.WithError(err).Error("failed to add track")
 		return ErrCantSubscribeToTrack
 	}
+
+	// Read incoming RTCP packets
+	// Before these packets are returned they are processed by interceptors. For things
+	// like NACK this needs to be called.
+	go func() {
+		rtcpBuf := make([]byte, 1500)
+		for {
+			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
+				return
+			}
+		}
+	}()
 
 	return nil
 }
