@@ -7,18 +7,20 @@ import (
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/pion/webrtc/v3"
-	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
 var ErrInvalidSFUMessage = errors.New("invalid SFU message")
 
+// Things that we assume as identifiers for the participants in the call.
+// There could be no 2 participants in the room with identical IDs.
 type ParticipantID struct {
 	UserID   id.UserID
 	DeviceID id.DeviceID
 }
 
+// Participant represents a participant in the conference.
 type Participant struct {
 	id              ParticipantID
 	peer            *peer.Peer[ParticipantID]
@@ -48,50 +50,4 @@ func (p *Participant) sendDataChannelMessage(toSend event.SFUMessage) error {
 	}
 
 	return nil
-}
-
-func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMessage error) *Participant {
-	participant, ok := c.participants[participantID]
-	if !ok {
-		logEntry := c.logger.WithFields(logrus.Fields{
-			"user_id":   participantID.UserID,
-			"device_id": participantID.DeviceID,
-		})
-
-		if optionalErrorMessage != nil {
-			logEntry.WithError(optionalErrorMessage)
-		} else {
-			logEntry.Error("Participant not found")
-		}
-
-		return nil
-	}
-
-	return participant
-}
-
-func (c *Conference) getStreamsMetadata(forParticipant ParticipantID) event.CallSDPStreamMetadata {
-	streamsMetadata := make(event.CallSDPStreamMetadata)
-	for id, participant := range c.participants {
-		if forParticipant != id {
-			for streamID, metadata := range participant.streamMetadata {
-				streamsMetadata[streamID] = metadata
-			}
-		}
-	}
-
-	return streamsMetadata
-}
-
-func (c *Conference) getTracks(identifiers []event.SFUTrackDescription) []*webrtc.TrackLocalStaticRTP {
-	tracks := make([]*webrtc.TrackLocalStaticRTP, len(identifiers))
-	for _, participant := range c.participants {
-		// Check if this participant has any of the tracks that we're looking for.
-		for _, identifier := range identifiers {
-			if track, ok := participant.publishedTracks[identifier]; ok {
-				tracks = append(tracks, track)
-			}
-		}
-	}
-	return tracks
 }
