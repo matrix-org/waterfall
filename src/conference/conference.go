@@ -17,6 +17,7 @@ limitations under the License.
 package conference
 
 import (
+	"github.com/matrix-org/waterfall/src/common"
 	"github.com/matrix-org/waterfall/src/peer"
 	"github.com/matrix-org/waterfall/src/signaling"
 	"github.com/pion/webrtc/v3"
@@ -25,22 +26,22 @@ import (
 )
 
 type Conference struct {
-	id               string
-	config           Config
-	signaling        signaling.MatrixSignaling
-	participants     map[peer.ID]*Participant
-	peerEventsStream chan peer.Message
-	logger           *logrus.Entry
+	id           string
+	config       Config
+	signaling    signaling.MatrixSignaling
+	participants map[ParticipantID]*Participant
+	peerEvents   chan common.Message[ParticipantID, peer.MessageContent]
+	logger       *logrus.Entry
 }
 
 func NewConference(confID string, config Config, signaling signaling.MatrixSignaling) *Conference {
 	conference := &Conference{
-		id:               confID,
-		config:           config,
-		signaling:        signaling,
-		participants:     make(map[peer.ID]*Participant),
-		peerEventsStream: make(chan peer.Message),
-		logger:           logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		id:           confID,
+		config:       config,
+		signaling:    signaling,
+		participants: make(map[ParticipantID]*Participant),
+		peerEvents:   make(chan common.Message[ParticipantID, peer.MessageContent]),
+		logger:       logrus.WithFields(logrus.Fields{"conf_id": confID}),
 	}
 
 	// Start conference "main loop".
@@ -49,7 +50,7 @@ func NewConference(confID string, config Config, signaling signaling.MatrixSigna
 }
 
 // New participant tries to join the conference.
-func (c *Conference) OnNewParticipant(participantID peer.ID, inviteEvent *event.CallInviteEventContent) {
+func (c *Conference) OnNewParticipant(participantID ParticipantID, inviteEvent *event.CallInviteEventContent) {
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
 	// any existing calls from this device in this call should be terminated.
 	// TODO: Implement this.
@@ -67,7 +68,16 @@ func (c *Conference) OnNewParticipant(participantID peer.ID, inviteEvent *event.
 		}
 	}
 
-	peer, sdpOffer, err := peer.NewPeer(participantID, c.id, inviteEvent.Offer.SDP, c.peerEventsStream)
+	var (
+		participantlogger = logrus.WithFields(logrus.Fields{
+			"user_id":   participantID.UserID,
+			"device_id": participantID.DeviceID,
+			"conf_id":   c.id,
+		})
+		messageSink = common.NewMessageSink(participantID, c.peerEvents)
+	)
+
+	peer, sdpOffer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, participantlogger)
 	if err != nil {
 		c.logger.WithError(err).Errorf("Failed to create new peer")
 		return
@@ -88,11 +98,11 @@ func (c *Conference) OnNewParticipant(participantID peer.ID, inviteEvent *event.
 	c.signaling.SendSDPAnswer(recipient, streamMetadata, sdpOffer.SDP)
 }
 
-func (c *Conference) OnCandidates(peerID peer.ID, candidatesEvent *event.CallCandidatesEventContent) {
-	if participant := c.getParticipant(peerID, nil); participant != nil {
+func (c *Conference) OnCandidates(participantID ParticipantID, ev *event.CallCandidatesEventContent) {
+	if participant := c.getParticipant(participantID, nil); participant != nil {
 		// Convert the candidates to the WebRTC format.
-		candidates := make([]webrtc.ICECandidateInit, len(candidatesEvent.Candidates))
-		for i, candidate := range candidatesEvent.Candidates {
+		candidates := make([]webrtc.ICECandidateInit, len(ev.Candidates))
+		for i, candidate := range ev.Candidates {
 			SDPMLineIndex := uint16(candidate.SDPMLineIndex)
 			candidates[i] = webrtc.ICECandidateInit{
 				Candidate:     candidate.Candidate,
@@ -105,19 +115,19 @@ func (c *Conference) OnCandidates(peerID peer.ID, candidatesEvent *event.CallCan
 	}
 }
 
-func (c *Conference) OnSelectAnswer(peerID peer.ID, selectAnswerEvent *event.CallSelectAnswerEventContent) {
-	if participant := c.getParticipant(peerID, nil); participant != nil {
-		if selectAnswerEvent.SelectedPartyID != peerID.DeviceID.String() {
+func (c *Conference) OnSelectAnswer(participantID ParticipantID, ev *event.CallSelectAnswerEventContent) {
+	if participant := c.getParticipant(participantID, nil); participant != nil {
+		if ev.SelectedPartyID != participantID.DeviceID.String() {
 			c.logger.WithFields(logrus.Fields{
-				"device_id": selectAnswerEvent.SelectedPartyID,
+				"device_id": ev.SelectedPartyID,
 			}).Errorf("Call was answered on a different device, kicking this peer")
 			participant.peer.Terminate()
 		}
 	}
 }
 
-func (c *Conference) OnHangup(peerID peer.ID, hangupEvent *event.CallHangupEventContent) {
-	if participant := c.getParticipant(peerID, nil); participant != nil {
+func (c *Conference) OnHangup(participantID ParticipantID, ev *event.CallHangupEventContent) {
+	if participant := c.getParticipant(participantID, nil); participant != nil {
 		participant.peer.Terminate()
 	}
 }

@@ -17,7 +17,6 @@ limitations under the License.
 package signaling
 
 import (
-	"github.com/matrix-org/waterfall/src/peer"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -26,66 +25,13 @@ import (
 
 const LocalSessionID = "sfu"
 
-type MatrixClient struct {
-	client *mautrix.Client
+// Matrix client scoped for a particular conference.
+type MatrixForConference struct {
+	client       *mautrix.Client
+	conferenceID string
 }
 
-func NewMatrixClient(config Config) *MatrixClient {
-	client, err := mautrix.NewClient(config.HomeserverURL, config.UserID, config.AccessToken)
-	if err != nil {
-		logrus.WithError(err).Fatal("Failed to create client")
-	}
-
-	whoami, err := client.Whoami()
-	if err != nil {
-		logrus.WithError(err).Fatal("Failed to identify SFU user")
-	}
-
-	if config.UserID != whoami.UserID {
-		logrus.WithField("user_id", config.UserID).Fatal("Access token is for the wrong user")
-	}
-
-	logrus.WithField("device_id", whoami.DeviceID).Info("Identified SFU as DeviceID")
-	client.DeviceID = whoami.DeviceID
-
-	return &MatrixClient{
-		client: client,
-	}
-}
-
-// Starts the Matrix client and connects to the homeserver,
-// Returns only when the sync with Matrix fails.
-func (m *MatrixClient) RunSync(callback func(*event.Event)) {
-	syncer, ok := m.client.Syncer.(*mautrix.DefaultSyncer)
-	if !ok {
-		logrus.Panic("Syncer is not DefaultSyncer")
-	}
-
-	syncer.ParseEventContent = true
-	syncer.OnEvent(func(_ mautrix.EventSource, evt *event.Event) {
-		// We only care about to-device events.
-		if evt.Type.Class != event.ToDeviceEventType {
-			logrus.Warn("ignoring a not to-device event")
-			return
-		}
-
-		// We drop the messages if they are not meant for us.
-		if evt.Content.Raw["dest_session_id"] != LocalSessionID {
-			logrus.Warn("SessionID does not match our SessionID - ignoring")
-			return
-		}
-
-		callback(evt)
-	})
-
-	// TODO: We may want to reconnect if `Sync()` fails instead of ending the SFU
-	//       as ending here will essentially drop all conferences which may not necessarily
-	// 	     be what we want for the existing running conferences.
-	if err := m.client.Sync(); err != nil {
-		logrus.WithError(err).Panic("Sync failed")
-	}
-}
-
+// Create a new Matrix client that abstarcts outgoing Matrix messages from a given conference.
 func (m *MatrixClient) CreateForConference(conferenceID string) *MatrixForConference {
 	return &MatrixForConference{
 		client:       m.client,
@@ -93,21 +39,19 @@ func (m *MatrixClient) CreateForConference(conferenceID string) *MatrixForConfer
 	}
 }
 
+// Defines the data that identifies a receiver of Matrix's to-device message.
 type MatrixRecipient struct {
-	ID              peer.ID
+	UserID          id.UserID
+	DeviceID        id.DeviceID
 	RemoteSessionID id.SessionID
 }
 
+// Interface that abstracts sending Send-to-device messages for the conference.
 type MatrixSignaling interface {
 	SendSDPAnswer(recipient MatrixRecipient, streamMetadata event.CallSDPStreamMetadata, sdp string)
 	SendICECandidates(recipient MatrixRecipient, candidates []event.CallCandidate)
 	SendCandidatesGatheringFinished(recipient MatrixRecipient)
 	SendHangup(recipient MatrixRecipient, reason event.CallHangupReason)
-}
-
-type MatrixForConference struct {
-	client       *mautrix.Client
-	conferenceID string
 }
 
 func (m *MatrixForConference) SendSDPAnswer(
@@ -117,7 +61,7 @@ func (m *MatrixForConference) SendSDPAnswer(
 ) {
 	eventContent := &event.Content{
 		Parsed: event.CallAnswerEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.ID.DeviceID, recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.DeviceID, recipient.RemoteSessionID),
 			Answer: event.CallData{
 				Type: "answer",
 				SDP:  sdp,
@@ -126,40 +70,40 @@ func (m *MatrixForConference) SendSDPAnswer(
 		},
 	}
 
-	m.sendToDevice(recipient.ID, event.CallAnswer, eventContent)
+	m.sendToDevice(recipient, event.CallAnswer, eventContent)
 }
 
 func (m *MatrixForConference) SendICECandidates(recipient MatrixRecipient, candidates []event.CallCandidate) {
 	eventContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.ID.DeviceID, recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.DeviceID, recipient.RemoteSessionID),
 			Candidates:           candidates,
 		},
 	}
 
-	m.sendToDevice(recipient.ID, event.CallCandidates, eventContent)
+	m.sendToDevice(recipient, event.CallCandidates, eventContent)
 }
 
 func (m *MatrixForConference) SendCandidatesGatheringFinished(recipient MatrixRecipient) {
 	eventContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.ID.DeviceID, recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.DeviceID, recipient.RemoteSessionID),
 			Candidates:           []event.CallCandidate{{Candidate: ""}},
 		},
 	}
 
-	m.sendToDevice(recipient.ID, event.CallCandidates, eventContent)
+	m.sendToDevice(recipient, event.CallCandidates, eventContent)
 }
 
 func (m *MatrixForConference) SendHangup(recipient MatrixRecipient, reason event.CallHangupReason) {
 	eventContent := &event.Content{
 		Parsed: event.CallHangupEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.ID.DeviceID, recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.DeviceID, recipient.RemoteSessionID),
 			Reason:               reason,
 		},
 	}
 
-	m.sendToDevice(recipient.ID, event.CallHangup, eventContent)
+	m.sendToDevice(recipient, event.CallHangup, eventContent)
 }
 
 func (m *MatrixForConference) createBaseEventContent(
@@ -178,17 +122,17 @@ func (m *MatrixForConference) createBaseEventContent(
 }
 
 // Sends a to-device event to the given user.
-func (m *MatrixForConference) sendToDevice(participantID peer.ID, eventType event.Type, eventContent *event.Content) {
+func (m *MatrixForConference) sendToDevice(user MatrixRecipient, eventType event.Type, eventContent *event.Content) {
 	// TODO: Don't create logger again and again, it might be a bit expensive.
 	logger := logrus.WithFields(logrus.Fields{
-		"user_id":   participantID.UserID,
-		"device_id": participantID.DeviceID,
+		"user_id":   user.UserID,
+		"device_id": user.DeviceID,
 	})
 
 	sendRequest := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
-			participantID.UserID: {
-				participantID.DeviceID: eventContent,
+			user.UserID: {
+				user.DeviceID: eventContent,
 			},
 		},
 	}

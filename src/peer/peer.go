@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/matrix-org/waterfall/src/common"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 )
@@ -19,39 +20,30 @@ var (
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
 )
 
-type Peer struct {
-	id             ID
+type Peer[ID comparable] struct {
 	logger         *logrus.Entry
-	notify         chan<- interface{}
 	peerConnection *webrtc.PeerConnection
+	sink           *common.MessageSink[ID, MessageContent]
 
 	dataChannelMutex sync.Mutex
 	dataChannel      *webrtc.DataChannel
 }
 
-func NewPeer(
-	info ID,
-	conferenceId string,
+func NewPeer[ID comparable](
 	sdpOffer string,
-	notify chan<- interface{},
-) (*Peer, *webrtc.SessionDescription, error) {
-	logger := logrus.WithFields(logrus.Fields{
-		"user_id":   info.UserID,
-		"device_id": info.DeviceID,
-		"conf_id":   conferenceId,
-	})
-
+	sink *common.MessageSink[ID, MessageContent],
+	logger *logrus.Entry,
+) (*Peer[ID], *webrtc.SessionDescription, error) {
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		logger.WithError(err).Error("failed to create peer connection")
 		return nil, nil, ErrCantCreatePeerConnection
 	}
 
-	peer := &Peer{
-		id:             info,
+	peer := &Peer[ID]{
 		logger:         logger,
-		notify:         notify,
 		peerConnection: peerConnection,
+		sink:           sink,
 	}
 
 	peerConnection.OnTrack(peer.onRtpTrackReceived)
@@ -99,15 +91,15 @@ func NewPeer(
 	return peer, sdpAnswer, nil
 }
 
-func (p *Peer) Terminate() {
+func (p *Peer[ID]) Terminate() {
 	if err := p.peerConnection.Close(); err != nil {
 		p.logger.WithError(err).Error("failed to close peer connection")
 	}
 
-	p.notify <- LeftTheCall{Sender: p.id}
+	p.sink.Send(LeftTheCall{})
 }
 
-func (p *Peer) AddICECandidates(candidates []webrtc.ICECandidateInit) {
+func (p *Peer[ID]) AddICECandidates(candidates []webrtc.ICECandidateInit) {
 	for _, candidate := range candidates {
 		if err := p.peerConnection.AddICECandidate(candidate); err != nil {
 			p.logger.WithError(err).Error("failed to add ICE candidate")
@@ -115,7 +107,7 @@ func (p *Peer) AddICECandidates(candidates []webrtc.ICECandidateInit) {
 	}
 }
 
-func (p *Peer) SubscribeToTrack(track *webrtc.TrackLocalStaticRTP) error {
+func (p *Peer[ID]) SubscribeToTrack(track *webrtc.TrackLocalStaticRTP) error {
 	_, err := p.peerConnection.AddTrack(track)
 	if err != nil {
 		p.logger.WithError(err).Error("failed to add track")
@@ -125,7 +117,7 @@ func (p *Peer) SubscribeToTrack(track *webrtc.TrackLocalStaticRTP) error {
 	return nil
 }
 
-func (p *Peer) SendOverDataChannel(json string) error {
+func (p *Peer[ID]) SendOverDataChannel(json string) error {
 	p.dataChannelMutex.Lock()
 	defer p.dataChannelMutex.Unlock()
 
@@ -146,7 +138,7 @@ func (p *Peer) SendOverDataChannel(json string) error {
 	return nil
 }
 
-func (p *Peer) NewSDPAnswerReceived(sdpAnswer string) error {
+func (p *Peer[ID]) NewSDPAnswerReceived(sdpAnswer string) error {
 	err := p.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeAnswer,
 		SDP:  sdpAnswer,

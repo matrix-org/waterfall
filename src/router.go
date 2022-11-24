@@ -17,8 +17,7 @@ limitations under the License.
 package main
 
 import (
-	"github.com/matrix-org/waterfall/src/conference"
-	"github.com/matrix-org/waterfall/src/peer"
+	conf "github.com/matrix-org/waterfall/src/conference"
 	"github.com/matrix-org/waterfall/src/signaling"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
@@ -29,16 +28,16 @@ type Router struct {
 	// Matrix matrix.
 	matrix *signaling.MatrixClient
 	// All calls currently forwarded by this SFU.
-	conferences map[string]*conference.Conference
+	conferences map[string]*conf.Conference
 	// Configuration for the calls.
-	config conference.Config
+	config conf.Config
 }
 
 // Creates a new instance of the SFU with the given configuration.
-func newRouter(matrix *signaling.MatrixClient, config conference.Config) *Router {
+func newRouter(matrix *signaling.MatrixClient, config conf.Config) *Router {
 	return &Router{
 		matrix:      matrix,
-		conferences: make(map[string]*conference.Conference),
+		conferences: make(map[string]*conf.Conference),
 		config:      config,
 	}
 }
@@ -63,17 +62,17 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			return
 		}
 
-		// If there is an invitation sent and the conf does not exist, create one.
-		if conf := r.conferences[invite.ConfID]; conf == nil {
+		// If there is an invitation sent and the conference does not exist, create one.
+		if conference := r.conferences[invite.ConfID]; conference == nil {
 			logger.Infof("creating new conference %s", invite.ConfID)
-			r.conferences[invite.ConfID] = conference.NewConference(
+			r.conferences[invite.ConfID] = conf.NewConference(
 				invite.ConfID,
 				r.config,
 				r.matrix.CreateForConference(invite.ConfID),
 			)
 		}
 
-		peerID := peer.ID{
+		peerID := conf.ParticipantID{
 			UserID:   evt.Sender,
 			DeviceID: invite.DeviceID,
 		}
@@ -95,7 +94,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			return
 		}
 
-		peerID := peer.ID{
+		peerID := conf.ParticipantID{
 			UserID:   evt.Sender,
 			DeviceID: candidates.DeviceID,
 		}
@@ -116,7 +115,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			return
 		}
 
-		peerID := peer.ID{
+		peerID := conf.ParticipantID{
 			UserID:   evt.Sender,
 			DeviceID: selectAnswer.DeviceID,
 		}
@@ -137,7 +136,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			return
 		}
 
-		peerID := peer.ID{
+		peerID := conf.ParticipantID{
 			UserID:   evt.Sender,
 			DeviceID: hangup.DeviceID,
 		}

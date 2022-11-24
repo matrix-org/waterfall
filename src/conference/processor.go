@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/matrix-org/waterfall/src/common"
 	"github.com/matrix-org/waterfall/src/peer"
 	"maunium.net/go/mautrix/event"
 )
@@ -11,28 +12,27 @@ import (
 func (c *Conference) processMessages() {
 	for {
 		// Read a message from the stream (of type peer.Message) and process it.
-		message := <-c.peerEventsStream
+		message := <-c.peerEvents
 		c.processPeerMessage(message)
 	}
 }
 
-//nolint:funlen
-func (c *Conference) processPeerMessage(message peer.Message) {
+func (c *Conference) processPeerMessage(message common.Message[ParticipantID, peer.MessageContent]) {
+	participant := c.getParticipant(message.Sender, errors.New("received a message from a deleted participant"))
+	if participant == nil {
+		return
+	}
+
 	// Since Go does not support ADTs, we have to use a switch statement to
 	// determine the actual type of the message.
-	switch msg := message.(type) {
+	switch msg := message.Content.(type) {
 	case peer.JoinedTheCall:
 	case peer.LeftTheCall:
-		delete(c.participants, msg.Sender)
+		delete(c.participants, message.Sender)
 		// TODO: Send new metadata about available streams to all participants.
 		// TODO: Send the hangup event over the Matrix back to the user.
 
 	case peer.NewTrackPublished:
-		participant := c.getParticipant(msg.Sender, errors.New("New track published from unknown participant"))
-		if participant == nil {
-			return
-		}
-
 		key := event.SFUTrackDescription{
 			StreamID: msg.Track.StreamID(),
 			TrackID:  msg.Track.ID(),
@@ -46,11 +46,6 @@ func (c *Conference) processPeerMessage(message peer.Message) {
 		participant.publishedTracks[key] = msg.Track
 
 	case peer.PublishedTrackFailed:
-		participant := c.getParticipant(msg.Sender, errors.New("Published track failed from unknown participant"))
-		if participant == nil {
-			return
-		}
-
 		delete(participant.publishedTracks, event.SFUTrackDescription{
 			StreamID: msg.Track.StreamID(),
 			TrackID:  msg.Track.ID(),
@@ -59,11 +54,6 @@ func (c *Conference) processPeerMessage(message peer.Message) {
 		// TODO: Should we remove the local tracks from every subscriber as well? Or will it happen automatically?
 
 	case peer.NewICECandidate:
-		participant := c.getParticipant(msg.Sender, errors.New("ICE candidate from unknown participant"))
-		if participant == nil {
-			return
-		}
-
 		// Convert WebRTC ICE candidate to Matrix ICE candidate.
 		jsonCandidate := msg.Candidate.ToJSON()
 		candidates := []event.CallCandidate{{
@@ -74,20 +64,10 @@ func (c *Conference) processPeerMessage(message peer.Message) {
 		c.signaling.SendICECandidates(participant.asMatrixRecipient(), candidates)
 
 	case peer.ICEGatheringComplete:
-		participant := c.getParticipant(msg.Sender, errors.New("Received ICE complete from unknown participant"))
-		if participant == nil {
-			return
-		}
-
 		// Send an empty array of candidates to indicate that ICE gathering is complete.
 		c.signaling.SendCandidatesGatheringFinished(participant.asMatrixRecipient())
 
 	case peer.RenegotiationRequired:
-		participant := c.getParticipant(msg.Sender, errors.New("Renegotiation from unknown participant"))
-		if participant == nil {
-			return
-		}
-
 		toSend := event.SFUMessage{
 			Op:       event.SFUOperationOffer,
 			SDP:      msg.Offer.SDP,
@@ -97,11 +77,6 @@ func (c *Conference) processPeerMessage(message peer.Message) {
 		participant.sendDataChannelMessage(toSend)
 
 	case peer.DataChannelMessage:
-		participant := c.getParticipant(msg.Sender, errors.New("Data channel message from unknown participant"))
-		if participant == nil {
-			return
-		}
-
 		var sfuMessage event.SFUMessage
 		if err := json.Unmarshal([]byte(msg.Message), &sfuMessage); err != nil {
 			c.logger.Errorf("Failed to unmarshal SFU message: %v", err)
@@ -111,11 +86,6 @@ func (c *Conference) processPeerMessage(message peer.Message) {
 		c.handleDataChannelMessage(participant, sfuMessage)
 
 	case peer.DataChannelAvailable:
-		participant := c.getParticipant(msg.Sender, errors.New("Data channel available from unknown participant"))
-		if participant == nil {
-			return
-		}
-
 		toSend := event.SFUMessage{
 			Op:       event.SFUOperationMetadata,
 			Metadata: c.getStreamsMetadata(participant.id),

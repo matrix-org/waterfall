@@ -11,7 +11,7 @@ import (
 
 // A callback that is called once we receive first RTP packets from a track, i.e.
 // we call this function each time a new track is received.
-func (p *Peer) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval.
 	// This can be less wasteful by processing incoming RTCP events, then we would emit a NACK/PLI
 	// when a viewer requests it.
@@ -40,7 +40,7 @@ func (p *Peer) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *web
 	}
 
 	// Notify others that our track has just been published.
-	p.notify <- NewTrackPublished{Sender: p.id, Track: localTrack}
+	p.sink.Send(NewTrackPublished{Track: localTrack})
 
 	// Start forwarding the data from the remote track to the local track,
 	// so that everyone who is subscribed to this track will receive the data.
@@ -56,31 +56,31 @@ func (p *Peer) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *web
 				} else { // finished, no more data, but with error, inform others
 					p.logger.WithError(readErr).Error("failed to read from remote track")
 				}
-				p.notify <- PublishedTrackFailed{Sender: p.id, Track: localTrack}
+				p.sink.Send(PublishedTrackFailed{Track: localTrack})
 			}
 
 			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet.
 			if _, err = localTrack.Write(rtpBuf[:index]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 				p.logger.WithError(err).Error("failed to write to local track")
-				p.notify <- PublishedTrackFailed{Sender: p.id, Track: localTrack}
+				p.sink.Send(PublishedTrackFailed{Track: localTrack})
 			}
 		}
 	}()
 }
 
 // A callback that is called once we receive an ICE candidate for this peer connection.
-func (p *Peer) onICECandidateGathered(candidate *webrtc.ICECandidate) {
+func (p *Peer[ID]) onICECandidateGathered(candidate *webrtc.ICECandidate) {
 	if candidate == nil {
 		p.logger.Info("ICE candidate gathering finished")
 		return
 	}
 
 	p.logger.WithField("candidate", candidate).Debug("ICE candidate gathered")
-	p.notify <- NewICECandidate{Sender: p.id, Candidate: candidate}
+	p.sink.Send(NewICECandidate{Candidate: candidate})
 }
 
 // A callback that is called once we receive an ICE connection state change for this peer connection.
-func (p *Peer) onNegotiationNeeded() {
+func (p *Peer[ID]) onNegotiationNeeded() {
 	p.logger.Debug("negotiation needed")
 	offer, err := p.peerConnection.CreateOffer(nil)
 	if err != nil {
@@ -93,11 +93,11 @@ func (p *Peer) onNegotiationNeeded() {
 		return
 	}
 
-	p.notify <- RenegotiationRequired{Sender: p.id, Offer: &offer}
+	p.sink.Send(RenegotiationRequired{Offer: &offer})
 }
 
 // A callback that is called once we receive an ICE connection state change for this peer connection.
-func (p *Peer) onICEConnectionStateChanged(state webrtc.ICEConnectionState) {
+func (p *Peer[ID]) onICEConnectionStateChanged(state webrtc.ICEConnectionState) {
 	p.logger.WithField("state", state).Debug("ICE connection state changed")
 
 	switch state {
@@ -111,35 +111,35 @@ func (p *Peer) onICEConnectionStateChanged(state webrtc.ICEConnectionState) {
 		// TODO: Ask Simon if we should do it here as in the previous implementation of the
 		//       `waterfall` or the way I did it in this new implementation.
 		// p.notify <- PeerJoinedTheCall{sender: p.data}
-		p.notify <- ICEGatheringComplete{Sender: p.id}
+		p.sink.Send(ICEGatheringComplete{})
 	}
 }
 
-func (p *Peer) onICEGatheringStateChanged(state webrtc.ICEGathererState) {
+func (p *Peer[ID]) onICEGatheringStateChanged(state webrtc.ICEGathererState) {
 	p.logger.WithField("state", state).Debug("ICE gathering state changed")
 
 	if state == webrtc.ICEGathererStateComplete {
-		p.notify <- ICEGatheringComplete{Sender: p.id}
+		p.sink.Send(ICEGatheringComplete{})
 	}
 }
 
-func (p *Peer) onSignalingStateChanged(state webrtc.SignalingState) {
+func (p *Peer[ID]) onSignalingStateChanged(state webrtc.SignalingState) {
 	p.logger.WithField("state", state).Debug("signaling state changed")
 }
 
-func (p *Peer) onConnectionStateChanged(state webrtc.PeerConnectionState) {
+func (p *Peer[ID]) onConnectionStateChanged(state webrtc.PeerConnectionState) {
 	p.logger.WithField("state", state).Debug("connection state changed")
 
 	switch state {
 	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateClosed:
-		p.notify <- LeftTheCall{Sender: p.id}
+		p.sink.Send(LeftTheCall{})
 	case webrtc.PeerConnectionStateConnected:
-		p.notify <- JoinedTheCall{Sender: p.id}
+		p.sink.Send(JoinedTheCall{})
 	}
 }
 
 // A callback that is called once the data channel is ready to be used.
-func (p *Peer) onDataChannelReady(dc *webrtc.DataChannel) {
+func (p *Peer[ID]) onDataChannelReady(dc *webrtc.DataChannel) {
 	p.dataChannelMutex.Lock()
 	defer p.dataChannelMutex.Unlock()
 
@@ -154,13 +154,13 @@ func (p *Peer) onDataChannelReady(dc *webrtc.DataChannel) {
 
 	dc.OnOpen(func() {
 		p.logger.Info("data channel opened")
-		p.notify <- DataChannelAvailable{Sender: p.id}
+		p.sink.Send(DataChannelAvailable{})
 	})
 
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
 		p.logger.WithField("message", msg).Debug("data channel message received")
 		if msg.IsString {
-			p.notify <- DataChannelMessage{Sender: p.id, Message: string(msg.Data)}
+			p.sink.Send(DataChannelMessage{Message: string(msg.Data)})
 		} else {
 			p.logger.Warn("data channel message is not a string, ignoring")
 		}
