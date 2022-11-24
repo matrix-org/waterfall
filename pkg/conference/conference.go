@@ -52,10 +52,9 @@ func NewConference(confID string, config Config, signaling signaling.MatrixSigna
 
 // New participant tries to join the conference.
 func (c *Conference) OnNewParticipant(participantID ParticipantID, inviteEvent *event.CallInviteEventContent) {
-	logger := logrus.WithFields(logrus.Fields{
+	logger := c.logger.WithFields(logrus.Fields{
 		"user_id":   participantID.UserID,
 		"device_id": participantID.DeviceID,
-		"conf_id":   c.id,
 	})
 
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
@@ -84,6 +83,7 @@ func (c *Conference) OnNewParticipant(participantID ParticipantID, inviteEvent *
 			participant = &Participant{
 				id:              participantID,
 				peer:            peer,
+				logger:          logger,
 				remoteSessionID: inviteEvent.SenderSessionID,
 				streamMetadata:  inviteEvent.SDPStreamMetadata,
 				publishedTracks: make(map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP),
@@ -136,6 +136,7 @@ func (c *Conference) OnSelectAnswer(participantID ParticipantID, ev *event.CallS
 		if ev.SelectedPartyID != participantID.DeviceID.String() {
 			c.logger.WithFields(logrus.Fields{
 				"device_id": ev.SelectedPartyID,
+				"user_id":   participantID,
 			}).Errorf("Call was answered on a different device, kicking this peer")
 			participant.peer.Terminate()
 		}
