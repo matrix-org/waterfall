@@ -123,7 +123,6 @@ func (m *MatrixForConference) createBaseEventContent(
 
 // Sends a to-device event to the given user.
 func (m *MatrixForConference) sendToDevice(user MatrixRecipient, eventType event.Type, eventContent *event.Content) {
-	// TODO: Don't create logger again and again, it might be a bit expensive.
 	logger := logrus.WithFields(logrus.Fields{
 		"user_id":   user.UserID,
 		"device_id": user.DeviceID,

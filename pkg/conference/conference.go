@@ -22,6 +22,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/maps"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -175,8 +176,20 @@ func (c *Conference) removeParticipant(participantID ParticipantID) {
 		return
 	}
 
+	// Terminate the participant and remove it from the list.
 	participant.peer.Terminate()
 	delete(c.participants, participantID)
+
+	// Inform the other participants about updated metadata (since the participant left
+	// the corresponding streams of the participant are no longer available, so we're informing
+	// others about it).
+	c.resendMetadataToAllExcept(participantID)
+
+	// Remove the participant's tracks from all participants who might have subscribed to them.
+	obsoleteTracks := maps.Values(participant.publishedTracks)
+	for _, otherParticipant := range c.participants {
+		otherParticipant.peer.UnsubscribeFrom(obsoleteTracks)
+	}
 }
 
 // Helper to get the list of available streams for a given participant, i.e. the list of streams
@@ -206,4 +219,16 @@ func (c *Conference) getTracks(identifiers []event.SFUTrackDescription) []*webrt
 		}
 	}
 	return tracks
+}
+
+// Helper that sends current metadata about all available tracks to all participants except a given one.
+func (c *Conference) resendMetadataToAllExcept(exceptMe ParticipantID) {
+	for participantID, participant := range c.participants {
+		if participantID != exceptMe {
+			participant.sendDataChannelMessage(event.SFUMessage{
+				Op:       event.SFUOperationMetadata,
+				Metadata: c.getAvailableStreamsFor(participantID),
+			})
+		}
+	}
 }

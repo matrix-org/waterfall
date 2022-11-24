@@ -99,14 +99,13 @@ func (p *Peer[ID]) onNegotiationNeeded() {
 func (p *Peer[ID]) onICEConnectionStateChanged(state webrtc.ICEConnectionState) {
 	p.logger.WithField("state", state).Debug("ICE connection state changed")
 
-	// TODO: Ask Simon if we should do it here as in the previous implementation of the
-	//       `waterfall` or the way I did it in this new implementation.
+	// TODO: Ask Simon if we should do it here as in the previous implementation.
 	switch state {
 	case webrtc.ICEConnectionStateFailed, webrtc.ICEConnectionStateDisconnected:
 		// TODO: We may want to treat it as an opportunity for the ICE restart instead.
 		// p.notify <- PeerLeftTheCall{sender: p.data}
 	case webrtc.ICEConnectionStateCompleted, webrtc.ICEConnectionStateConnected:
-		// TODO: Start keep-alive timer over the data channel to check the connecitons that hanged.
+		// FIXME: Start keep-alive timer over the data channel to check the connecitons that hanged.
 		// p.notify <- PeerJoinedTheCall{sender: p.data}
 	}
 }
