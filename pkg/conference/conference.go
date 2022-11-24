@@ -25,6 +25,7 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
+// A single conference. Call and conference mean the same in context of Matrix.
 type Conference struct {
 	id           string
 	config       Config
@@ -51,53 +52,66 @@ func NewConference(confID string, config Config, signaling signaling.MatrixSigna
 
 // New participant tries to join the conference.
 func (c *Conference) OnNewParticipant(participantID ParticipantID, inviteEvent *event.CallInviteEventContent) {
+	logger := logrus.WithFields(logrus.Fields{
+		"user_id":   participantID.UserID,
+		"device_id": participantID.DeviceID,
+		"conf_id":   c.id,
+	})
+
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
 	// any existing calls from this device in this call should be terminated.
-	// TODO: Implement this.
-	for id, participant := range c.participants {
-		if id.DeviceID == inviteEvent.DeviceID {
-			if participant.remoteSessionID == inviteEvent.SenderSessionID {
-				c.logger.WithFields(logrus.Fields{
-					"device_id":  inviteEvent.DeviceID,
-					"session_id": inviteEvent.SenderSessionID,
-				}).Errorf("Found existing participant with equal DeviceID and SessionID")
-				return
-			} else {
-				participant.peer.Terminate()
-			}
+	participant := c.getParticipant(participantID, nil)
+	if participant != nil {
+		if participant.remoteSessionID == inviteEvent.SenderSessionID {
+			c.logger.Errorf("Found existing participant with equal DeviceID and SessionID")
+		} else {
+			c.removeParticipant(participantID)
+			participant = nil
 		}
 	}
 
-	var (
-		participantlogger = logrus.WithFields(logrus.Fields{
-			"user_id":   participantID.UserID,
-			"device_id": participantID.DeviceID,
-			"conf_id":   c.id,
-		})
-		messageSink = common.NewMessageSink(participantID, c.peerEvents)
-	)
+	// If participant exists still exists, then it means that the client does not behave properly.
+	// In this case we treat this new invitation as a new SDP offer. Otherwise, we create a new one.
+	sdpAnswer, err := func() (*webrtc.SessionDescription, error) {
+		if participant == nil {
+			messageSink := common.NewMessageSink(participantID, c.peerEvents)
 
-	peer, sdpOffer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, participantlogger)
+			peer, answer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, logger)
+			if err != nil {
+				return nil, err
+			}
+
+			participant = &Participant{
+				id:              participantID,
+				peer:            peer,
+				remoteSessionID: inviteEvent.SenderSessionID,
+				streamMetadata:  inviteEvent.SDPStreamMetadata,
+				publishedTracks: make(map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP),
+			}
+
+			c.participants[participantID] = participant
+			return answer, nil
+		} else {
+			answer, err := participant.peer.ProcessSDPOffer(inviteEvent.Offer.SDP)
+			if err != nil {
+				return nil, err
+			}
+			return answer, nil
+		}
+	}()
 	if err != nil {
-		c.logger.WithError(err).Errorf("Failed to create new peer")
+		logger.WithError(err).Errorf("Failed to process SDP offer")
 		return
 	}
 
-	participant := &Participant{
-		id:              participantID,
-		peer:            peer,
-		remoteSessionID: inviteEvent.SenderSessionID,
-		streamMetadata:  inviteEvent.SDPStreamMetadata,
-		publishedTracks: make(map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP),
-	}
-
-	c.participants[participantID] = participant
-
+	// Send the answer back to the remote peer.
 	recipient := participant.asMatrixRecipient()
-	streamMetadata := c.getStreamsMetadata(participantID)
-	c.signaling.SendSDPAnswer(recipient, streamMetadata, sdpOffer.SDP)
+	streamMetadata := c.getAvailableStreamsFor(participantID)
+	c.signaling.SendSDPAnswer(recipient, streamMetadata, sdpAnswer.SDP)
 }
 
+// Process new ICE candidates received from Matrix signaling (from the remote peer) and forward them to
+// our internal peer connection.
 func (c *Conference) OnCandidates(participantID ParticipantID, ev *event.CallCandidatesEventContent) {
 	if participant := c.getParticipant(participantID, nil); participant != nil {
 		// Convert the candidates to the WebRTC format.
@@ -111,10 +125,12 @@ func (c *Conference) OnCandidates(participantID ParticipantID, ev *event.CallCan
 			}
 		}
 
-		participant.peer.AddICECandidates(candidates)
+		participant.peer.ProcessNewRemoteCandidates(candidates)
 	}
 }
 
+// Process an acknowledgement from the remote peer that the SDP answer has been received
+// and that the call can now proceed.
 func (c *Conference) OnSelectAnswer(participantID ParticipantID, ev *event.CallSelectAnswerEventContent) {
 	if participant := c.getParticipant(participantID, nil); participant != nil {
 		if ev.SelectedPartyID != participantID.DeviceID.String() {
@@ -126,8 +142,67 @@ func (c *Conference) OnSelectAnswer(participantID ParticipantID, ev *event.CallS
 	}
 }
 
+// Process a message from the remote peer telling that it wants to hang up the call.
 func (c *Conference) OnHangup(participantID ParticipantID, ev *event.CallHangupEventContent) {
-	if participant := c.getParticipant(participantID, nil); participant != nil {
-		participant.peer.Terminate()
+	c.removeParticipant(participantID)
+}
+
+func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMessage error) *Participant {
+	participant, ok := c.participants[participantID]
+	if !ok {
+		logEntry := c.logger.WithFields(logrus.Fields{
+			"user_id":   participantID.UserID,
+			"device_id": participantID.DeviceID,
+		})
+
+		if optionalErrorMessage != nil {
+			logEntry.WithError(optionalErrorMessage)
+		} else {
+			logEntry.Error("Participant not found")
+		}
+
+		return nil
 	}
+
+	return participant
+}
+
+// Helper to terminate and remove a participant from the conference.
+func (c *Conference) removeParticipant(participantID ParticipantID) {
+	participant := c.getParticipant(participantID, nil)
+	if participant == nil {
+		return
+	}
+
+	participant.peer.Terminate()
+	delete(c.participants, participantID)
+}
+
+// Helper to get the list of available streams for a given participant, i.e. the list of streams
+// that a given participant **can subscribe to**.
+func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.CallSDPStreamMetadata {
+	streamsMetadata := make(event.CallSDPStreamMetadata)
+	for id, participant := range c.participants {
+		if forParticipant != id {
+			for streamID, metadata := range participant.streamMetadata {
+				streamsMetadata[streamID] = metadata
+			}
+		}
+	}
+
+	return streamsMetadata
+}
+
+// Helper that returns the list of streams inside this conference that match the given stream IDs.
+func (c *Conference) getTracks(identifiers []event.SFUTrackDescription) []*webrtc.TrackLocalStaticRTP {
+	tracks := make([]*webrtc.TrackLocalStaticRTP, len(identifiers))
+	for _, participant := range c.participants {
+		// Check if this participant has any of the tracks that we're looking for.
+		for _, identifier := range identifiers {
+			if track, ok := participant.publishedTracks[identifier]; ok {
+				tracks = append(tracks, track)
+			}
+		}
+	}
+	return tracks
 }

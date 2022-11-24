@@ -4,6 +4,8 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
+// Due to the limitation of Go, we're using the `interface{}` to be able to use switch the actual
+// type of the message on runtime. The underlying types do not necessary need to be structures.
 type MessageContent = interface{}
 
 type JoinedTheCall struct{}

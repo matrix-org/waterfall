@@ -20,6 +20,10 @@ var (
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
 )
 
+// A wrapped representation of the peer connection (single peer in the call).
+// The peer gets information about the things happening outside via public methods
+// and informs the outside world about the things happening inside the peer by posting
+// the messages to the channel.
 type Peer[ID comparable] struct {
 	logger         *logrus.Entry
 	peerConnection *webrtc.PeerConnection
@@ -29,6 +33,7 @@ type Peer[ID comparable] struct {
 	dataChannel      *webrtc.DataChannel
 }
 
+// Instantiates a new peer with a given SDP offer and returns a peer and the SDP answer if everything is ok.
 func NewPeer[ID comparable](
 	sdpOffer string,
 	sink *common.MessageSink[ID, MessageContent],
@@ -55,59 +60,27 @@ func NewPeer[ID comparable](
 	peerConnection.OnConnectionStateChange(peer.onConnectionStateChanged)
 	peerConnection.OnSignalingStateChange(peer.onSignalingStateChanged)
 
-	err = peerConnection.SetRemoteDescription(webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
-		SDP:  sdpOffer,
-	})
-	if err != nil {
-		logger.WithError(err).Error("failed to set remote description")
-		peerConnection.Close()
-		return nil, nil, ErrCantSetRemoteDecsription
+	if sdpAnswer, err := peer.ProcessSDPOffer(sdpOffer); err != nil {
+		return nil, nil, err
+	} else {
+		return peer, sdpAnswer, nil
 	}
-
-	answer, err := peerConnection.CreateAnswer(nil)
-	if err != nil {
-		logger.WithError(err).Error("failed to create answer")
-		peerConnection.Close()
-		return nil, nil, ErrCantCreateAnswer
-	}
-
-	if err := peerConnection.SetLocalDescription(answer); err != nil {
-		logger.WithError(err).Error("failed to set local description")
-		peerConnection.Close()
-		return nil, nil, ErrCantSetLocalDescription
-	}
-
-	// TODO: Do we really need to call `webrtc.GatheringCompletePromise`
-	//       as in the previous version of the `waterfall` here?
-
-	sdpAnswer := peerConnection.LocalDescription()
-	if sdpAnswer == nil {
-		logger.WithError(err).Error("could not generate a local description")
-		peerConnection.Close()
-		return nil, nil, ErrCantCreateLocalDescription
-	}
-
-	return peer, sdpAnswer, nil
 }
 
+// Closes peer connection. From this moment on, no new messages will be sent from the peer.
 func (p *Peer[ID]) Terminate() {
 	if err := p.peerConnection.Close(); err != nil {
 		p.logger.WithError(err).Error("failed to close peer connection")
 	}
 
-	p.sink.Send(LeftTheCall{})
+	// We want to seal the channel since the sender is not interested in us anymore.
+	// We may want to remove this logic if/once we want to receive messages (confirmation of close or whatever)
+	// from the peer that is considered closed.
+	p.sink.Seal()
 }
 
-func (p *Peer[ID]) AddICECandidates(candidates []webrtc.ICECandidateInit) {
-	for _, candidate := range candidates {
-		if err := p.peerConnection.AddICECandidate(candidate); err != nil {
-			p.logger.WithError(err).Error("failed to add ICE candidate")
-		}
-	}
-}
-
-func (p *Peer[ID]) SubscribeToTrack(track *webrtc.TrackLocalStaticRTP) error {
+// Add given track to our peer connection, so that it can be sent to the remote peer.
+func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 	_, err := p.peerConnection.AddTrack(track)
 	if err != nil {
 		p.logger.WithError(err).Error("failed to add track")
@@ -117,6 +90,7 @@ func (p *Peer[ID]) SubscribeToTrack(track *webrtc.TrackLocalStaticRTP) error {
 	return nil
 }
 
+// Tries to send the given message to the remote counterpart of our peer.
 func (p *Peer[ID]) SendOverDataChannel(json string) error {
 	p.dataChannelMutex.Lock()
 	defer p.dataChannelMutex.Unlock()
@@ -138,7 +112,17 @@ func (p *Peer[ID]) SendOverDataChannel(json string) error {
 	return nil
 }
 
-func (p *Peer[ID]) NewSDPAnswerReceived(sdpAnswer string) error {
+// Processes the remote ICE candidates.
+func (p *Peer[ID]) ProcessNewRemoteCandidates(candidates []webrtc.ICECandidateInit) {
+	for _, candidate := range candidates {
+		if err := p.peerConnection.AddICECandidate(candidate); err != nil {
+			p.logger.WithError(err).Error("failed to add ICE candidate")
+		}
+	}
+}
+
+// Processes the SDP answer received from the remote peer.
+func (p *Peer[ID]) ProcessSDPAnswer(sdpAnswer string) error {
 	err := p.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeAnswer,
 		SDP:  sdpAnswer,
@@ -149,4 +133,38 @@ func (p *Peer[ID]) NewSDPAnswerReceived(sdpAnswer string) error {
 	}
 
 	return nil
+}
+
+// Applies the sdp offer received from the remote peer and generates an SDP answer.
+func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription, error) {
+	err := p.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  sdpOffer,
+	})
+	if err != nil {
+		p.logger.WithError(err).Error("failed to set remote description")
+		return nil, ErrCantSetRemoteDecsription
+	}
+
+	answer, err := p.peerConnection.CreateAnswer(nil)
+	if err != nil {
+		p.logger.WithError(err).Error("failed to create answer")
+		return nil, ErrCantCreateAnswer
+	}
+
+	if err := p.peerConnection.SetLocalDescription(answer); err != nil {
+		p.logger.WithError(err).Error("failed to set local description")
+		return nil, ErrCantSetLocalDescription
+	}
+
+	// TODO: Do we really need to call `webrtc.GatheringCompletePromise`
+	//       as in the previous version of the `waterfall` here?
+
+	sdpAnswer := p.peerConnection.LocalDescription()
+	if sdpAnswer == nil {
+		p.logger.WithError(err).Error("could not generate a local description")
+		return nil, ErrCantCreateLocalDescription
+	}
+
+	return sdpAnswer, nil
 }

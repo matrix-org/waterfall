@@ -71,7 +71,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		toSend := event.SFUMessage{
 			Op:       event.SFUOperationOffer,
 			SDP:      msg.Offer.SDP,
-			Metadata: c.getStreamsMetadata(participant.id),
+			Metadata: c.getAvailableStreamsFor(participant.id),
 		}
 
 		participant.sendDataChannelMessage(toSend)
@@ -88,7 +88,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 	case peer.DataChannelAvailable:
 		toSend := event.SFUMessage{
 			Op:       event.SFUOperationMetadata,
-			Metadata: c.getStreamsMetadata(participant.id),
+			Metadata: c.getAvailableStreamsFor(participant.id),
 		}
 
 		if err := participant.sendDataChannelMessage(toSend); err != nil {
@@ -107,14 +107,14 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 	case event.SFUOperationSelect:
 		// Get the tracks that correspond to the tracks that the participant wants to receive.
 		for _, track := range c.getTracks(sfuMessage.Start) {
-			if err := participant.peer.SubscribeToTrack(track); err != nil {
+			if err := participant.peer.SubscribeTo(track); err != nil {
 				c.logger.Errorf("Failed to subscribe to track: %v", err)
 				return
 			}
 		}
 
 	case event.SFUOperationAnswer:
-		if err := participant.peer.NewSDPAnswerReceived(sfuMessage.SDP); err != nil {
+		if err := participant.peer.ProcessSDPAnswer(sfuMessage.SDP); err != nil {
 			c.logger.Errorf("Failed to set SDP answer: %v", err)
 			return
 		}
@@ -137,7 +137,7 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 
 			toSend := event.SFUMessage{
 				Op:       event.SFUOperationMetadata,
-				Metadata: c.getStreamsMetadata(id),
+				Metadata: c.getAvailableStreamsFor(id),
 			}
 
 			if err := participant.sendDataChannelMessage(toSend); err != nil {
