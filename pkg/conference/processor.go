@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/matrix-org/waterfall/src/common"
-	"github.com/matrix-org/waterfall/src/peer"
+	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/peer"
 	"maunium.net/go/mautrix/event"
 )
 

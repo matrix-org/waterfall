@@ -17,8 +17,8 @@ limitations under the License.
 package main
 
 import (
-	conf "github.com/matrix-org/waterfall/src/conference"
-	"github.com/matrix-org/waterfall/src/signaling"
+	conf "github.com/matrix-org/waterfall/pkg/conference"
+	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )

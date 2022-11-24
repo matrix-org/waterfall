@@ -22,8 +22,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/matrix-org/waterfall/src/config"
-	"github.com/matrix-org/waterfall/src/signaling"
+	"github.com/matrix-org/waterfall/pkg/config"
+	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
 )
 
