@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/matrix-org/waterfall/src/common"
+	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 )

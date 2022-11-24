@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/matrix-org/waterfall/src/peer"
-	"github.com/matrix-org/waterfall/src/signaling"
+	"github.com/matrix-org/waterfall/pkg/peer"
+	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"

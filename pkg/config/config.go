@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/matrix-org/waterfall/src/conference"
-	"github.com/matrix-org/waterfall/src/signaling"
+	"github.com/matrix-org/waterfall/pkg/conference"
+	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
