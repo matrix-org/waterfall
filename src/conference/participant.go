@@ -14,9 +14,14 @@ import (
 
 var ErrInvalidSFUMessage = errors.New("invalid SFU message")
 
+type ParticipantID struct {
+	UserID   id.UserID
+	DeviceID id.DeviceID
+}
+
 type Participant struct {
-	id              peer.ID
-	peer            *peer.Peer
+	id              ParticipantID
+	peer            *peer.Peer[ParticipantID]
 	remoteSessionID id.SessionID
 	streamMetadata  event.CallSDPStreamMetadata
 	publishedTracks map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP
@@ -24,7 +29,8 @@ type Participant struct {
 
 func (p *Participant) asMatrixRecipient() signaling.MatrixRecipient {
 	return signaling.MatrixRecipient{
-		ID:              p.id,
+		UserID:          p.id.UserID,
+		DeviceID:        p.id.DeviceID,
 		RemoteSessionID: p.remoteSessionID,
 	}
 }
@@ -44,12 +50,12 @@ func (p *Participant) sendDataChannelMessage(toSend event.SFUMessage) error {
 	return nil
 }
 
-func (c *Conference) getParticipant(peerID peer.ID, optionalErrorMessage error) *Participant {
-	participant, ok := c.participants[peerID]
+func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMessage error) *Participant {
+	participant, ok := c.participants[participantID]
 	if !ok {
 		logEntry := c.logger.WithFields(logrus.Fields{
-			"user_id":   peerID.UserID,
-			"device_id": peerID.DeviceID,
+			"user_id":   participantID.UserID,
+			"device_id": participantID.DeviceID,
 		})
 
 		if optionalErrorMessage != nil {
@@ -64,7 +70,7 @@ func (c *Conference) getParticipant(peerID peer.ID, optionalErrorMessage error) 
 	return participant
 }
 
-func (c *Conference) getStreamsMetadata(forParticipant peer.ID) event.CallSDPStreamMetadata {
+func (c *Conference) getStreamsMetadata(forParticipant ParticipantID) event.CallSDPStreamMetadata {
 	streamsMetadata := make(event.CallSDPStreamMetadata)
 	for id, participant := range c.participants {
 		if forParticipant != id {
