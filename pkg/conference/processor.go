@@ -6,6 +6,7 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
+	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -28,10 +29,11 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 	// determine the actual type of the message.
 	switch msg := message.Content.(type) {
 	case peer.JoinedTheCall:
+		c.resendMetadataToAllExcept(participant.id)
+
 	case peer.LeftTheCall:
-		delete(c.participants, message.Sender)
-		// TODO: Send new metadata about available streams to all participants.
-		// TODO: Send the hangup event over the Matrix back to the user.
+		c.removeParticipant(message.Sender)
+		c.signaling.SendHangup(participant.asMatrixRecipient(), event.CallHangupUnknownError)
 
 	case peer.NewTrackPublished:
 		key := event.SFUTrackDescription{
@@ -52,7 +54,13 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 			TrackID:  msg.Track.ID(),
 		})
 
-		// TODO: Should we remove the local tracks from every subscriber as well? Or will it happen automatically?
+		for _, otherParticipant := range c.participants {
+			if otherParticipant.id == participant.id {
+				continue
+			}
+
+			otherParticipant.peer.UnsubscribeFrom([]*webrtc.TrackLocalStaticRTP{msg.Track})
+		}
 
 	case peer.NewICECandidate:
 		// Convert WebRTC ICE candidate to Matrix ICE candidate.
@@ -69,13 +77,11 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		c.signaling.SendCandidatesGatheringFinished(participant.asMatrixRecipient())
 
 	case peer.RenegotiationRequired:
-		toSend := event.SFUMessage{
+		participant.sendDataChannelMessage(event.SFUMessage{
 			Op:       event.SFUOperationOffer,
 			SDP:      msg.Offer.SDP,
 			Metadata: c.getAvailableStreamsFor(participant.id),
-		}
-
-		participant.sendDataChannelMessage(toSend)
+		})
 
 	case peer.DataChannelMessage:
 		var sfuMessage event.SFUMessage
@@ -130,21 +136,9 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 	case event.SFUOperationUnpublish:
 		// TODO: Clarify the semantics of unpublish.
 	case event.SFUOperationAlive:
-		// TODO: Handle the heartbeat message here (updating the last timestamp etc).
+		// FIXME: Handle the heartbeat message here (updating the last timestamp etc).
 	case event.SFUOperationMetadata:
 		participant.streamMetadata = sfuMessage.Metadata
-
-		// Inform all participants about new metadata available.
-		for _, otherParticipant := range c.participants {
-			// Skip ourselves.
-			if participant.id == otherParticipant.id {
-				continue
-			}
-
-			otherParticipant.sendDataChannelMessage(event.SFUMessage{
-				Op:       event.SFUOperationMetadata,
-				Metadata: c.getAvailableStreamsFor(otherParticipant.id),
-			})
-		}
+		c.resendMetadataToAllExcept(participant.id)
 	}
 }

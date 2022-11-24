@@ -79,7 +79,7 @@ func (p *Peer[ID]) Terminate() {
 	p.sink.Seal()
 }
 
-// Add given track to our peer connection, so that it can be sent to the remote peer.
+// Adds given track to our peer connection, so that it can be sent to the remote peer.
 func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 	_, err := p.peerConnection.AddTrack(track)
 	if err != nil {
@@ -88,6 +88,22 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 	}
 
 	return nil
+}
+
+// Unsubscribes from the given list of tracks.
+func (p *Peer[ID]) UnsubscribeFrom(tracks []*webrtc.TrackLocalStaticRTP) {
+	// That's unfortunately an O(m*n) operation, but we don't expect the number of tracks to be big.
+	for _, presentTrack := range p.peerConnection.GetSenders() {
+		for _, trackToUnsubscribe := range tracks {
+			presentTrackID, presentStreamID := presentTrack.Track().ID(), presentTrack.Track().StreamID()
+			trackID, streamID := trackToUnsubscribe.ID(), trackToUnsubscribe.StreamID()
+			if presentTrackID == trackID && presentStreamID == streamID {
+				if err := p.peerConnection.RemoveTrack(presentTrack); err != nil {
+					p.logger.WithError(err).Error("failed to remove track")
+				}
+			}
+		}
+	}
 }
 
 // Tries to send the given message to the remote counterpart of our peer.
