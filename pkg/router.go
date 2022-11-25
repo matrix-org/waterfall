@@ -43,8 +43,6 @@ func newRouter(matrix *signaling.MatrixClient, config conf.Config) *Router {
 }
 
 // Handles incoming To-Device events that the SFU receives from clients.
-//
-//nolint:funlen
 func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// TODO: Don't create logger again and again, it might be a bit expensive.
 	logger := logrus.WithFields(logrus.Fields{
@@ -57,10 +55,6 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// Someone tries to participate in a call (join a call).
 	case event.ToDeviceCallInvite.Type:
 		invite := evt.Content.AsCallInvite()
-		if invite == nil {
-			logger.Error("failed to parse invite")
-			return
-		}
 
 		// If there is an invitation sent and the conference does not exist, create one.
 		if conference := r.conferences[invite.ConfID]; conference == nil {
@@ -83,10 +77,6 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// Someone tries to send ICE candidates to the existing call.
 	case event.ToDeviceCallCandidates.Type:
 		candidates := evt.Content.AsCallCandidates()
-		if candidates == nil {
-			logger.Error("failed to parse candidates")
-			return
-		}
 
 		conference := r.conferences[candidates.ConfID]
 		if conference == nil {
@@ -104,10 +94,6 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// Someone informs us about them accepting our (SFU's) SDP answer for an existing call.
 	case event.ToDeviceCallSelectAnswer.Type:
 		selectAnswer := evt.Content.AsCallSelectAnswer()
-		if selectAnswer == nil {
-			logger.Error("failed to parse select_answer")
-			return
-		}
 
 		conference := r.conferences[selectAnswer.ConfID]
 		if conference == nil {
@@ -125,10 +111,6 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// Someone tries to inform us about leaving an existing call.
 	case event.ToDeviceCallHangup.Type:
 		hangup := evt.Content.AsCallHangup()
-		if hangup == nil {
-			logger.Error("failed to parse hangup")
-			return
-		}
 
 		conference := r.conferences[hangup.ConfID]
 		if conference == nil {
