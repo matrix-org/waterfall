@@ -10,11 +10,23 @@ import (
 	"maunium.net/go/mautrix/event"
 )
 
+// Listen on messages from incoming channels and process them.
+// This is essentially the main loop of the conference.
+// If this function returns, the conference is over.
 func (c *Conference) processMessages() {
 	for {
-		// Read a message from the participant in the room (our local counterpart of it)
-		message := <-c.peerMessages
-		c.processPeerMessage(message)
+		select {
+		case msg := <-c.peerMessages:
+			c.processPeerMessage(msg)
+		case msg := <-c.matrixBus:
+			c.processMatrixMessage(msg)
+		}
+
+		// If there are no more participants, stop the conference.
+		if len(c.participants) == 0 {
+			c.logger.Info("No more participants, stopping the conference")
+			return
+		}
 	}
 }
 
@@ -140,5 +152,20 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 	case event.SFUOperationMetadata:
 		participant.streamMetadata = sfuMessage.Metadata
 		c.resendMetadataToAllExcept(participant.id)
+	}
+}
+
+func (c *Conference) processMatrixMessage(msg IncomingMatrixMessage) {
+	switch ev := msg.Content.(type) {
+	case *event.CallInviteEventContent:
+		c.onNewParticipant(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)
+	case *event.CallCandidatesEventContent:
+		c.onCandidates(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)
+	case *event.CallSelectAnswerEventContent:
+		c.onSelectAnswer(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)
+	case *event.CallHangupEventContent:
+		c.onHangup(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)
+	default:
+		c.logger.Errorf("Unexpected event type: %T", ev)
 	}
 }

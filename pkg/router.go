@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"github.com/matrix-org/waterfall/pkg/conference"
 	conf "github.com/matrix-org/waterfall/pkg/conference"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
@@ -27,8 +28,8 @@ import (
 type Router struct {
 	// Matrix matrix.
 	matrix *signaling.MatrixClient
-	// All calls currently forwarded by this SFU.
-	conferences map[string]*conf.Conference
+	// Sinks of all conferences (all calls that are currently forwarded by this SFU).
+	conferenceSinks map[string]chan<- conf.IncomingMatrixMessage
 	// Configuration for the calls.
 	config conf.Config
 }
@@ -36,103 +37,73 @@ type Router struct {
 // Creates a new instance of the SFU with the given configuration.
 func newRouter(matrix *signaling.MatrixClient, config conf.Config) *Router {
 	return &Router{
-		matrix:      matrix,
-		conferences: make(map[string]*conf.Conference),
-		config:      config,
+		matrix:          matrix,
+		conferenceSinks: make(map[string]chan<- conference.IncomingMatrixMessage),
+		config:          config,
 	}
 }
 
 // Handles incoming To-Device events that the SFU receives from clients.
 func (r *Router) handleMatrixEvent(evt *event.Event) {
-	// TODO: Don't create logger again and again, it might be a bit expensive.
+	// Check if `conf_id` is present in the message (right messages do have it).
+	rawConferenceID, ok := evt.Content.Raw["conf_id"]
+	if !ok {
+		return
+	}
+
+	// Try to parse the conference ID without parsing the whole event.
+	conferenceID, ok := rawConferenceID.(string)
+	if !ok {
+		return
+	}
+
 	logger := logrus.WithFields(logrus.Fields{
 		"type":    evt.Type.Type,
 		"user_id": evt.Sender.String(),
-		"conf_id": evt.Content.Raw["conf_id"],
+		"conf_id": conferenceID,
 	})
+
+	conference := r.conferenceSinks[conferenceID]
+
+	// Only ToDeviceCallInvite events are allowed to create a new conference, others
+	// are expected to operate on an existing conference that is running on the SFU.
+	if conference == nil && evt.Type.Type != event.ToDeviceCallInvite.Type {
+		logger.Warnf("ignoring %s for an unknown conference %s, ignoring", &event.ToDeviceCallInvite.Type)
+		return
+	}
 
 	switch evt.Type.Type {
 	// Someone tries to participate in a call (join a call).
 	case event.ToDeviceCallInvite.Type:
-		invite := evt.Content.AsCallInvite()
-
 		// If there is an invitation sent and the conference does not exist, create one.
-		if conference := r.conferences[invite.ConfID]; conference == nil {
-			logger.Infof("creating new conference %s", invite.ConfID)
-			r.conferences[invite.ConfID] = conf.NewConference(
-				invite.ConfID,
+		if conference == nil {
+			logger.Infof("creating new conference %s", conferenceID)
+			conferenceSink, err := conf.StartConference(
+				conferenceID,
 				r.config,
-				r.matrix.CreateForConference(invite.ConfID),
+				r.matrix.CreateForConference(conferenceID),
+				evt.Sender, evt.Content.AsCallInvite(),
 			)
+			if err != nil {
+				logger.WithError(err).Errorf("failed to start conference %s", conferenceID)
+				return
+			}
+
+			r.conferenceSinks[conferenceID] = conferenceSink
+			return
 		}
 
-		peerID := conf.ParticipantID{
-			UserID:   evt.Sender,
-			DeviceID: invite.DeviceID,
-		}
-
-		// Inform conference about incoming participant.
-		r.conferences[invite.ConfID].OnNewParticipant(peerID, invite)
-
-	// Someone tries to send ICE candidates to the existing call.
+		conference <- conf.IncomingMatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallInvite()}
 	case event.ToDeviceCallCandidates.Type:
-		candidates := evt.Content.AsCallCandidates()
-
-		conference := r.conferences[candidates.ConfID]
-		if conference == nil {
-			logger.Errorf("received candidates for unknown conference %s", candidates.ConfID)
-			return
-		}
-
-		peerID := conf.ParticipantID{
-			UserID:   evt.Sender,
-			DeviceID: candidates.DeviceID,
-		}
-
-		conference.OnCandidates(peerID, candidates)
-
-	// Someone informs us about them accepting our (SFU's) SDP answer for an existing call.
+		// Someone tries to send ICE candidates to the existing call.
+		conference <- conf.IncomingMatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallCandidates()}
 	case event.ToDeviceCallSelectAnswer.Type:
-		selectAnswer := evt.Content.AsCallSelectAnswer()
-
-		conference := r.conferences[selectAnswer.ConfID]
-		if conference == nil {
-			logger.Errorf("received select_answer for unknown conference %s", selectAnswer.ConfID)
-			return
-		}
-
-		peerID := conf.ParticipantID{
-			UserID:   evt.Sender,
-			DeviceID: selectAnswer.DeviceID,
-		}
-
-		conference.OnSelectAnswer(peerID, selectAnswer)
-
-	// Someone tries to inform us about leaving an existing call.
+		// Someone informs us about them accepting our (SFU's) SDP answer for an existing call.
+		conference <- conf.IncomingMatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallSelectAnswer()}
 	case event.ToDeviceCallHangup.Type:
-		hangup := evt.Content.AsCallHangup()
-
-		conference := r.conferences[hangup.ConfID]
-		if conference == nil {
-			logger.Errorf("received hangup for unknown conference %s", hangup.ConfID)
-			return
-		}
-
-		peerID := conf.ParticipantID{
-			UserID:   evt.Sender,
-			DeviceID: hangup.DeviceID,
-		}
-
-		conference.OnHangup(peerID, hangup)
-
-	// Events that we **should not** receive!
-	case event.ToDeviceCallNegotiate.Type:
-		logger.Warn("ignoring negotiate event that must be handled over the data channel")
-	case event.ToDeviceCallReject.Type:
-		logger.Warn("ignoring reject event that must be handled over the data channel")
-	case event.ToDeviceCallAnswer.Type:
-		logger.Warn("ignoring event as we are always the ones sending the SDP answer at the moment")
+		// Someone tries to inform us about leaving an existing call.
+		conference <- conf.IncomingMatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallHangup()}
 	default:
-		logger.Warnf("ignoring unexpected event: %s", evt.Type.Type)
+		logger.Warnf("ignoring event that we must not receive: %s", evt.Type.Type)
 	}
 }
