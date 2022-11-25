@@ -13,7 +13,7 @@ import (
 func (c *Conference) processMessages() {
 	for {
 		// Read a message from the participant in the room (our local counterpart of it)
-		message := <-c.peerEvents
+		message := <-c.peerMessages
 		c.processPeerMessage(message)
 	}
 }

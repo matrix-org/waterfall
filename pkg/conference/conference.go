@@ -32,7 +32,7 @@ type Conference struct {
 	config       Config
 	signaling    signaling.MatrixSignaling
 	participants map[ParticipantID]*Participant
-	peerEvents   chan common.Message[ParticipantID, peer.MessageContent]
+	peerMessages chan common.Message[ParticipantID, peer.MessageContent]
 	logger       *logrus.Entry
 }
 
@@ -42,7 +42,7 @@ func NewConference(confID string, config Config, signaling signaling.MatrixSigna
 		config:       config,
 		signaling:    signaling,
 		participants: make(map[ParticipantID]*Participant),
-		peerEvents:   make(chan common.Message[ParticipantID, peer.MessageContent]),
+		peerMessages: make(chan common.Message[ParticipantID, peer.MessageContent]),
 		logger:       logrus.WithFields(logrus.Fields{"conf_id": confID}),
 	}
 
@@ -74,7 +74,7 @@ func (c *Conference) OnNewParticipant(participantID ParticipantID, inviteEvent *
 	// In this case we treat this new invitation as a new SDP offer. Otherwise, we create a new one.
 	sdpAnswer, err := func() (*webrtc.SessionDescription, error) {
 		if participant == nil {
-			messageSink := common.NewMessageSink(participantID, c.peerEvents)
+			messageSink := common.NewMessageSink(participantID, c.peerMessages)
 
 			peer, answer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, logger)
 			if err != nil {
