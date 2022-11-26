@@ -11,7 +11,7 @@ import (
 
 type MessageContent interface{}
 
-type IncomingMatrixMessage struct {
+type MatrixMessage struct {
 	UserID  id.UserID
 	Content MessageContent
 }

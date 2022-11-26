@@ -32,8 +32,8 @@ func StartConference(
 	signaling signaling.MatrixSignaling,
 	UserID id.UserID,
 	inviteEvent *event.CallInviteEventContent,
-) (chan<- IncomingMatrixMessage, error) {
-	matrixBus := make(chan IncomingMatrixMessage)
+) (chan<- MatrixMessage, error) {
+	matrixBus := make(chan MatrixMessage)
 
 	conference := &Conference{
 		id:           confID,

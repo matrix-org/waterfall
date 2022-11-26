@@ -155,7 +155,7 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 	}
 }
 
-func (c *Conference) processMatrixMessage(msg IncomingMatrixMessage) {
+func (c *Conference) processMatrixMessage(msg MatrixMessage) {
 	switch ev := msg.Content.(type) {
 	case *event.CallInviteEventContent:
 		c.onNewParticipant(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)

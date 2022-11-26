@@ -29,7 +29,7 @@ type Router struct {
 	// Matrix matrix.
 	matrix *signaling.MatrixClient
 	// Sinks of all conferences (all calls that are currently forwarded by this SFU).
-	conferenceSinks map[string]chan<- conf.IncomingMatrixMessage
+	conferenceSinks map[string]chan<- conf.MatrixMessage
 	// Configuration for the calls.
 	config conf.Config
 }
@@ -38,7 +38,7 @@ type Router struct {
 func newRouter(matrix *signaling.MatrixClient, config conf.Config) *Router {
 	return &Router{
 		matrix:          matrix,
-		conferenceSinks: make(map[string]chan<- conference.IncomingMatrixMessage),
+		conferenceSinks: make(map[string]chan<- conference.MatrixMessage),
 		config:          config,
 	}
 }
@@ -93,16 +93,16 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			return
 		}
 
-		conference <- conf.IncomingMatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallInvite()}
+		conference <- conf.MatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallInvite()}
 	case event.ToDeviceCallCandidates.Type:
 		// Someone tries to send ICE candidates to the existing call.
-		conference <- conf.IncomingMatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallCandidates()}
+		conference <- conf.MatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallCandidates()}
 	case event.ToDeviceCallSelectAnswer.Type:
 		// Someone informs us about them accepting our (SFU's) SDP answer for an existing call.
-		conference <- conf.IncomingMatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallSelectAnswer()}
+		conference <- conf.MatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallSelectAnswer()}
 	case event.ToDeviceCallHangup.Type:
 		// Someone tries to inform us about leaving an existing call.
-		conference <- conf.IncomingMatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallHangup()}
+		conference <- conf.MatrixMessage{UserID: evt.Sender, Content: evt.Content.AsCallHangup()}
 	default:
 		logger.Warnf("ignoring event that we must not receive: %s", evt.Type.Type)
 	}
