@@ -18,13 +18,29 @@ func (c *Conference) processMessages() {
 		select {
 		case msg := <-c.peerMessages:
 			c.processPeerMessage(msg)
-		case msg := <-c.matrixBus:
+		case msg := <-c.matrixMessages.Channel:
 			c.processMatrixMessage(msg)
 		}
 
 		// If there are no more participants, stop the conference.
 		if len(c.participants) == 0 {
 			c.logger.Info("No more participants, stopping the conference")
+			// Close the channel so that the sender can't push any messages.
+			c.matrixMessages.Close()
+
+			// Let's read remaining messages from the channel (otherwise the caller will be
+			// blocked in case of unbuffered channels).
+			var message *MatrixMessage
+			select {
+			case msg := <-c.matrixMessages.Channel:
+				*message = msg
+			default:
+				// Ok, no messages in the queue, nice.
+			}
+
+			// Send the information that we ended to the owner and pass the message
+			// that we did not process (so that we don't drop it silently).
+			c.endNotifier.Notify(message)
 			return
 		}
 	}

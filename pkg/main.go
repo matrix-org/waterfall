@@ -25,6 +25,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/config"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
+	"maunium.net/go/mautrix/event"
 )
 
 func main() {
@@ -72,8 +73,10 @@ func main() {
 	matrixClient := signaling.NewMatrixClient(config.Matrix)
 
 	// Create a router to route incoming To-Device messages to the right conference.
-	router := newRouter(matrixClient, config.Conference)
+	routerChannel := newRouter(matrixClient, config.Conference)
 
 	// Start matrix client sync. This function will block until the sync fails.
-	matrixClient.RunSync(router.handleMatrixEvent)
+	matrixClient.RunSync(func(e *event.Event) {
+		routerChannel <- e
+	})
 }
