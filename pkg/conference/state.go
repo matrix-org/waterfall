@@ -20,7 +20,7 @@ type Conference struct {
 	participants map[ParticipantID]*Participant
 
 	peerMessages chan common.Message[ParticipantID, peer.MessageContent]
-	matrixBus    <-chan IncomingMatrixMessage
+	matrixBus    <-chan MatrixMessage
 }
 
 func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMessage error) *Participant {
