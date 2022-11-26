@@ -30,19 +30,21 @@ func StartConference(
 	confID string,
 	config Config,
 	signaling signaling.MatrixSignaling,
+	conferenceEndNotifier ConferenceEndNotifier,
 	UserID id.UserID,
 	inviteEvent *event.CallInviteEventContent,
-) (chan<- MatrixMessage, error) {
-	matrixBus := make(chan MatrixMessage)
+) (*common.Sender[MatrixMessage], error) {
+	sender, receiver := common.NewChannel[MatrixMessage]()
 
 	conference := &Conference{
-		id:           confID,
-		config:       config,
-		signaling:    signaling,
-		participants: make(map[ParticipantID]*Participant),
-		peerMessages: make(chan common.Message[ParticipantID, peer.MessageContent]),
-		matrixBus:    matrixBus,
-		logger:       logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		id:             confID,
+		config:         config,
+		signaling:      signaling,
+		matrixMessages: receiver,
+		endNotifier:    conferenceEndNotifier,
+		participants:   make(map[ParticipantID]*Participant),
+		peerMessages:   make(chan common.Message[ParticipantID, peer.MessageContent]),
+		logger:         logrus.WithFields(logrus.Fields{"conf_id": confID}),
 	}
 
 	participantID := ParticipantID{UserID: UserID, DeviceID: inviteEvent.DeviceID}
@@ -53,5 +55,10 @@ func StartConference(
 	// Start conference "main loop".
 	go conference.processMessages()
 
-	return matrixBus, nil
+	return &sender, nil
+}
+
+type ConferenceEndNotifier interface {
+	// Called when the conference ends.
+	Notify(unread *MatrixMessage)
 }

@@ -12,15 +12,16 @@ import (
 
 // A single conference. Call and conference mean the same in context of Matrix.
 type Conference struct {
-	id     string
-	config Config
-	logger *logrus.Entry
+	id          string
+	config      Config
+	logger      *logrus.Entry
+	endNotifier ConferenceEndNotifier
 
 	signaling    signaling.MatrixSignaling
 	participants map[ParticipantID]*Participant
 
-	peerMessages chan common.Message[ParticipantID, peer.MessageContent]
-	matrixBus    <-chan MatrixMessage
+	peerMessages   chan common.Message[ParticipantID, peer.MessageContent]
+	matrixMessages common.Receiver[MatrixMessage]
 }
 
 func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMessage error) *Participant {
