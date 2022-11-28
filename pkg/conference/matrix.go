@@ -87,9 +87,10 @@ func (c *Conference) onCandidates(participantID ParticipantID, ev *event.CallCan
 		for i, candidate := range ev.Candidates {
 			SDPMLineIndex := uint16(candidate.SDPMLineIndex)
 			candidates[i] = webrtc.ICECandidateInit{
-				Candidate:     candidate.Candidate,
-				SDPMid:        &candidate.SDPMID,
-				SDPMLineIndex: &SDPMLineIndex,
+				Candidate:        candidate.Candidate,
+				SDPMid:           &candidate.SDPMID,
+				SDPMLineIndex:    &SDPMLineIndex,
+				UsernameFragment: new(string),
 			}
 		}
 
