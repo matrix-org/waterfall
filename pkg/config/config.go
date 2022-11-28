@@ -17,6 +17,8 @@ type Config struct {
 	Matrix signaling.Config `yaml:"matrix"`
 	// Conference (call) configuration.
 	Conference conference.Config `yaml:"conference"`
+	// Starting from which level to log stuff.
+	LogLevel string `yaml:"log"`
 }
 
 // Tries to load a config from the `CONFIG` environment variable.
