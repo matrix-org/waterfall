@@ -26,22 +26,11 @@ func (c *Conference) processMessages() {
 		if len(c.participants) == 0 {
 			c.logger.Info("No more participants, stopping the conference")
 			// Close the channel so that the sender can't push any messages.
-			c.matrixMessages.Close()
-
-			// Let's read remaining messages from the channel (otherwise the caller will be
-			// blocked in case of unbuffered channels). We must read **all** pending messages.
-			messages := make([]MatrixMessage, 0)
-			for {
-				msg, ok := <-c.matrixMessages.Channel
-				if !ok {
-					break
-				}
-				messages = append(messages, msg)
-			}
+			unreadMessages := c.matrixMessages.Close()
 
 			// Send the information that we ended to the owner and pass the message
 			// that we did not process (so that we don't drop it silently).
-			c.endNotifier.Notify(messages)
+			c.endNotifier.Notify(unreadMessages)
 			return
 		}
 	}

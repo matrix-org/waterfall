@@ -43,7 +43,7 @@ func StartConference(
 		matrixMessages: receiver,
 		endNotifier:    conferenceEndNotifier,
 		participants:   make(map[ParticipantID]*Participant),
-		peerMessages:   make(chan common.Message[ParticipantID, peer.MessageContent], 128),
+		peerMessages:   make(chan common.Message[ParticipantID, peer.MessageContent], common.UnboundedChannelSize),
 		logger:         logrus.WithFields(logrus.Fields{"conf_id": confID}),
 	}
 
