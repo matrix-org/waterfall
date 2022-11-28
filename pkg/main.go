@@ -31,7 +31,6 @@ import (
 func main() {
 	// Parse command line flags.
 	var (
-		logTime        = flag.Bool("logTime", false, "whether or not to print time and date in logs")
 		configFilePath = flag.String("config", "config.yaml", "configuration file path")
 		cpuProfile     = flag.String("cpuProfile", "", "write CPU profile to `file`")
 		memProfile     = flag.String("memProfile", "", "write memory profile to `file`")
@@ -39,7 +38,7 @@ func main() {
 	flag.Parse()
 
 	// Initialize logging subsystem (formatting, global logging framework etc).
-	InitLogging(*logTime)
+	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 
 	// Define functions that are called before exiting.
 	// This is useful to stop the profiler if it's enabled.
