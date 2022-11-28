@@ -44,7 +44,7 @@ func newRouter(matrix *signaling.MatrixClient, config conf.Config) chan<- Router
 		matrix:          matrix,
 		conferenceSinks: make(map[string]*common.Sender[conf.MatrixMessage]),
 		config:          config,
-		channel:         make(chan RouterMessage),
+		channel:         make(chan RouterMessage, 128),
 	}
 
 	// Start the main loop of the Router.
@@ -59,9 +59,9 @@ func newRouter(matrix *signaling.MatrixClient, config conf.Config) chan<- Router
 				// Remove the conference that ended from the list.
 				delete(router.conferenceSinks, msg.conferenceID)
 				// Process the message that was not read by the conference.
-				if msg.unread != nil {
-					// TODO: We must handle this message to avoid glare on session end.
-					// router.handleMatrixEvent(*msg.unread)
+				if len(msg.unread) > 0 {
+					// FIXME: We must handle these messages!
+					logrus.Warnf("Unread messages: %v", len(msg.unread))
 				}
 			}
 		}
@@ -162,7 +162,7 @@ type ConferenceEndedMessage struct {
 	// The ID of the conference that has ended.
 	conferenceID string
 	// A message (or messages in future) that has not been processed (if any).
-	unread *conf.MatrixMessage
+	unread []conf.MatrixMessage
 }
 
 // A simple wrapper around channel that contains the ID of the conference that sent the message.
@@ -180,7 +180,7 @@ func createConferenceEndNotifier(conferenceID string, channel chan<- RouterMessa
 }
 
 // A function that a conference calls when it is ended.
-func (c *ConferenceEndNotifier) Notify(unread *conf.MatrixMessage) {
+func (c *ConferenceEndNotifier) Notify(unread []conf.MatrixMessage) {
 	c.channel <- ConferenceEndedMessage{
 		conferenceID: c.conferenceID,
 		unread:       unread,
