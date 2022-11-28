@@ -196,13 +196,13 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 func (c *Conference) processMatrixMessage(msg MatrixMessage) {
 	switch ev := msg.Content.(type) {
 	case *event.CallInviteEventContent:
-		c.onNewParticipant(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)
+		c.onNewParticipant(msg.Sender, ev)
 	case *event.CallCandidatesEventContent:
-		c.onCandidates(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)
+		c.onCandidates(msg.Sender, ev)
 	case *event.CallSelectAnswerEventContent:
-		c.onSelectAnswer(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)
+		c.onSelectAnswer(msg.Sender, ev)
 	case *event.CallHangupEventContent:
-		c.onHangup(ParticipantID{UserID: msg.UserID, DeviceID: ev.DeviceID}, ev)
+		c.onHangup(msg.Sender, ev)
 	default:
 		c.logger.Errorf("Unexpected event type: %T", ev)
 	}

@@ -6,14 +6,14 @@ import (
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/id"
 )
 
 type MessageContent interface{}
 
 type MatrixMessage struct {
-	UserID  id.UserID
-	Content MessageContent
+	Sender   ParticipantID
+	Content  MessageContent
+	RawEvent *event.Event
 }
 
 // New participant tries to join the conference.
@@ -21,6 +21,7 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 	logger := c.logger.WithFields(logrus.Fields{
 		"user_id":   participantID.UserID,
 		"device_id": participantID.DeviceID,
+		"call_id":   participantID.CallID,
 	})
 
 	logger.Info("Incoming call invite")

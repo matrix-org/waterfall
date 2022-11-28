@@ -46,6 +46,7 @@ type MatrixRecipient struct {
 	UserID          id.UserID
 	DeviceID        id.DeviceID
 	RemoteSessionID id.SessionID
+	CallID          string
 }
 
 // Interface that abstracts sending Send-to-device messages for the conference.
@@ -63,7 +64,7 @@ func (m *MatrixForConference) SendSDPAnswer(
 ) {
 	eventContent := &event.Content{
 		Parsed: event.CallAnswerEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.CallID, recipient.RemoteSessionID),
 			Answer: event.CallData{
 				Type: "answer",
 				SDP:  sdp,
@@ -78,7 +79,7 @@ func (m *MatrixForConference) SendSDPAnswer(
 func (m *MatrixForConference) SendICECandidates(recipient MatrixRecipient, candidates []event.CallCandidate) {
 	eventContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.CallID, recipient.RemoteSessionID),
 			Candidates:           candidates,
 		},
 	}
@@ -89,7 +90,7 @@ func (m *MatrixForConference) SendICECandidates(recipient MatrixRecipient, candi
 func (m *MatrixForConference) SendCandidatesGatheringFinished(recipient MatrixRecipient) {
 	eventContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.CallID, recipient.RemoteSessionID),
 			Candidates:           []event.CallCandidate{{Candidate: ""}},
 		},
 	}
@@ -100,7 +101,7 @@ func (m *MatrixForConference) SendCandidatesGatheringFinished(recipient MatrixRe
 func (m *MatrixForConference) SendHangup(recipient MatrixRecipient, reason event.CallHangupReason) {
 	eventContent := &event.Content{
 		Parsed: event.CallHangupEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.CallID, recipient.RemoteSessionID),
 			Reason:               reason,
 		},
 	}
@@ -108,9 +109,12 @@ func (m *MatrixForConference) SendHangup(recipient MatrixRecipient, reason event
 	m.sendToDevice(recipient, event.CallHangup, eventContent)
 }
 
-func (m *MatrixForConference) createBaseEventContent(destSessionID id.SessionID) event.BaseCallEventContent {
+func (m *MatrixForConference) createBaseEventContent(
+	callID string,
+	destSessionID id.SessionID,
+) event.BaseCallEventContent {
 	return event.BaseCallEventContent{
-		CallID:          m.conferenceID,
+		CallID:          callID,
 		ConfID:          m.conferenceID,
 		DeviceID:        m.client.DeviceID,
 		SenderSessionID: LocalSessionID,

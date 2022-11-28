@@ -22,6 +22,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 )
 
 type Conference = common.Sender[conf.MatrixMessage]
@@ -58,10 +59,11 @@ func newRouter(matrix *signaling.MatrixClient, config conf.Config) chan<- Router
 			case ConferenceEndedMessage:
 				// Remove the conference that ended from the list.
 				delete(router.conferenceSinks, msg.conferenceID)
+
 				// Process the message that was not read by the conference.
-				if len(msg.unread) > 0 {
-					// FIXME: We must handle these messages!
-					logrus.Warnf("Unread messages: %v", len(msg.unread))
+				for _, msg := range msg.unread {
+					// TODO: We actually already know the type, so we can do this better.
+					router.handleMatrixEvent(msg.RawEvent)
 				}
 			}
 		}
@@ -72,22 +74,36 @@ func newRouter(matrix *signaling.MatrixClient, config conf.Config) chan<- Router
 
 // Handles incoming To-Device events that the SFU receives from clients.
 func (r *Router) handleMatrixEvent(evt *event.Event) {
-	// Check if `conf_id` is present in the message (right messages do have it).
-	rawConferenceID, ok := evt.Content.Raw["conf_id"]
-	if !ok {
-		return
-	}
+	var (
+		conferenceID string
+		callID       string
+		deviceID     string
+		userID       = evt.Sender
+	)
 
-	// Try to parse the conference ID without parsing the whole event.
-	conferenceID, ok := rawConferenceID.(string)
-	if !ok {
-		return
+	// Check if `conf_id` is present in the message (right messages do have it).
+	rawConferenceID, okConferenceId := evt.Content.Raw["conf_id"]
+	rawCallID, okCallId := evt.Content.Raw["call_id"]
+	rawDeviceID, okDeviceID := evt.Content.Raw["device_id"]
+
+	if okConferenceId && okCallId && okDeviceID {
+		// Extract the conference ID from the message.
+		conferenceID, okConferenceId = rawConferenceID.(string)
+		callID, okCallId = rawCallID.(string)
+		deviceID, okDeviceID = rawDeviceID.(string)
+
+		if !okConferenceId || !okCallId || !okDeviceID {
+			logrus.Warn("Ignoring invalid message without IDs")
+			return
+		}
 	}
 
 	logger := logrus.WithFields(logrus.Fields{
-		"type":    evt.Type.Type,
-		"user_id": evt.Sender.String(),
-		"conf_id": conferenceID,
+		"type":      evt.Type.Type,
+		"user_id":   userID,
+		"conf_id":   conferenceID,
+		"call_id":   callID,
+		"device_id": deviceID,
 	})
 
 	conference := r.conferenceSinks[conferenceID]
@@ -101,7 +117,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			r.config,
 			r.matrix.CreateForConference(conferenceID),
 			createConferenceEndNotifier(conferenceID, r.channel),
-			evt.Sender,
+			userID,
 			evt.Content.AsCallInvite(),
 		)
 		if err != nil {
@@ -122,9 +138,10 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// A helper function to deal with messages that can't be sent due to the conference closed.
 	// Not a function due to the need to capture local environment.
 	sendToConference := func(eventContent conf.MessageContent) {
+		sender := conf.ParticipantID{userID, id.DeviceID(deviceID), callID}
 		// At this point the conference is not nil.
 		// Let's check if the channel is still available.
-		if conference.Send(conf.MatrixMessage{UserID: evt.Sender, Content: eventContent}) != nil {
+		if conference.Send(conf.MatrixMessage{Content: eventContent, RawEvent: evt, Sender: sender}) != nil {
 			// If sending failed, then the conference is over.
 			delete(r.conferenceSinks, conferenceID)
 			// Since we were not able to send the message, let's re-process it now.

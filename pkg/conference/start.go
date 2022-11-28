@@ -47,7 +47,7 @@ func StartConference(
 		logger:         logrus.WithFields(logrus.Fields{"conf_id": confID}),
 	}
 
-	participantID := ParticipantID{UserID: UserID, DeviceID: inviteEvent.DeviceID}
+	participantID := ParticipantID{UserID: UserID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}
 	if err := conference.onNewParticipant(participantID, inviteEvent); err != nil {
 		return nil, err
 	}
