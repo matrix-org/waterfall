@@ -55,6 +55,7 @@ type MatrixSignaling interface {
 	SendICECandidates(recipient MatrixRecipient, candidates []event.CallCandidate)
 	SendCandidatesGatheringFinished(recipient MatrixRecipient)
 	SendHangup(recipient MatrixRecipient, reason event.CallHangupReason)
+	DeviceID() id.DeviceID
 }
 
 func (m *MatrixForConference) SendSDPAnswer(
@@ -107,6 +108,10 @@ func (m *MatrixForConference) SendHangup(recipient MatrixRecipient, reason event
 	}
 
 	m.sendToDevice(recipient, event.CallHangup, eventContent)
+}
+
+func (m *MatrixForConference) DeviceID() id.DeviceID {
+	return m.client.DeviceID
 }
 
 func (m *MatrixForConference) createBaseEventContent(
