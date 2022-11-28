@@ -17,6 +17,8 @@ limitations under the License.
 package signaling
 
 import (
+	"encoding/json"
+
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -131,6 +133,16 @@ func (m *MatrixForConference) sendToDevice(user MatrixRecipient, eventType event
 				user.DeviceID: eventContent,
 			},
 		},
+	}
+
+	{
+		// TODO: Remove this once
+		serialized, err := json.Marshal(sendRequest)
+		if err != nil {
+			logger.WithError(err).Error("Failed to serialize to-device message")
+			return
+		}
+		logger.Debugf("Sending to-device message: %s", string(serialized))
 	}
 
 	if _, err := m.client.SendToDevice(eventType, sendRequest); err != nil {
