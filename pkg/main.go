@@ -38,7 +38,7 @@ func main() {
 	flag.Parse()
 
 	// Initialize logging subsystem (formatting, global logging framework etc).
-	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true, ForceColors: true})
 
 	// Define functions that are called before exiting.
 	// This is useful to stop the profiler if it's enabled.
