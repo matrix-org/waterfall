@@ -180,12 +180,16 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 		return nil, ErrCantCreateAnswer
 	}
 
+	// TODO: Do we really need to call `webrtc.GatheringCompletePromise` here?
+	gatherComplete := webrtc.GatheringCompletePromise(p.peerConnection)
+
 	if err := p.peerConnection.SetLocalDescription(answer); err != nil {
 		p.logger.WithError(err).Error("failed to set local description")
 		return nil, ErrCantSetLocalDescription
 	}
 
-	// TODO: Do we really need to call `webrtc.GatheringCompletePromise` here?
+	// Block until ICE Gathering is complete.
+	<-gatherComplete
 
 	sdpAnswer := p.peerConnection.LocalDescription()
 	if sdpAnswer == nil {
