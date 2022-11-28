@@ -45,7 +45,7 @@ func newRouter(matrix *signaling.MatrixClient, config conf.Config) chan<- Router
 		matrix:          matrix,
 		conferenceSinks: make(map[string]*common.Sender[conf.MatrixMessage]),
 		config:          config,
-		channel:         make(chan RouterMessage, 128),
+		channel:         make(chan RouterMessage, common.UnboundedChannelSize),
 	}
 
 	// Start the main loop of the Router.
