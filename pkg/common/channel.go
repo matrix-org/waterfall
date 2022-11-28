@@ -6,7 +6,7 @@ import "sync/atomic"
 // Unlike traditional Go channels, these allow the receiver to mark the channel as closed which would then fail
 // to send any messages to the channel over `Send“.
 func NewChannel[M any]() (Sender[M], Receiver[M]) {
-	channel := make(chan M)
+	channel := make(chan M, 128)
 	closed := &atomic.Bool{}
 	sender := Sender[M]{channel, closed}
 	receiver := Receiver[M]{channel, closed}
