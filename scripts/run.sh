@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-go run ./pkg --logTime
+go run ./pkg
