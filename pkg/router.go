@@ -118,6 +118,12 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 		return
 	}
 
+	// All other events are expected to be handled by the existing conference.
+	if conference == nil {
+		logger.Warnf("ignoring %s since the conference is unknown", evt.Type.Type)
+		return
+	}
+
 	// A helper function to deal with messages that can't be sent due to the conference closed.
 	// Not a function due to the need to capture local environment.
 	sendToConference := func(eventContent conf.MessageContent) {
