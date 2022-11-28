@@ -95,26 +95,21 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// Only ToDeviceCallInvite events are allowed to create a new conference, others
 	// are expected to operate on an existing conference that is running on the SFU.
 	if conference == nil && evt.Type.Type == event.ToDeviceCallInvite.Type {
-		if evt.Type.Type == event.ToDeviceCallInvite.Type {
-			logger.Infof("creating new conference %s", conferenceID)
-			conferenceSink, err := conf.StartConference(
-				conferenceID,
-				r.config,
-				r.matrix.CreateForConference(conferenceID),
-				createConferenceEndNotifier(conferenceID, r.channel),
-				evt.Sender,
-				evt.Content.AsCallInvite(),
-			)
-			if err != nil {
-				logger.WithError(err).Errorf("failed to start conference %s", conferenceID)
-				return
-			}
-
-			r.conferenceSinks[conferenceID] = conferenceSink
+		logger.Infof("creating new conference %s", conferenceID)
+		conferenceSink, err := conf.StartConference(
+			conferenceID,
+			r.config,
+			r.matrix.CreateForConference(conferenceID),
+			createConferenceEndNotifier(conferenceID, r.channel),
+			evt.Sender,
+			evt.Content.AsCallInvite(),
+		)
+		if err != nil {
+			logger.WithError(err).Errorf("failed to start conference %s", conferenceID)
 			return
 		}
 
-		logger.Warnf("ignoring %s since the conference is unknown", event.ToDeviceCallInvite.Type)
+		r.conferenceSinks[conferenceID] = conferenceSink
 		return
 	}
 
