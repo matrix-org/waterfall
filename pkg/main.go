@@ -40,9 +40,6 @@ func main() {
 	// Initialize logging subsystem (formatting, global logging framework etc).
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true, ForceColors: true})
 
-	// Temporarily enable debug logging.
-	logrus.SetLevel(logrus.DebugLevel)
-
 	// Define functions that are called before exiting.
 	// This is useful to stop the profiler if it's enabled.
 	deferred_functions := []func(){}
@@ -69,6 +66,23 @@ func main() {
 	if err != nil {
 		logrus.WithError(err).Fatal("could not load config")
 		return
+	}
+
+	switch config.LogLevel {
+	case "debug":
+		logrus.SetLevel(logrus.DebugLevel)
+	case "info":
+		logrus.SetLevel(logrus.InfoLevel)
+	case "warn":
+		logrus.SetLevel(logrus.WarnLevel)
+	case "error":
+		logrus.SetLevel(logrus.ErrorLevel)
+	case "fatal":
+		logrus.SetLevel(logrus.FatalLevel)
+	case "panic":
+		logrus.SetLevel(logrus.PanicLevel)
+	default:
+		logrus.SetLevel(logrus.InfoLevel)
 	}
 
 	// Create matrix client.
