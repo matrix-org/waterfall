@@ -16,6 +16,7 @@ import (
 type ParticipantID struct {
 	UserID   id.UserID
 	DeviceID id.DeviceID
+	CallID   string
 }
 
 // Participant represents a participant in the conference.
@@ -32,6 +33,7 @@ func (p *Participant) asMatrixRecipient() signaling.MatrixRecipient {
 	return signaling.MatrixRecipient{
 		UserID:          p.id.UserID,
 		DeviceID:        p.id.DeviceID,
+		CallID:          p.id.CallID,
 		RemoteSessionID: p.remoteSessionID,
 	}
 }
