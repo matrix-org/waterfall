@@ -61,7 +61,7 @@ func (m *MatrixForConference) SendSDPAnswer(
 ) {
 	eventContent := &event.Content{
 		Parsed: event.CallAnswerEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.DeviceID, recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.RemoteSessionID),
 			Answer: event.CallData{
 				Type: "answer",
 				SDP:  sdp,
@@ -76,7 +76,7 @@ func (m *MatrixForConference) SendSDPAnswer(
 func (m *MatrixForConference) SendICECandidates(recipient MatrixRecipient, candidates []event.CallCandidate) {
 	eventContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.DeviceID, recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.RemoteSessionID),
 			Candidates:           candidates,
 		},
 	}
@@ -87,7 +87,7 @@ func (m *MatrixForConference) SendICECandidates(recipient MatrixRecipient, candi
 func (m *MatrixForConference) SendCandidatesGatheringFinished(recipient MatrixRecipient) {
 	eventContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.DeviceID, recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.RemoteSessionID),
 			Candidates:           []event.CallCandidate{{Candidate: ""}},
 		},
 	}
@@ -98,7 +98,7 @@ func (m *MatrixForConference) SendCandidatesGatheringFinished(recipient MatrixRe
 func (m *MatrixForConference) SendHangup(recipient MatrixRecipient, reason event.CallHangupReason) {
 	eventContent := &event.Content{
 		Parsed: event.CallHangupEventContent{
-			BaseCallEventContent: m.createBaseEventContent(recipient.DeviceID, recipient.RemoteSessionID),
+			BaseCallEventContent: m.createBaseEventContent(recipient.RemoteSessionID),
 			Reason:               reason,
 		},
 	}
@@ -106,17 +106,14 @@ func (m *MatrixForConference) SendHangup(recipient MatrixRecipient, reason event
 	m.sendToDevice(recipient, event.CallHangup, eventContent)
 }
 
-func (m *MatrixForConference) createBaseEventContent(
-	destDeviceID id.DeviceID,
-	destSessionID id.SessionID,
-) event.BaseCallEventContent {
+func (m *MatrixForConference) createBaseEventContent(destSessionID id.SessionID) event.BaseCallEventContent {
 	return event.BaseCallEventContent{
 		CallID:          m.conferenceID,
 		ConfID:          m.conferenceID,
 		DeviceID:        m.client.DeviceID,
 		SenderSessionID: LocalSessionID,
 		DestSessionID:   destSessionID,
-		PartyID:         string(destDeviceID),
+		PartyID:         string(m.client.DeviceID),
 		Version:         event.CallVersion("1"),
 	}
 }
