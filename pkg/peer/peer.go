@@ -165,6 +165,7 @@ func (p *Peer[ID]) ProcessSDPAnswer(sdpAnswer string) error {
 
 // Applies the sdp offer received from the remote peer and generates an SDP answer.
 func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription, error) {
+	p.logger.WithField("sdpOffer", sdpOffer).Debug("processing SDP offer")
 	err := p.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  sdpOffer,
@@ -184,8 +185,6 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 		p.logger.WithError(err).Error("failed to set local description")
 		return nil, ErrCantSetLocalDescription
 	}
-
-	// TODO: Do we really need to call `webrtc.GatheringCompletePromise` here?
 
 	sdpAnswer := p.peerConnection.LocalDescription()
 	if sdpAnswer == nil {

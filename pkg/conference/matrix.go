@@ -72,6 +72,7 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 	// Send the answer back to the remote peer.
 	recipient := participant.asMatrixRecipient()
 	streamMetadata := c.getAvailableStreamsFor(participantID)
+	participant.logger.WithField("sdpAnswer", sdpAnswer.SDP).Debug("Sending SDP answer")
 	c.signaling.SendSDPAnswer(recipient, streamMetadata, sdpAnswer.SDP)
 	return nil
 }

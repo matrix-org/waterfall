@@ -40,6 +40,9 @@ func main() {
 	// Initialize logging subsystem (formatting, global logging framework etc).
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true, ForceColors: true})
 
+	// Temporarily enable debug logging.
+	logrus.SetLevel(logrus.DebugLevel)
+
 	// Define functions that are called before exiting.
 	// This is useful to stop the profiler if it's enabled.
 	deferred_functions := []func(){}
