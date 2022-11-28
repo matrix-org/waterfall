@@ -114,7 +114,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			return
 		}
 
-		logger.Warnf("ignoring %s for an unknown conference %s, ignoring", &event.ToDeviceCallInvite.Type)
+		logger.Warnf("ignoring %s since the conference is unknown", event.ToDeviceCallInvite.Type)
 		return
 	}
 
