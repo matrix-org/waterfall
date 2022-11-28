@@ -25,49 +25,46 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
 	// any existing calls from this device in this call should be terminated.
-	participant := c.getParticipant(participantID, nil)
-	if participant != nil {
+	if participant := c.participants[participantID]; participant != nil {
 		if participant.remoteSessionID == inviteEvent.SenderSessionID {
 			c.logger.Errorf("Found existing participant with equal DeviceID and SessionID")
 		} else {
 			c.removeParticipant(participantID)
-			participant = nil
 		}
 	}
 
+	participant := c.participants[participantID]
+	var sdpAnswer *webrtc.SessionDescription
+
 	// If participant exists still exists, then it means that the client does not behave properly.
 	// In this case we treat this new invitation as a new SDP offer. Otherwise, we create a new one.
-	sdpAnswer, err := func() (*webrtc.SessionDescription, error) {
-		if participant == nil {
-			messageSink := common.NewMessageSink(participantID, c.peerMessages)
-
-			peer, answer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, logger)
-			if err != nil {
-				return nil, err
-			}
-
-			participant = &Participant{
-				id:              participantID,
-				peer:            peer,
-				logger:          logger,
-				remoteSessionID: inviteEvent.SenderSessionID,
-				streamMetadata:  inviteEvent.SDPStreamMetadata,
-				publishedTracks: make(map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP),
-			}
-
-			c.participants[participantID] = participant
-			return answer, nil
-		} else {
-			answer, err := participant.peer.ProcessSDPOffer(inviteEvent.Offer.SDP)
-			if err != nil {
-				return nil, err
-			}
-			return answer, nil
+	if participant != nil {
+		answer, err := participant.peer.ProcessSDPOffer(inviteEvent.Offer.SDP)
+		if err != nil {
+			logger.WithError(err).Errorf("Failed to process SDP offer")
+			return err
 		}
-	}()
-	if err != nil {
-		logger.WithError(err).Errorf("Failed to process SDP offer")
-		return err
+		sdpAnswer = answer
+	} else {
+		messageSink := common.NewMessageSink(participantID, c.peerMessages)
+
+		peer, answer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, logger)
+		if err != nil {
+			logger.WithError(err).Errorf("Failed to process SDP offer")
+			return err
+		}
+
+		participant = &Participant{
+			id:              participantID,
+			peer:            peer,
+			logger:          logger,
+			remoteSessionID: inviteEvent.SenderSessionID,
+			streamMetadata:  inviteEvent.SDPStreamMetadata,
+			publishedTracks: make(map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP),
+		}
+
+		c.participants[participantID] = participant
+		sdpAnswer = answer
 	}
 
 	// Send the answer back to the remote peer.
