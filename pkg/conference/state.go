@@ -27,15 +27,10 @@ type Conference struct {
 func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMessage error) *Participant {
 	participant, ok := c.participants[participantID]
 	if !ok {
-		logEntry := c.logger.WithFields(logrus.Fields{
-			"user_id":   participantID.UserID,
-			"device_id": participantID.DeviceID,
-		})
-
 		if optionalErrorMessage != nil {
-			logEntry.WithError(optionalErrorMessage)
+			c.logger.WithError(optionalErrorMessage)
 		} else {
-			logEntry.Error("Participant not found")
+			c.logger.Error("Participant not found")
 		}
 
 		return nil
