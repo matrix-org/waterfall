@@ -57,13 +57,16 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 	// determine the actual type of the message.
 	switch msg := message.Content.(type) {
 	case peer.JoinedTheCall:
+		participant.logger.Info("Joined the call")
 		c.resendMetadataToAllExcept(participant.id)
 
 	case peer.LeftTheCall:
+		participant.logger.Info("Left the call")
 		c.removeParticipant(message.Sender)
 		c.signaling.SendHangup(participant.asMatrixRecipient(), event.CallHangupUnknownError)
 
 	case peer.NewTrackPublished:
+		participant.logger.Infof("Published new track: %s", msg.Track.ID())
 		key := event.SFUTrackDescription{
 			StreamID: msg.Track.StreamID(),
 			TrackID:  msg.Track.ID(),
@@ -77,6 +80,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		participant.publishedTracks[key] = msg.Track
 
 	case peer.PublishedTrackFailed:
+		participant.logger.Infof("Failed published track: %s", msg.Track.ID())
 		delete(participant.publishedTracks, event.SFUTrackDescription{
 			StreamID: msg.Track.StreamID(),
 			TrackID:  msg.Track.ID(),
@@ -91,6 +95,8 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		}
 
 	case peer.NewICECandidate:
+		participant.logger.Info("Received a new local ICE candidate")
+
 		// Convert WebRTC ICE candidate to Matrix ICE candidate.
 		jsonCandidate := msg.Candidate.ToJSON()
 		candidates := []event.CallCandidate{{
@@ -101,10 +107,13 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		c.signaling.SendICECandidates(participant.asMatrixRecipient(), candidates)
 
 	case peer.ICEGatheringComplete:
+		participant.logger.Info("Completed local ICE gathering")
+
 		// Send an empty array of candidates to indicate that ICE gathering is complete.
 		c.signaling.SendCandidatesGatheringFinished(participant.asMatrixRecipient())
 
 	case peer.RenegotiationRequired:
+		participant.logger.Info("Started renegotiation")
 		participant.sendDataChannelMessage(event.SFUMessage{
 			Op:       event.SFUOperationOffer,
 			SDP:      msg.Offer.SDP,
@@ -112,6 +121,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		})
 
 	case peer.DataChannelMessage:
+		participant.logger.Info("Sent data channel message")
 		var sfuMessage event.SFUMessage
 		if err := json.Unmarshal([]byte(msg.Message), &sfuMessage); err != nil {
 			c.logger.Errorf("Failed to unmarshal SFU message: %v", err)
@@ -121,6 +131,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		c.handleDataChannelMessage(participant, sfuMessage)
 
 	case peer.DataChannelAvailable:
+		participant.logger.Info("Connected data channel")
 		participant.sendDataChannelMessage(event.SFUMessage{
 			Op:       event.SFUOperationMetadata,
 			Metadata: c.getAvailableStreamsFor(participant.id),
@@ -135,6 +146,8 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessage event.SFUMessage) {
 	switch sfuMessage.Op {
 	case event.SFUOperationSelect:
+		participant.logger.Info("Sent select request over DC")
+
 		// Get the tracks that correspond to the tracks that the participant wants to receive.
 		for _, track := range c.getTracks(sfuMessage.Start) {
 			if err := participant.peer.SubscribeTo(track); err != nil {
@@ -144,12 +157,16 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 		}
 
 	case event.SFUOperationAnswer:
+		participant.logger.Info("Sent SDP answer over DC")
+
 		if err := participant.peer.ProcessSDPAnswer(sfuMessage.SDP); err != nil {
 			participant.logger.Errorf("Failed to set SDP answer: %v", err)
 			return
 		}
 
 	case event.SFUOperationPublish:
+		participant.logger.Info("Sent SDP offer over DC")
+
 		answer, err := participant.peer.ProcessSDPOffer(sfuMessage.SDP)
 		if err != nil {
 			participant.logger.Errorf("Failed to set SDP offer: %v", err)
@@ -162,10 +179,14 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 		})
 
 	case event.SFUOperationUnpublish:
+		participant.logger.Info("Sent unpublish over DC")
+
 		// TODO: Clarify the semantics of unpublish.
 	case event.SFUOperationAlive:
 		// FIXME: Handle the heartbeat message here (updating the last timestamp etc).
 	case event.SFUOperationMetadata:
+		participant.logger.Info("Sent metadata over DC")
+
 		participant.streamMetadata = sfuMessage.Metadata
 		c.resendMetadataToAllExcept(participant.id)
 	}

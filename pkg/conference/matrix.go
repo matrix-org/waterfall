@@ -23,6 +23,8 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 		"device_id": participantID.DeviceID,
 	})
 
+	logger.Info("Incoming call invite")
+
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
 	// any existing calls from this device in this call should be terminated.
 	if participant := c.participants[participantID]; participant != nil {
@@ -78,6 +80,8 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 // our internal peer connection.
 func (c *Conference) onCandidates(participantID ParticipantID, ev *event.CallCandidatesEventContent) {
 	if participant := c.getParticipant(participantID, nil); participant != nil {
+		participant.logger.Info("Received remote ICE candidates")
+
 		// Convert the candidates to the WebRTC format.
 		candidates := make([]webrtc.ICECandidateInit, len(ev.Candidates))
 		for i, candidate := range ev.Candidates {
@@ -97,6 +101,8 @@ func (c *Conference) onCandidates(participantID ParticipantID, ev *event.CallCan
 // and that the call can now proceed.
 func (c *Conference) onSelectAnswer(participantID ParticipantID, ev *event.CallSelectAnswerEventContent) {
 	if participant := c.getParticipant(participantID, nil); participant != nil {
+		participant.logger.Info("Received remote answer selection")
+
 		if ev.SelectedPartyID != participantID.DeviceID.String() {
 			c.logger.WithFields(logrus.Fields{
 				"device_id": ev.SelectedPartyID,
@@ -109,5 +115,8 @@ func (c *Conference) onSelectAnswer(participantID ParticipantID, ev *event.CallS
 
 // Process a message from the remote peer telling that it wants to hang up the call.
 func (c *Conference) onHangup(participantID ParticipantID, ev *event.CallHangupEventContent) {
-	c.removeParticipant(participantID)
+	if participant := c.participants[participantID]; participant != nil {
+		participant.logger.Info("Received remote hangup")
+		c.removeParticipant(participantID)
+	}
 }
