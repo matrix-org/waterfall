@@ -106,12 +106,12 @@ func (c *Conference) onSelectAnswer(participantID ParticipantID, ev *event.CallS
 	if participant := c.getParticipant(participantID, nil); participant != nil {
 		participant.logger.Info("Received remote answer selection")
 
-		if ev.SelectedPartyID != participantID.DeviceID.String() {
+		if ev.SelectedPartyID != string(c.signaling.DeviceID()) {
 			c.logger.WithFields(logrus.Fields{
 				"device_id": ev.SelectedPartyID,
 				"user_id":   participantID,
 			}).Errorf("Call was answered on a different device, kicking this peer")
-			participant.peer.Terminate()
+			c.removeParticipant(participantID)
 		}
 	}
 }
