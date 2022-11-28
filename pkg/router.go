@@ -94,7 +94,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 
 	// Only ToDeviceCallInvite events are allowed to create a new conference, others
 	// are expected to operate on an existing conference that is running on the SFU.
-	if conference == nil && evt.Type.Type != event.ToDeviceCallInvite.Type {
+	if conference == nil && evt.Type.Type == event.ToDeviceCallInvite.Type {
 		if evt.Type.Type == event.ToDeviceCallInvite.Type {
 			logger.Infof("creating new conference %s", conferenceID)
 			conferenceSink, err := conf.StartConference(
