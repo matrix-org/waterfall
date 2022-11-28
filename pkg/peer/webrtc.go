@@ -71,6 +71,7 @@ func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver 
 func (p *Peer[ID]) onICECandidateGathered(candidate *webrtc.ICECandidate) {
 	if candidate == nil {
 		p.logger.Info("ICE candidate gathering finished")
+		p.sink.Send(ICEGatheringComplete{})
 		return
 	}
 
@@ -112,10 +113,6 @@ func (p *Peer[ID]) onICEConnectionStateChanged(state webrtc.ICEConnectionState) 
 
 func (p *Peer[ID]) onICEGatheringStateChanged(state webrtc.ICEGathererState) {
 	p.logger.WithField("state", state).Debug("ICE gathering state changed")
-
-	if state == webrtc.ICEGathererStateComplete {
-		p.sink.Send(ICEGatheringComplete{})
-	}
 }
 
 func (p *Peer[ID]) onSignalingStateChanged(state webrtc.SignalingState) {
