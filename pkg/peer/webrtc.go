@@ -23,6 +23,7 @@ func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver 
 			rtcp := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(remoteTrack.SSRC())}}
 			if rtcpSendErr := p.peerConnection.WriteRTCP(rtcp); rtcpSendErr != nil {
 				p.logger.Errorf("Failed to send RTCP PLI: %v", rtcpSendErr)
+				return
 			}
 		}
 	}()
@@ -56,12 +57,14 @@ func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver 
 					p.logger.WithError(readErr).Error("failed to read from remote track")
 				}
 				p.sink.Send(PublishedTrackFailed{Track: localTrack})
+				return
 			}
 
 			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet.
 			if _, err = localTrack.Write(rtpBuf[:index]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 				p.logger.WithError(err).Error("failed to write to local track")
 				p.sink.Send(PublishedTrackFailed{Track: localTrack})
+				return
 			}
 		}
 	}()
@@ -98,7 +101,7 @@ func (p *Peer[ID]) onNegotiationNeeded() {
 
 // A callback that is called once we receive an ICE connection state change for this peer connection.
 func (p *Peer[ID]) onICEConnectionStateChanged(state webrtc.ICEConnectionState) {
-	p.logger.WithField("state", state).Debug("ICE connection state changed")
+	p.logger.WithField("state", state).Info("ICE connection state changed")
 
 	// TODO: Ask Simon if we should do it here as in the previous implementation.
 	switch state {
@@ -120,7 +123,7 @@ func (p *Peer[ID]) onSignalingStateChanged(state webrtc.SignalingState) {
 }
 
 func (p *Peer[ID]) onConnectionStateChanged(state webrtc.PeerConnectionState) {
-	p.logger.WithField("state", state).Debug("connection state changed")
+	p.logger.WithField("state", state).Info("Connection state changed")
 
 	switch state {
 	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateClosed:
@@ -136,33 +139,33 @@ func (p *Peer[ID]) onDataChannelReady(dc *webrtc.DataChannel) {
 	defer p.dataChannelMutex.Unlock()
 
 	if p.dataChannel != nil {
-		p.logger.Error("data channel already exists")
+		p.logger.Error("Data channel already exists")
 		p.dataChannel.Close()
 		return
 	}
 
 	p.dataChannel = dc
-	p.logger.WithField("label", dc.Label()).Info("data channel ready")
+	p.logger.WithField("label", dc.Label()).Info("Data channel ready")
 
 	dc.OnOpen(func() {
-		p.logger.Info("data channel opened")
+		p.logger.Info("Data channel opened")
 		p.sink.Send(DataChannelAvailable{})
 	})
 
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		p.logger.WithField("message", msg).Debug("data channel message received")
+		p.logger.WithField("message", msg).Debug("Data channel message received")
 		if msg.IsString {
 			p.sink.Send(DataChannelMessage{Message: string(msg.Data)})
 		} else {
-			p.logger.Warn("data channel message is not a string, ignoring")
+			p.logger.Warn("Data channel message is not a string, ignoring")
 		}
 	})
 
 	dc.OnError(func(err error) {
-		p.logger.WithError(err).Error("data channel error")
+		p.logger.WithError(err).Error("Data channel error")
 	})
 
 	dc.OnClose(func() {
-		p.logger.Info("data channel closed")
+		p.logger.Info("Data channel closed")
 	})
 }

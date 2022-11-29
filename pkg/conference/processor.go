@@ -7,6 +7,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/pion/webrtc/v3"
+	"golang.org/x/exp/slices"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -85,7 +86,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		}
 
 	case peer.NewICECandidate:
-		participant.logger.Info("Received a new local ICE candidate")
+		participant.logger.Debug("Received a new local ICE candidate")
 
 		// Convert WebRTC ICE candidate to Matrix ICE candidate.
 		jsonCandidate := msg.Candidate.ToJSON()
@@ -111,7 +112,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		})
 
 	case peer.DataChannelMessage:
-		participant.logger.Info("Sent data channel message")
+		participant.logger.Debug("Received data channel message")
 		var sfuMessage event.SFUMessage
 		if err := json.Unmarshal([]byte(msg.Message), &sfuMessage); err != nil {
 			c.logger.Errorf("Failed to unmarshal SFU message: %v", err)
@@ -136,14 +137,28 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessage event.SFUMessage) {
 	switch sfuMessage.Op {
 	case event.SFUOperationSelect:
-		participant.logger.Info("Sent select request over DC")
+		participant.logger.Info("Received select request over DC")
 
-		// Get the tracks that correspond to the tracks that the participant wants to receive.
-		for _, track := range c.getTracks(sfuMessage.Start) {
-			if track == nil {
-				participant.logger.Errorf("Bug, track is nil")
+		// Find tracks based on what we were asked for.
+		tracks := c.getTracks(sfuMessage.Start)
+
+		// Let's check if we have all the tracks that we were asked for are there.
+		// If not, we will list which are not available (later on we must inform participant
+		// about it unless the participant retries it).
+		if len(tracks) != len(sfuMessage.Start) {
+			for _, expected := range sfuMessage.Start {
+				found := slices.IndexFunc(tracks, func(track *webrtc.TrackLocalStaticRTP) bool {
+					return track.StreamID() == expected.StreamID && track.ID() == expected.TrackID
+				})
+
+				if found == -1 {
+					c.logger.Warnf("Track not found: %s", expected.TrackID)
+				}
 			}
+		}
 
+		// Subscribe to the found tracks.
+		for _, track := range tracks {
 			if err := participant.peer.SubscribeTo(track); err != nil {
 				participant.logger.Errorf("Failed to subscribe to track: %v", err)
 				return
@@ -151,7 +166,7 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 		}
 
 	case event.SFUOperationAnswer:
-		participant.logger.Info("Sent SDP answer over DC")
+		participant.logger.Info("Received SDP answer over DC")
 
 		if err := participant.peer.ProcessSDPAnswer(sfuMessage.SDP); err != nil {
 			participant.logger.Errorf("Failed to set SDP answer: %v", err)
@@ -159,7 +174,7 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 		}
 
 	case event.SFUOperationPublish:
-		participant.logger.Info("Sent SDP offer over DC")
+		participant.logger.Info("Received SDP offer over DC")
 
 		answer, err := participant.peer.ProcessSDPOffer(sfuMessage.SDP)
 		if err != nil {
@@ -173,13 +188,13 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 		})
 
 	case event.SFUOperationUnpublish:
-		participant.logger.Info("Sent unpublish over DC")
+		participant.logger.Info("Received unpublish over DC")
 
 		// TODO: Clarify the semantics of unpublish.
 	case event.SFUOperationAlive:
 		// FIXME: Handle the heartbeat message here (updating the last timestamp etc).
 	case event.SFUOperationMetadata:
-		participant.logger.Info("Sent metadata over DC")
+		participant.logger.Info("Received metadata over DC")
 
 		participant.streamMetadata = sfuMessage.Metadata
 		c.resendMetadataToAllExcept(participant.id)

@@ -88,6 +88,7 @@ func (c *Conference) getTracks(identifiers []event.SFUTrackDescription) []*webrt
 			}
 		}
 	}
+
 	return tracks
 }
 

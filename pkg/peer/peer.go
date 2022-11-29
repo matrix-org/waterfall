@@ -106,6 +106,10 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 func (p *Peer[ID]) UnsubscribeFrom(tracks []*webrtc.TrackLocalStaticRTP) {
 	// That's unfortunately an O(m*n) operation, but we don't expect the number of tracks to be big.
 	for _, presentTrack := range p.peerConnection.GetSenders() {
+		if presentTrack.Track() == nil {
+			continue
+		}
+
 		for _, trackToUnsubscribe := range tracks {
 			presentTrackID, presentStreamID := presentTrack.Track().ID(), presentTrack.Track().StreamID()
 			trackID, streamID := trackToUnsubscribe.ID(), trackToUnsubscribe.StreamID()
@@ -165,7 +169,6 @@ func (p *Peer[ID]) ProcessSDPAnswer(sdpAnswer string) error {
 
 // Applies the sdp offer received from the remote peer and generates an SDP answer.
 func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription, error) {
-	p.logger.WithField("sdpOffer", sdpOffer).Debug("processing SDP offer")
 	err := p.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  sdpOffer,
