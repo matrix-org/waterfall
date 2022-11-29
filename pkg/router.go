@@ -102,7 +102,6 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 		"type":      evt.Type.Type,
 		"user_id":   userID,
 		"conf_id":   conferenceID,
-		"call_id":   callID,
 		"device_id": deviceID,
 	})
 
