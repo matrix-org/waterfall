@@ -140,6 +140,10 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 
 		// Get the tracks that correspond to the tracks that the participant wants to receive.
 		for _, track := range c.getTracks(sfuMessage.Start) {
+			if track == nil {
+				participant.logger.Errorf("Bug, track is nil")
+			}
+
 			if err := participant.peer.SubscribeTo(track); err != nil {
 				participant.logger.Errorf("Failed to subscribe to track: %v", err)
 				return
