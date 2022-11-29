@@ -144,10 +144,8 @@ func (s *Subscriber) forwardRTCP() {
 			}
 		}
 
-		if len(packetsToForward) < 1 {
-			continue
+		if len(packetsToForward) != 0 {
+			s.publisher.WriteRTCP(packetsToForward)
 		}
-
-		s.publisher.WriteRTCP(packetsToForward)
 	}
 }
