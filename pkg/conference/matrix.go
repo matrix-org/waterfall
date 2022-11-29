@@ -21,7 +21,6 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 	logger := c.logger.WithFields(logrus.Fields{
 		"user_id":   participantID.UserID,
 		"device_id": participantID.DeviceID,
-		"call_id":   participantID.CallID,
 	})
 
 	logger.Info("Incoming call invite")
