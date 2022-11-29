@@ -34,8 +34,6 @@ type Subscriber struct {
 	call      *Call
 	sender    *webrtc.RTPSender
 	publisher *Publisher
-
-	ssrc uint32
 }
 
 func NewSubscriber(call *Call) *Subscriber {
@@ -81,7 +79,6 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 	s.mutex.Lock()
 	s.Track = track
 	s.sender = sender
-	s.ssrc = uint32(sender.GetParameters().Encodings[0].SSRC)
 	s.publisher = publisher
 	s.mutex.Unlock()
 
@@ -130,17 +127,18 @@ func (s *Subscriber) forwardRTCP() {
 
 		packetsToForward := []rtcp.Packet{}
 		readSSRC := uint32(s.publisher.Track.SSRC())
+		senderSSRC := uint32(s.sender.GetParameters().Encodings[0].SSRC)
 
 		for _, packet := range packets {
 			switch typedPacket := packet.(type) {
 			// We mung the packets here, so that the SSRCs match what the
 			// receiver expects
 			case *rtcp.PictureLossIndication:
-				typedPacket.SenderSSRC = s.ssrc
+				typedPacket.SenderSSRC = senderSSRC
 				typedPacket.MediaSSRC = readSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			case *rtcp.FullIntraRequest:
-				typedPacket.SenderSSRC = s.ssrc
+				typedPacket.SenderSSRC = senderSSRC
 				typedPacket.MediaSSRC = readSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			}
