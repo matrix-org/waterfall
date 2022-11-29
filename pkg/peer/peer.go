@@ -105,16 +105,17 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 // Unsubscribes from the given list of tracks.
 func (p *Peer[ID]) UnsubscribeFrom(tracks []*webrtc.TrackLocalStaticRTP) {
 	// That's unfortunately an O(m*n) operation, but we don't expect the number of tracks to be big.
-	for _, presentTrack := range p.peerConnection.GetSenders() {
-		if presentTrack.Track() == nil {
-			continue
+	for _, sender := range p.peerConnection.GetSenders() {
+		currentTrack := sender.Track()
+		if currentTrack == nil {
+			return
 		}
 
 		for _, trackToUnsubscribe := range tracks {
-			presentTrackID, presentStreamID := presentTrack.Track().ID(), presentTrack.Track().StreamID()
+			presentTrackID, presentStreamID := currentTrack.ID(), currentTrack.StreamID()
 			trackID, streamID := trackToUnsubscribe.ID(), trackToUnsubscribe.StreamID()
 			if presentTrackID == trackID && presentStreamID == streamID {
-				if err := p.peerConnection.RemoveTrack(presentTrack); err != nil {
+				if err := p.peerConnection.RemoveTrack(sender); err != nil {
 					p.logger.WithError(err).Error("failed to remove track")
 				}
 			}
