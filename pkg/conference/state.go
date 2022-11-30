@@ -82,14 +82,6 @@ func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.
 					streamsMetadata[streamID] = metadata
 				} else {
 					participant.logger.Warnf("Don't have metadata for stream %s", streamID)
-					// FIXME: A hacky way to nevertheless send a metadata about the stream and track for which we have
-					//        no metadata. This is against the MSC actually since we know nothing about the stream in
-					//        this case. But it was implemented like this in the `main`	branch of the SFU.
-					streamsMetadata[streamID] = event.CallSDPStreamMetadataObject{
-						UserID:   participant.id.UserID,
-						DeviceID: participant.id.DeviceID,
-						Tracks:   event.CallSDPStreamMetadataTracks{trackID: event.CallSDPStreamMetadataTrack{}},
-					}
 				}
 			}
 		}
