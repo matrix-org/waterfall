@@ -143,6 +143,7 @@ func (p *Publisher) WriteRTCP(packets []rtcp.Packet) {
 			if time.Now().UnixNano()-p.lastPLI.Load() < minimalPLIInterval.Nanoseconds() {
 				continue
 			}
+
 			p.lastPLI.Store(time.Now().UnixNano())
 
 			typedPacket.MediaSSRC = readSSRC
