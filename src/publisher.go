@@ -127,31 +127,40 @@ func (p *Publisher) Matches(trackDescription event.SFUTrackDescription) bool {
 
 func (p *Publisher) WriteRTCP(packets []rtcp.Packet) {
 	packetsToSend := []rtcp.Packet{}
+	readSSRC := uint32(p.Track.SSRC())
 
 	for _, packet := range packets {
-		// Since we sometimes spam the sender with PLIs, make sure we don't send
-		// them way too often
-		if _, ok := packet.(*rtcp.PictureLossIndication); ok {
+		switch typedPacket := packet.(type) {
+		// We mung the packets here, so that the SSRCs match what the
+		// receiver expects:
+		// The media SSRC is the SSRC of the media about which the packet is
+		// reporting; therefore, we mung it to be the SSRC of the publishing
+		// participant's track. Without this, it would be SSRC of the SFU's
+		// track which isn't right
+		case *rtcp.PictureLossIndication:
+			// Since we sometimes spam the sender with PLIs, make sure we don't send
+			// them way too often
 			if time.Now().UnixNano()-p.lastPLI.Load() < minimalPLIInterval.Nanoseconds() {
 				continue
 			}
-
 			p.lastPLI.Store(time.Now().UnixNano())
+
+			typedPacket.MediaSSRC = readSSRC
+			packetsToSend = append(packetsToSend, typedPacket)
+		case *rtcp.FullIntraRequest:
+			typedPacket.MediaSSRC = readSSRC
+			packetsToSend = append(packetsToSend, typedPacket)
 		}
 
 		packetsToSend = append(packetsToSend, packet)
 	}
 
-	if len(packetsToSend) < 1 {
-		return
-	}
-
-	if err := p.Call.PeerConnection.WriteRTCP(packetsToSend); err != nil {
-		if errors.Is(err, io.ErrClosedPipe) {
-			return
+	if len(packetsToSend) != 1 {
+		if err := p.Call.PeerConnection.WriteRTCP(packetsToSend); err != nil {
+			if !errors.Is(err, io.ErrClosedPipe) {
+				p.logger.WithError(err).Warn("failed to write RTCP on track")
+			}
 		}
-
-		p.logger.WithError(err).Warn("failed to write RTCP on track")
 	}
 }
 

@@ -21,7 +21,6 @@ import (
 	"io"
 	"sync"
 
-	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 )
@@ -125,28 +124,6 @@ func (s *Subscriber) forwardRTCP() {
 			s.logger.WithError(err).Warn("failed to read RTCP on track")
 		}
 
-		packetsToForward := []rtcp.Packet{}
-		readSSRC := uint32(s.publisher.Track.SSRC())
-
-		for _, packet := range packets {
-			switch typedPacket := packet.(type) {
-			// We mung the packets here, so that the SSRCs match what the
-			// receiver expects:
-			// The media SSRC is the SSRC of the media about which the packet is
-			// reporting; therefore, we mung it to be the SSRC of the publishing
-			// participant's track. Without this, it would be SSRC of the SFU's
-			// track which isn't right
-			case *rtcp.PictureLossIndication:
-				typedPacket.MediaSSRC = readSSRC
-				packetsToForward = append(packetsToForward, typedPacket)
-			case *rtcp.FullIntraRequest:
-				typedPacket.MediaSSRC = readSSRC
-				packetsToForward = append(packetsToForward, typedPacket)
-			}
-		}
-
-		if len(packetsToForward) != 0 {
-			s.publisher.WriteRTCP(packetsToForward)
-		}
+		s.publisher.WriteRTCP(packets)
 	}
 }
