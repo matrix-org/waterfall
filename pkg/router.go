@@ -145,7 +145,6 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			delete(r.conferenceSinks, conferenceID)
 			// Since we were not able to send the message, let's re-process it now.
 			// Note, we probably do not want to block here!
-			// TODO: Do it better (use buffered channels or something).
 			r.handleMatrixEvent(evt)
 		}
 	}

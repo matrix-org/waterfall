@@ -45,7 +45,7 @@ func (p *Participant) sendDataChannelMessage(toSend event.SFUMessage) {
 	}
 
 	if err := p.peer.SendOverDataChannel(string(jsonToSend)); err != nil {
-		// FIXME: We must buffer the message in this case and re-send it once the data channel is recovered!
+		// TODO: We must buffer the message in this case and re-send it once the data channel is recovered!
 		p.logger.Error("Failed to send data channel message")
 	}
 }
