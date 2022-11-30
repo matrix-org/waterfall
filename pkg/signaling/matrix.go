@@ -31,7 +31,7 @@ type MatrixForConference struct {
 	conferenceID string
 }
 
-// Create a new Matrix client that abstarcts outgoing Matrix messages from a given conference.
+// Create a new Matrix client that abstracts outgoing Matrix messages from a given conference.
 func (m *MatrixClient) CreateForConference(conferenceID string) *MatrixForConference {
 	return &MatrixForConference{
 		client:       m.client,
