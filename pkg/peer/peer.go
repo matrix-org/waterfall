@@ -190,11 +190,5 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 		return nil, ErrCantSetLocalDescription
 	}
 
-	sdpAnswer := p.peerConnection.LocalDescription()
-	if sdpAnswer == nil {
-		p.logger.WithError(err).Error("could not generate a local description")
-		return nil, ErrCantCreateLocalDescription
-	}
-
-	return sdpAnswer, nil
+	return &answer, nil
 }
