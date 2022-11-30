@@ -63,13 +63,24 @@ func (c *Conference) removeParticipant(participantID ParticipantID) {
 }
 
 // Helper to get the list of available streams for a given participant, i.e. the list of streams
-// that a given participant **can subscribe to**.
+// that a given participant **can subscribe to**. Each stream may have multiple tracks.
 func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.CallSDPStreamMetadata {
 	streamsMetadata := make(event.CallSDPStreamMetadata)
 	for id, participant := range c.participants {
+		// Skip us. As we know about our own tracks.
 		if forParticipant != id {
-			for streamID, metadata := range participant.streamMetadata {
-				streamsMetadata[streamID] = metadata
+			// Now, find out which of published tracks belong to the streams for which we have metadata
+			// available and construct a metadata map for a given participant based on that.
+			for _, track := range participant.publishedTracks {
+				trackID, streamID := track.ID(), track.StreamID()
+
+				if metadata, ok := streamsMetadata[track.StreamID()]; ok {
+					metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{}
+					streamsMetadata[streamID] = metadata
+				} else if metadata, ok := participant.streamMetadata[streamID]; ok {
+					metadata.Tracks = event.CallSDPStreamMetadataTracks{trackID: event.CallSDPStreamMetadataTrack{}}
+					streamsMetadata[streamID] = metadata
+				}
 			}
 		}
 	}

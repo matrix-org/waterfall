@@ -49,7 +49,6 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 	switch msg := message.Content.(type) {
 	case peer.JoinedTheCall:
 		participant.logger.Info("Joined the call")
-		c.resendMetadataToAllExcept(participant.id)
 
 	case peer.LeftTheCall:
 		participant.logger.Info("Left the call")
@@ -69,6 +68,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		}
 
 		participant.publishedTracks[key] = msg.Track
+		c.resendMetadataToAllExcept(participant.id)
 
 	case peer.PublishedTrackFailed:
 		participant.logger.Infof("Failed published track: %s", msg.Track.ID())
@@ -84,6 +84,8 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 
 			otherParticipant.peer.UnsubscribeFrom([]*webrtc.TrackLocalStaticRTP{msg.Track})
 		}
+
+		c.resendMetadataToAllExcept(participant.id)
 
 	case peer.NewICECandidate:
 		participant.logger.Debug("Received a new local ICE candidate")
