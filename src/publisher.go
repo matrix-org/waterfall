@@ -156,7 +156,7 @@ func (p *Publisher) WriteRTCP(packets []rtcp.Packet) {
 		packetsToSend = append(packetsToSend, packet)
 	}
 
-	if len(packetsToSend) != 1 {
+	if len(packetsToSend) != 0 {
 		if err := p.Call.PeerConnection.WriteRTCP(packetsToSend); err != nil {
 			if !errors.Is(err, io.ErrClosedPipe) {
 				p.logger.WithError(err).Warn("failed to write RTCP on track")
