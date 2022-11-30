@@ -184,6 +184,8 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 			return
 		}
 
+		participant.streamMetadata = sfuMessage.Metadata
+
 		participant.sendDataChannelMessage(event.SFUMessage{
 			Op:       event.SFUOperationAnswer,
 			SDP:      answer.SDP,
@@ -197,12 +199,6 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 	case event.SFUOperationAlive:
 		// FIXME: Handle the heartbeat message here (updating the last timestamp etc).
 	case event.SFUOperationMetadata:
-		streamIDs := make([]string, 0, len(sfuMessage.Metadata))
-		for streamID := range sfuMessage.Metadata {
-			streamIDs = append(streamIDs, streamID)
-		}
-		participant.logger.Infof("Received metadata over DC: %v", streamIDs)
-
 		participant.streamMetadata = sfuMessage.Metadata
 		c.resendMetadataToAllExcept(participant.id)
 	}
