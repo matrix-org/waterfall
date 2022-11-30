@@ -127,18 +127,19 @@ func (s *Subscriber) forwardRTCP() {
 
 		packetsToForward := []rtcp.Packet{}
 		readSSRC := uint32(s.publisher.Track.SSRC())
-		senderSSRC := uint32(s.sender.GetParameters().Encodings[0].SSRC)
 
 		for _, packet := range packets {
 			switch typedPacket := packet.(type) {
 			// We mung the packets here, so that the SSRCs match what the
-			// receiver expects
+			// receiver expects:
+			// The media SSRC is the SSRC of the media about which the packet is
+			// reporting; therefore, we mung it to be the SSRC of the publishing
+			// participant's track. Without this, it would be SSRC of the SFU's
+			// track which isn't right
 			case *rtcp.PictureLossIndication:
-				typedPacket.SenderSSRC = senderSSRC
 				typedPacket.MediaSSRC = readSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			case *rtcp.FullIntraRequest:
-				typedPacket.SenderSSRC = senderSSRC
 				typedPacket.MediaSSRC = readSSRC
 				packetsToForward = append(packetsToForward, typedPacket)
 			}
