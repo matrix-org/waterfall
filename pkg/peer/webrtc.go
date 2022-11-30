@@ -21,8 +21,8 @@ func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver 
 		ticker := time.NewTicker(time.Millisecond * 500) // every 500ms
 		for range ticker.C {
 			rtcp := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(remoteTrack.SSRC())}}
-			if rtcpSendErr := p.peerConnection.WriteRTCP(rtcp); rtcpSendErr != nil {
-				p.logger.Errorf("Failed to send RTCP PLI: %v", rtcpSendErr)
+			if err := p.peerConnection.WriteRTCP(rtcp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+				p.logger.Errorf("Failed to send RTCP PLI: %v", err)
 				return
 			}
 		}
