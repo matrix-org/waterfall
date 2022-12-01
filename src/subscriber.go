@@ -61,6 +61,10 @@ func (s *Subscriber) initLoggingWithTrack(track *webrtc.TrackRemote) {
 func (s *Subscriber) Subscribe(publisher *Publisher) {
 	s.initLoggingWithTrack(publisher.Track)
 
+	if s.publisher != nil {
+		s.logger.Error("cannot subscribe, if we already are")
+	}
+
 	track, err := webrtc.NewTrackLocalStaticRTP(
 		publisher.Track.Codec().RTPCodecCapability,
 		publisher.Track.ID(),
@@ -113,6 +117,11 @@ func (s *Subscriber) Unsubscribe() {
 
 func (s *Subscriber) forwardRTCP() {
 	for {
+		// If we unsubscribed, stop forwarding RTCP packets
+		if s.publisher == nil {
+			return
+		}
+
 		packets, _, err := s.sender.ReadRTCP()
 		if err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
