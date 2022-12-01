@@ -81,7 +81,9 @@ func (s *Subscriber) Subscribe(publisher *Publisher) {
 	s.publisher = publisher
 	s.mutex.Unlock()
 
-	go s.forwardRTCP()
+	if s.Track.Kind() == webrtc.RTPCodecTypeVideo {
+		go s.forwardRTCP()
+	}
 
 	publisher.AddSubscriber(s)
 
@@ -110,10 +112,6 @@ func (s *Subscriber) Unsubscribe() {
 }
 
 func (s *Subscriber) forwardRTCP() {
-	if s.Track.Kind() != webrtc.RTPCodecTypeVideo {
-		return
-	}
-
 	for {
 		packets, _, err := s.sender.ReadRTCP()
 		if err != nil {
