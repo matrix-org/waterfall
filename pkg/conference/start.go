@@ -31,7 +31,7 @@ func StartConference(
 	config Config,
 	signaling signaling.MatrixSignaling,
 	conferenceEndNotifier ConferenceEndNotifier,
-	UserID id.UserID,
+	userID id.UserID,
 	inviteEvent *event.CallInviteEventContent,
 ) (*common.Sender[MatrixMessage], error) {
 	sender, receiver := common.NewChannel[MatrixMessage]()
@@ -47,7 +47,7 @@ func StartConference(
 		logger:         logrus.WithFields(logrus.Fields{"conf_id": confID}),
 	}
 
-	participantID := ParticipantID{UserID: UserID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}
+	participantID := ParticipantID{UserID: userID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}
 	if err := conference.onNewParticipant(participantID, inviteEvent); err != nil {
 		return nil, err
 	}
