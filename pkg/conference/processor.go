@@ -51,9 +51,9 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		participant.logger.Info("Joined the call")
 
 	case peer.LeftTheCall:
-		participant.logger.Info("Left the call")
+		participant.logger.Info("Left the call: %s", msg.Reason)
 		c.removeParticipant(message.Sender)
-		c.signaling.SendHangup(participant.asMatrixRecipient(), event.CallHangupUnknownError)
+		c.signaling.SendHangup(participant.asMatrixRecipient(), msg.Reason)
 
 	case peer.NewTrackPublished:
 		participant.logger.Infof("Published new track: %s", msg.Track.ID())
@@ -195,9 +195,9 @@ func (c *Conference) handleDataChannelMessage(participant *Participant, sfuMessa
 	case event.SFUOperationUnpublish:
 		participant.logger.Info("Received unpublish over DC")
 
-		// TODO: Clarify the semantics of unpublish.
 	case event.SFUOperationAlive:
-		// FIXME: Handle the heartbeat message here (updating the last timestamp etc).
+		participant.peer.ProcessHeartbeat()
+
 	case event.SFUOperationMetadata:
 		participant.streamMetadata = sfuMessage.Metadata
 		c.resendMetadataToAllExcept(participant.id)
