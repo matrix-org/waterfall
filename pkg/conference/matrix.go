@@ -1,6 +1,8 @@
 package conference
 
 import (
+	"time"
+
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/pion/webrtc/v3"
@@ -50,7 +52,8 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 	} else {
 		messageSink := common.NewMessageSink(participantID, c.peerMessages)
 
-		peer, answer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, logger)
+		keepAliveDeadline := time.Duration(c.config.KeepAliveTimeout) * time.Second
+		peer, answer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, logger, keepAliveDeadline)
 		if err != nil {
 			logger.WithError(err).Errorf("Failed to process SDP offer")
 			return err
