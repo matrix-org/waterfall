@@ -35,7 +35,7 @@ func NewMatrixClient(config Config) *MatrixClient {
 
 // Starts the Matrix client and connects to the homeserver,
 // Returns only when the sync with Matrix fails.
-func (m *MatrixClient) RunSync(callback func(*event.Event)) {
+func (m *MatrixClient) RunSyncing(callback func(*event.Event)) {
 	syncer, ok := m.client.Syncer.(*mautrix.DefaultSyncer)
 	if !ok {
 		logrus.Panic("Syncer is not DefaultSyncer")

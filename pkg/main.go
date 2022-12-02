@@ -92,7 +92,7 @@ func main() {
 	routerChannel := newRouter(matrixClient, config.Conference)
 
 	// Start matrix client sync. This function will block until the sync fails.
-	matrixClient.RunSync(func(e *event.Event) {
+	matrixClient.RunSyncing(func(e *event.Event) {
 		routerChannel <- e
 	})
 }
