@@ -3,9 +3,7 @@ package peer
 import (
 	"errors"
 	"io"
-	"time"
 
-	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -13,22 +11,6 @@ import (
 // A callback that is called once we receive first RTP packets from a track, i.e.
 // we call this function each time a new track is received.
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-	// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval.
-	// This can be less wasteful by processing incoming RTCP events, then we would emit a NACK/PLI
-	// when a viewer requests it.
-	//
-	// TODO: Add RTCP handling based on the PR from @SimonBrandner.
-	go func() {
-		ticker := time.NewTicker(time.Millisecond * 500) // every 500ms
-		for range ticker.C {
-			rtcp := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(remoteTrack.SSRC())}}
-			if err := p.peerConnection.WriteRTCP(rtcp); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				p.logger.Errorf("Failed to send RTCP PLI: %v", err)
-				return
-			}
-		}
-	}()
-
 	// Create a local track, all our SFU clients that are subscribed to this
 	// peer (publisher) wil be fed via this track.
 	localTrack, err := webrtc.NewTrackLocalStaticRTP(
