@@ -2,10 +2,12 @@ package peer
 
 import (
 	"errors"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
@@ -21,6 +23,8 @@ var (
 	ErrDataChannelNotReady        = errors.New("data channel is not ready")
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
 )
+
+const minimalPLIInterval = time.Millisecond * 500
 
 // A wrapped representation of the peer connection (single peer in the call).
 // The peer gets information about the things happening outside via public methods
@@ -98,15 +102,67 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 	// Before these packets are returned they are processed by interceptors. For things
 	// like NACK this needs to be called.
 	go func() {
-		rtcpBuf := make([]byte, 1500)
 		for {
-			if _, _, rtcpErr := rtpSender.Read(rtcpBuf); rtcpErr != nil {
-				return
+			packets, _, err := rtpSender.ReadRTCP()
+			if err != nil {
+				if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
+					return
+				}
+
+				p.logger.WithError(err).Warn("failed to read RTCP on track")
 			}
+
+			p.sink.Send(ForwardRTCP{Packets: packets, TrackID: track.ID(), StreamID: track.StreamID()})
 		}
 	}()
 
 	return nil
+}
+
+func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID string, lastPLITimestamp int64) {
+	packetsToSend := []rtcp.Packet{}
+	var mediaSSRC uint32
+	for _, receiver := range p.peerConnection.GetReceivers() {
+		if receiver.Track().ID() == trackID && receiver.Track().StreamID() == streamID {
+			mediaSSRC = uint32(receiver.Track().SSRC())
+			break
+		}
+	}
+
+	for _, packet := range packets {
+		switch typedPacket := packet.(type) {
+		// We mung the packets here, so that the SSRCs match what the
+		// receiver expects:
+		// The media SSRC is the SSRC of the media about which the packet is
+		// reporting; therefore, we mung it to be the SSRC of the publishing
+		// participant's track. Without this, it would be SSRC of the SFU's
+		// track which isn't right
+		case *rtcp.PictureLossIndication:
+			// Since we sometimes spam the sender with PLIs, make sure we don't send
+			// them way too often
+			if time.Now().UnixNano()-lastPLITimestamp < minimalPLIInterval.Nanoseconds() {
+				continue
+			}
+
+			p.sink.Send(PLISent{Timestamp: time.Now().UnixNano(), StreamID: streamID, TrackID: trackID})
+
+			typedPacket.MediaSSRC = mediaSSRC
+			packetsToSend = append(packetsToSend, typedPacket)
+		case *rtcp.FullIntraRequest:
+			typedPacket.MediaSSRC = mediaSSRC
+			packetsToSend = append(packetsToSend, typedPacket)
+		}
+
+		packetsToSend = append(packetsToSend, packet)
+	}
+
+	if len(packetsToSend) != 0 {
+		if err := p.peerConnection.WriteRTCP(packetsToSend); err != nil {
+			if !errors.Is(err, io.ErrClosedPipe) {
+				p.logger.WithError(err).Warn("failed to write RTCP on track")
+			}
+		}
+	}
 }
 
 // Unsubscribes from the given list of tracks.

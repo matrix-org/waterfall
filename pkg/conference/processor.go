@@ -67,7 +67,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 			return
 		}
 
-		participant.publishedTracks[key] = msg.Track
+		participant.publishedTracks[key] = PublishedTrack{Track: msg.Track}
 		c.resendMetadataToAllExcept(participant.id)
 
 	case peer.PublishedTrackFailed:
@@ -129,6 +129,22 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 			Op:       event.SFUOperationMetadata,
 			Metadata: c.getAvailableStreamsFor(participant.id),
 		})
+	case peer.ForwardRTCP:
+		for _, participant := range c.participants {
+			for _, publishedTrack := range participant.publishedTracks {
+				if publishedTrack.Track.StreamID() == msg.StreamID && publishedTrack.Track.ID() == msg.TrackID {
+					participant.peer.WriteRTCP(msg.Packets, msg.StreamID, msg.TrackID, publishedTrack.LastPLITimestamp.Load())
+				}
+			}
+		}
+	case peer.PLISent:
+		for _, participant := range c.participants {
+			for _, publishedTrack := range participant.publishedTracks {
+				if publishedTrack.Track.StreamID() == msg.StreamID && publishedTrack.Track.ID() == msg.TrackID {
+					publishedTrack.LastPLITimestamp.Store(msg.Timestamp)
+				}
+			}
+		}
 
 	default:
 		c.logger.Errorf("Unknown message type: %T", msg)

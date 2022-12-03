@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -38,3 +39,15 @@ type DataChannelMessage struct {
 }
 
 type DataChannelAvailable struct{}
+
+type ForwardRTCP struct {
+	Packets  []rtcp.Packet
+	StreamID string
+	TrackID  string
+}
+
+type PLISent struct {
+	Timestamp int64
+	StreamID  string
+	TrackID   string
+}

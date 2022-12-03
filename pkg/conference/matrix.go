@@ -65,7 +65,7 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 			logger:          logger,
 			remoteSessionID: inviteEvent.SenderSessionID,
 			streamMetadata:  inviteEvent.SDPStreamMetadata,
-			publishedTracks: make(map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP),
+			publishedTracks: make(map[event.SFUTrackDescription]PublishedTrack),
 		}
 
 		c.participants[participantID] = participant
