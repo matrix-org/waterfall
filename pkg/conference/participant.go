@@ -2,6 +2,7 @@ package conference
 
 import (
 	"encoding/json"
+	"sync/atomic"
 
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
@@ -19,6 +20,11 @@ type ParticipantID struct {
 	CallID   string
 }
 
+type PublishedTrack struct {
+	Track            *webrtc.TrackLocalStaticRTP
+	LastPLITimestamp atomic.Int64
+}
+
 // Participant represents a participant in the conference.
 type Participant struct {
 	id              ParticipantID
@@ -26,7 +32,7 @@ type Participant struct {
 	peer            *peer.Peer[ParticipantID]
 	remoteSessionID id.SessionID
 	streamMetadata  event.CallSDPStreamMetadata
-	publishedTracks map[event.SFUTrackDescription]*webrtc.TrackLocalStaticRTP
+	publishedTracks map[event.SFUTrackDescription]PublishedTrack
 }
 
 func (p *Participant) asMatrixRecipient() signaling.MatrixRecipient {
