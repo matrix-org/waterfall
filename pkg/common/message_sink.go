@@ -16,8 +16,10 @@ type MessageSink[SenderType comparable, MessageType any] struct {
 	// The message sink to which the messages are sent.
 	messageSink chan<- Message[SenderType, MessageType]
 	// Atomic variable that indicates whether the message sink is sealed.
-	// This is used to prevent sending messages to a sealed message sink.
-	// The variable is atomic because it may be accessed from multiple goroutines.
+	// Basically it means that **the current sender** (but not other senders)
+	// won't be able to send any more messages to the message sink. The difference
+	// between this and the channel being closed is that the closed channel is not
+	// available for writing for all senders.
 	sealed atomic.Bool
 }
 
