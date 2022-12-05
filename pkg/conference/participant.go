@@ -21,7 +21,9 @@ type ParticipantID struct {
 }
 
 type PublishedTrack struct {
-	track            *webrtc.TrackLocalStaticRTP
+	track *webrtc.TrackLocalStaticRTP
+	// The time when we sent the last PLI to the sender. We store this to avoid
+	// spamming the sender.
 	lastPLITimestamp atomic.Int64
 }
 
