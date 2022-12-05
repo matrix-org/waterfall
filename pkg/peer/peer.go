@@ -23,7 +23,7 @@ var (
 	ErrDataChannelNotAvailable    = errors.New("data channel is not available")
 	ErrDataChannelNotReady        = errors.New("data channel is not ready")
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
-	ErrCantWriteRTCP              = errors.New("can't write RTCP")
+	ErrTrackNotFound              = errors.New("track not found")
 )
 
 // A wrapped representation of the peer connection (single peer in the call).
@@ -106,71 +106,56 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 			packets, _, err := rtpSender.ReadRTCP()
 			if err != nil {
 				if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
+					p.logger.WithError(err).Warn("failed to read RTCP on track")
 					return
 				}
-
-				p.logger.WithError(err).Warn("failed to read RTCP on track")
 			}
 
-			p.sink.Send(RTCPReceived{Packets: packets, TrackID: track.ID()})
+			// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
+			toForward := []RTCPPacketType{}
+			for _, packet := range packets {
+				// TODO: Should we also handle NACKs?
+				switch packet.(type) {
+				case *rtcp.PictureLossIndication:
+					toForward = append(toForward, PictureLossIndicator)
+				case *rtcp.FullIntraRequest:
+					toForward = append(toForward, FullIntraRequest)
+				}
+			}
+
+			p.sink.Send(RTCPReceived{Packets: toForward, TrackID: track.ID()})
 		}
 	}()
 
 	return nil
 }
 
-func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, trackID string, lastPLITimestamp time.Time) error {
-	const minimalPLIInterval = time.Millisecond * 500
-
-	packetsToSend := []rtcp.Packet{}
-	var mediaSSRC uint32
+// Writes the specified packets to the `trackID`.
+func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacketType) error {
+	// Find the right track.
 	receivers := p.peerConnection.GetReceivers()
-	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
+	trackIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
 		return receiver.Track().ID() == trackID
 	})
-
-	if receiverIndex == -1 {
-		p.logger.Error("failed to find track to write RTCP on")
-		return ErrCantWriteRTCP
-	} else {
-		mediaSSRC = uint32(receivers[receiverIndex].Track().SSRC())
+	if trackIndex == -1 {
+		return ErrTrackNotFound
 	}
 
-	for _, packet := range packets {
-		switch typedPacket := packet.(type) {
-		// We mung the packets here, so that the SSRCs match what the
-		// receiver expects:
-		// The media SSRC is the SSRC of the media about which the packet is
-		// reporting; therefore, we mung it to be the SSRC of the publishing
-		// participant's track. Without this, it would be SSRC of the SFU's
-		// track which isn't right
-		case *rtcp.PictureLossIndication:
-			// Since we sometimes spam the sender with PLIs, make sure we don't send
-			// them way too often
-			if time.Now().UnixNano()-lastPLITimestamp.UnixNano() < minimalPLIInterval.Nanoseconds() {
-				continue
-			}
+	// The SSRC that we must use when sending the RTCP packet.
+	// Otherwise the peer won't understand where the packet comes from.
+	SSRC := uint32(receivers[trackIndex].Track().SSRC())
 
-			typedPacket.MediaSSRC = mediaSSRC
-			packetsToSend = append(packetsToSend, typedPacket)
-		case *rtcp.FullIntraRequest:
-			typedPacket.MediaSSRC = mediaSSRC
-			packetsToSend = append(packetsToSend, typedPacket)
-		}
-
-		packetsToSend = append(packetsToSend, packet)
-	}
-
-	if len(packetsToSend) != 0 {
-		if err := p.peerConnection.WriteRTCP(packetsToSend); err != nil {
-			if !errors.Is(err, io.ErrClosedPipe) {
-				p.logger.WithError(err).Error("failed to write RTCP on track")
-				return err
-			}
+	toSend := make([]rtcp.Packet, len(packets))
+	for i, packet := range packets {
+		switch packet {
+		case PictureLossIndicator:
+			toSend[i] = &rtcp.PictureLossIndication{MediaSSRC: SSRC}
+		case FullIntraRequest:
+			toSend[i] = &rtcp.FullIntraRequest{MediaSSRC: SSRC}
 		}
 	}
 
-	return nil
+	return p.peerConnection.WriteRTCP(toSend)
 }
 
 // Unsubscribes from the given list of tracks.

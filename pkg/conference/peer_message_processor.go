@@ -107,13 +107,14 @@ func (c *Conference) processDataChannelAvailableMessage(participant *Participant
 	})
 }
 
-func (c *Conference) processForwardRTCPMessage(msg peer.RTCPReceived) {
+func (c *Conference) processRTCPPackets(msg peer.RTCPReceived) {
+	const sendKeyFrameInterval = 500 * time.Millisecond
+
 	for _, participant := range c.participants {
-		for id, publishedTrack := range participant.publishedTracks {
-			if id == msg.TrackID {
-				err := participant.peer.WriteRTCP(msg.Packets, msg.TrackID, publishedTrack.lastPLITimestamp)
-				if err == nil {
-					publishedTrack.lastPLITimestamp = time.Now()
+		if published, ok := participant.publishedTracks[msg.TrackID]; ok {
+			if published.canSendKeyframeAt.After(time.Now()) {
+				if err := participant.peer.WriteRTCP(msg.TrackID, msg.Packets); err == nil {
+					published.canSendKeyframeAt = time.Now().Add(sendKeyFrameInterval)
 				}
 			}
 		}
