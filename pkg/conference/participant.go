@@ -2,7 +2,7 @@ package conference
 
 import (
 	"encoding/json"
-	"sync/atomic"
+	"time"
 
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
@@ -24,7 +24,7 @@ type PublishedTrack struct {
 	track *webrtc.TrackLocalStaticRTP
 	// The time when we sent the last PLI to the sender. We store this to avoid
 	// spamming the sender.
-	lastPLITimestamp atomic.Int64
+	lastPLITimestamp time.Time
 }
 
 // Participant represents a participant in the conference.

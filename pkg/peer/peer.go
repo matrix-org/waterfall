@@ -119,7 +119,7 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 	return nil
 }
 
-func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID string, lastPLITimestamp int64) error {
+func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID string, lastPLITimestamp time.Time) error {
 	const minimalPLIInterval = time.Millisecond * 500
 
 	packetsToSend := []rtcp.Packet{}
@@ -147,11 +147,11 @@ func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID str
 		case *rtcp.PictureLossIndication:
 			// Since we sometimes spam the sender with PLIs, make sure we don't send
 			// them way too often
-			if time.Now().UnixNano()-lastPLITimestamp < minimalPLIInterval.Nanoseconds() {
+			if time.Now().UnixNano()-lastPLITimestamp.UnixNano() < minimalPLIInterval.Nanoseconds() {
 				continue
 			}
 
-			p.sink.Send(PLISent{Timestamp: time.Now().UnixNano(), StreamID: streamID, TrackID: trackID})
+			p.sink.Send(PLISent{Timestamp: time.Now(), StreamID: streamID, TrackID: trackID})
 
 			typedPacket.MediaSSRC = mediaSSRC
 			packetsToSend = append(packetsToSend, typedPacket)
