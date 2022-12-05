@@ -21,8 +21,8 @@ type ParticipantID struct {
 }
 
 type PublishedTrack struct {
-	Track            *webrtc.TrackLocalStaticRTP
-	LastPLITimestamp atomic.Int64
+	track            *webrtc.TrackLocalStaticRTP
+	lastPLITimestamp atomic.Int64
 }
 
 // Participant represents a participant in the conference.

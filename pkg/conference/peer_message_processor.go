@@ -30,7 +30,7 @@ func (c *Conference) processNewTrackPublishedMessage(participant *Participant, m
 		return
 	}
 
-	participant.publishedTracks[key] = PublishedTrack{Track: msg.Track}
+	participant.publishedTracks[key] = PublishedTrack{track: msg.Track}
 	c.resendMetadataToAllExcept(participant.id)
 }
 
@@ -116,8 +116,8 @@ func (c *Conference) processDataChannelAvailableMessage(participant *Participant
 func (c *Conference) processForwardRTCPMessage(msg peer.RTCPReceived) {
 	for _, participant := range c.participants {
 		for _, publishedTrack := range participant.publishedTracks {
-			if publishedTrack.Track.StreamID() == msg.StreamID && publishedTrack.Track.ID() == msg.TrackID {
-				participant.peer.WriteRTCP(msg.Packets, msg.StreamID, msg.TrackID, publishedTrack.LastPLITimestamp.Load())
+			if publishedTrack.track.StreamID() == msg.StreamID && publishedTrack.track.ID() == msg.TrackID {
+				participant.peer.WriteRTCP(msg.Packets, msg.StreamID, msg.TrackID, publishedTrack.lastPLITimestamp.Load())
 			}
 		}
 	}
@@ -126,8 +126,8 @@ func (c *Conference) processForwardRTCPMessage(msg peer.RTCPReceived) {
 func (c *Conference) processPLISentMessage(msg peer.PLISent) {
 	for _, participant := range c.participants {
 		for _, publishedTrack := range participant.publishedTracks {
-			if publishedTrack.Track.StreamID() == msg.StreamID && publishedTrack.Track.ID() == msg.TrackID {
-				publishedTrack.LastPLITimestamp.Store(msg.Timestamp)
+			if publishedTrack.track.StreamID() == msg.StreamID && publishedTrack.track.ID() == msg.TrackID {
+				publishedTrack.lastPLITimestamp.Store(msg.Timestamp)
 			}
 		}
 	}

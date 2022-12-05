@@ -57,7 +57,7 @@ func (c *Conference) removeParticipant(participantID ParticipantID) {
 	// Remove the participant's tracks from all participants who might have subscribed to them.
 	obsoleteTracks := []*webrtc.TrackLocalStaticRTP{}
 	for _, publishedTrack := range participant.publishedTracks {
-		obsoleteTracks = append(obsoleteTracks, publishedTrack.Track)
+		obsoleteTracks = append(obsoleteTracks, publishedTrack.track)
 	}
 	for _, otherParticipant := range c.participants {
 		otherParticipant.peer.UnsubscribeFrom(obsoleteTracks)
@@ -74,7 +74,7 @@ func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.
 			// Now, find out which of published tracks belong to the streams for which we have metadata
 			// available and construct a metadata map for a given participant based on that.
 			for _, track := range participant.publishedTracks {
-				trackID, streamID := track.Track.ID(), track.Track.StreamID()
+				trackID, streamID := track.track.ID(), track.track.StreamID()
 
 				if metadata, ok := streamsMetadata[streamID]; ok {
 					metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{}
@@ -99,7 +99,7 @@ func (c *Conference) getTracks(identifiers []event.SFUTrackDescription) []*webrt
 		// Check if this participant has any of the tracks that we're looking for.
 		for _, identifier := range identifiers {
 			if track, ok := participant.publishedTracks[identifier]; ok {
-				tracks = append(tracks, track.Track)
+				tracks = append(tracks, track.track)
 			}
 		}
 	}
