@@ -117,7 +117,7 @@ func (c *Conference) processForwardRTCPMessage(msg peer.RTCPReceived) {
 	for _, participant := range c.participants {
 		for _, publishedTrack := range participant.publishedTracks {
 			if publishedTrack.track.StreamID() == msg.StreamID && publishedTrack.track.ID() == msg.TrackID {
-				participant.peer.WriteRTCP(msg.Packets, msg.StreamID, msg.TrackID, publishedTrack.lastPLITimestamp.Load())
+				participant.peer.WriteRTCP(msg.Packets, msg.StreamID, msg.TrackID, publishedTrack.lastPLITimestamp)
 			}
 		}
 	}
@@ -127,7 +127,7 @@ func (c *Conference) processPLISentMessage(msg peer.PLISent) {
 	for _, participant := range c.participants {
 		for _, publishedTrack := range participant.publishedTracks {
 			if publishedTrack.track.StreamID() == msg.StreamID && publishedTrack.track.ID() == msg.TrackID {
-				publishedTrack.lastPLITimestamp.Store(msg.Timestamp)
+				publishedTrack.lastPLITimestamp = msg.Timestamp
 			}
 		}
 	}
