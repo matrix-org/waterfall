@@ -15,7 +15,7 @@ import (
 
 var (
 	ErrCantCreatePeerConnection   = errors.New("can't create peer connection")
-	ErrCantSetRemoteDecsription   = errors.New("can't set remote description")
+	ErrCantSetRemoteDescription   = errors.New("can't set remote description")
 	ErrCantCreateAnswer           = errors.New("can't create answer")
 	ErrCantSetLocalDescription    = errors.New("can't set local description")
 	ErrCantCreateLocalDescription = errors.New("can't create local description")
@@ -225,7 +225,7 @@ func (p *Peer[ID]) ProcessSDPAnswer(sdpAnswer string) error {
 	})
 	if err != nil {
 		p.logger.WithError(err).Error("failed to set remote description")
-		return ErrCantSetRemoteDecsription
+		return ErrCantSetRemoteDescription
 	}
 
 	return nil
@@ -239,7 +239,7 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 	})
 	if err != nil {
 		p.logger.WithError(err).Error("failed to set remote description")
-		return nil, ErrCantSetRemoteDecsription
+		return nil, ErrCantSetRemoteDescription
 	}
 
 	answer, err := p.peerConnection.CreateAnswer(nil)
