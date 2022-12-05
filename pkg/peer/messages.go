@@ -1,8 +1,6 @@
 package peer
 
 import (
-	"time"
-
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
@@ -46,10 +44,4 @@ type RTCPReceived struct {
 	Packets  []rtcp.Packet
 	StreamID string
 	TrackID  string
-}
-
-type PLISent struct {
-	Timestamp time.Time
-	StreamID  string
-	TrackID   string
 }
