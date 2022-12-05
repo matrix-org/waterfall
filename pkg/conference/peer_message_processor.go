@@ -2,6 +2,7 @@ package conference
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/pion/webrtc/v3"
@@ -117,17 +118,10 @@ func (c *Conference) processForwardRTCPMessage(msg peer.RTCPReceived) {
 	for _, participant := range c.participants {
 		for _, publishedTrack := range participant.publishedTracks {
 			if publishedTrack.track.StreamID() == msg.StreamID && publishedTrack.track.ID() == msg.TrackID {
-				participant.peer.WriteRTCP(msg.Packets, msg.StreamID, msg.TrackID, publishedTrack.lastPLITimestamp)
-			}
-		}
-	}
-}
-
-func (c *Conference) processPLISentMessage(msg peer.PLISent) {
-	for _, participant := range c.participants {
-		for _, publishedTrack := range participant.publishedTracks {
-			if publishedTrack.track.StreamID() == msg.StreamID && publishedTrack.track.ID() == msg.TrackID {
-				publishedTrack.lastPLITimestamp = msg.Timestamp
+				err := participant.peer.WriteRTCP(msg.Packets, msg.StreamID, msg.TrackID, publishedTrack.lastPLITimestamp)
+				if err == nil {
+					publishedTrack.lastPLITimestamp = time.Now()
+				}
 			}
 		}
 	}

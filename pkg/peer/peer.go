@@ -151,8 +151,6 @@ func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID str
 				continue
 			}
 
-			p.sink.Send(PLISent{Timestamp: time.Now(), StreamID: streamID, TrackID: trackID})
-
 			typedPacket.MediaSSRC = mediaSSRC
 			packetsToSend = append(packetsToSend, typedPacket)
 		case *rtcp.FullIntraRequest:
