@@ -41,7 +41,6 @@ type DataChannelMessage struct {
 type DataChannelAvailable struct{}
 
 type RTCPReceived struct {
-	Packets  []rtcp.Packet
-	StreamID string
-	TrackID  string
+	TrackID string
+	Packets []rtcp.Packet
 }

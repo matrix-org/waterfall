@@ -112,21 +112,21 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 				p.logger.WithError(err).Warn("failed to read RTCP on track")
 			}
 
-			p.sink.Send(RTCPReceived{Packets: packets, TrackID: track.ID(), StreamID: track.StreamID()})
+			p.sink.Send(RTCPReceived{Packets: packets, TrackID: track.ID()})
 		}
 	}()
 
 	return nil
 }
 
-func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID string, lastPLITimestamp time.Time) error {
+func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, trackID string, lastPLITimestamp time.Time) error {
 	const minimalPLIInterval = time.Millisecond * 500
 
 	packetsToSend := []rtcp.Packet{}
 	var mediaSSRC uint32
 	receivers := p.peerConnection.GetReceivers()
 	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
-		return receiver.Track().ID() == trackID && receiver.Track().StreamID() == streamID
+		return receiver.Track().ID() == trackID
 	})
 
 	if receiverIndex == -1 {

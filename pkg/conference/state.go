@@ -59,6 +59,7 @@ func (c *Conference) removeParticipant(participantID ParticipantID) {
 	for _, publishedTrack := range participant.publishedTracks {
 		obsoleteTracks = append(obsoleteTracks, publishedTrack.track)
 	}
+
 	for _, otherParticipant := range c.participants {
 		otherParticipant.peer.UnsubscribeFrom(obsoleteTracks)
 	}
@@ -98,7 +99,7 @@ func (c *Conference) getTracks(identifiers []event.SFUTrackDescription) []*webrt
 	for _, participant := range c.participants {
 		// Check if this participant has any of the tracks that we're looking for.
 		for _, identifier := range identifiers {
-			if track, ok := participant.publishedTracks[identifier]; ok {
+			if track, ok := participant.publishedTracks[identifier.TrackID]; ok {
 				tracks = append(tracks, track.track)
 			}
 		}

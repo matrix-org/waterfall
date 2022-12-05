@@ -19,7 +19,7 @@ func (c *Conference) processSelectDCMessage(participant *Participant, msg event.
 	if len(tracks) != len(msg.Start) {
 		for _, expected := range msg.Start {
 			found := slices.IndexFunc(tracks, func(track *webrtc.TrackLocalStaticRTP) bool {
-				return track.StreamID() == expected.StreamID && track.ID() == expected.TrackID
+				return track.ID() == expected.TrackID
 			})
 
 			if found == -1 {

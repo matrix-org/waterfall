@@ -34,7 +34,7 @@ type Participant struct {
 	peer            *peer.Peer[ParticipantID]
 	remoteSessionID id.SessionID
 	streamMetadata  event.CallSDPStreamMetadata
-	publishedTracks map[event.SFUTrackDescription]PublishedTrack
+	publishedTracks map[string]PublishedTrack
 }
 
 func (p *Participant) asMatrixRecipient() signaling.MatrixRecipient {

@@ -21,26 +21,19 @@ func (c *Conference) processLeftTheCallMessage(participant *Participant, msg pee
 
 func (c *Conference) processNewTrackPublishedMessage(participant *Participant, msg peer.NewTrackPublished) {
 	participant.logger.Infof("Published new track: %s", msg.Track.ID())
-	key := event.SFUTrackDescription{
-		StreamID: msg.Track.StreamID(),
-		TrackID:  msg.Track.ID(),
-	}
 
-	if _, ok := participant.publishedTracks[key]; ok {
-		c.logger.Errorf("Track already published: %v", key)
+	if _, ok := participant.publishedTracks[msg.Track.ID()]; ok {
+		c.logger.Errorf("Track already published: %v", msg.Track.ID())
 		return
 	}
 
-	participant.publishedTracks[key] = PublishedTrack{track: msg.Track}
+	participant.publishedTracks[msg.Track.ID()] = PublishedTrack{track: msg.Track}
 	c.resendMetadataToAllExcept(participant.id)
 }
 
 func (c *Conference) processPublishedTrackFailedMessage(participant *Participant, msg peer.PublishedTrackFailed) {
 	participant.logger.Infof("Failed published track: %s", msg.Track.ID())
-	delete(participant.publishedTracks, event.SFUTrackDescription{
-		StreamID: msg.Track.StreamID(),
-		TrackID:  msg.Track.ID(),
-	})
+	delete(participant.publishedTracks, msg.Track.ID())
 
 	for _, otherParticipant := range c.participants {
 		if otherParticipant.id == participant.id {
@@ -116,9 +109,9 @@ func (c *Conference) processDataChannelAvailableMessage(participant *Participant
 
 func (c *Conference) processForwardRTCPMessage(msg peer.RTCPReceived) {
 	for _, participant := range c.participants {
-		for _, publishedTrack := range participant.publishedTracks {
-			if publishedTrack.track.StreamID() == msg.StreamID && publishedTrack.track.ID() == msg.TrackID {
-				err := participant.peer.WriteRTCP(msg.Packets, msg.StreamID, msg.TrackID, publishedTrack.lastPLITimestamp)
+		for id, publishedTrack := range participant.publishedTracks {
+			if id == msg.TrackID {
+				err := participant.peer.WriteRTCP(msg.Packets, msg.TrackID, publishedTrack.lastPLITimestamp)
 				if err == nil {
 					publishedTrack.lastPLITimestamp = time.Now()
 				}
