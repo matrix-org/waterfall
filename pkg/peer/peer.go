@@ -24,8 +24,6 @@ var (
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
 )
 
-const minimalPLIInterval = time.Millisecond * 500
-
 // A wrapped representation of the peer connection (single peer in the call).
 // The peer gets information about the things happening outside via public methods
 // and informs the outside world about the things happening inside the peer by posting
@@ -120,6 +118,8 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 }
 
 func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID string, lastPLITimestamp int64) {
+	const minimalPLIInterval = time.Millisecond * 500
+
 	packetsToSend := []rtcp.Packet{}
 	var mediaSSRC uint32
 	for _, receiver := range p.peerConnection.GetReceivers() {
