@@ -50,6 +50,7 @@ func (p *Participant) sendDataChannelMessage(toSend event.SFUMessage) {
 	jsonToSend, err := json.Marshal(toSend)
 	if err != nil {
 		p.logger.Error("Failed to marshal data channel message")
+		return
 	}
 
 	if err := p.peer.SendOverDataChannel(string(jsonToSend)); err != nil {
