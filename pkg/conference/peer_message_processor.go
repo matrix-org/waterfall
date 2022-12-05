@@ -113,7 +113,7 @@ func (c *Conference) processDataChannelAvailableMessage(participant *Participant
 	})
 }
 
-func (c *Conference) processForwardRTCPMessage(msg peer.ForwardRTCP) {
+func (c *Conference) processForwardRTCPMessage(msg peer.RTCPReceived) {
 	for _, participant := range c.participants {
 		for _, publishedTrack := range participant.publishedTracks {
 			if publishedTrack.Track.StreamID() == msg.StreamID && publishedTrack.Track.ID() == msg.TrackID {

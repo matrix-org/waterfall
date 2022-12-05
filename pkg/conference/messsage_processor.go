@@ -62,7 +62,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 		c.processDataChannelMessage(participant, msg)
 	case peer.DataChannelAvailable:
 		c.processDataChannelAvailableMessage(participant, msg)
-	case peer.ForwardRTCP:
+	case peer.RTCPReceived:
 		c.processForwardRTCPMessage(msg)
 	case peer.PLISent:
 		c.processPLISentMessage(msg)

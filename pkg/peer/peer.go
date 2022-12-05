@@ -112,7 +112,7 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 				p.logger.WithError(err).Warn("failed to read RTCP on track")
 			}
 
-			p.sink.Send(ForwardRTCP{Packets: packets, TrackID: track.ID(), StreamID: track.StreamID()})
+			p.sink.Send(RTCPReceived{Packets: packets, TrackID: track.ID(), StreamID: track.StreamID()})
 		}
 	}()
 
