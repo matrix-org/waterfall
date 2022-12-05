@@ -40,7 +40,7 @@ type DataChannelMessage struct {
 
 type DataChannelAvailable struct{}
 
-type ForwardRTCP struct {
+type RTCPReceived struct {
 	Packets  []rtcp.Packet
 	StreamID string
 	TrackID  string
