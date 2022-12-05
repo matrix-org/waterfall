@@ -13,9 +13,9 @@ COPY go.sum ./
 # source code do not invalidate our downloaded layer.
 RUN go mod download
 
-COPY ./src ./src
+COPY ./pkg ./pkg
 
-RUN go build -o /waterfall ./src
+RUN go build -o /waterfall ./pkg
 
 
 ##

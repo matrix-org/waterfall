@@ -29,4 +29,6 @@ linters:
     - gomnd # we use status code numbers and for our use case it's not practical
     - godox # we have TODOs at this stage of the project, enable in future
     - forbidigo # we use things like fmt.Printf for debugging, enable in future
+    - wsl # somehow this plugin causes more harm than use as it enables lots of things to be configured without causing spaghetti-code (grouping similar things together)
+    - nlreturn # not always practical, it was disabled before strict lints were introduced, then added, now it's clear why it was disabled at the first place :)
   fast: true

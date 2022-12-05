@@ -7,6 +7,7 @@ require github.com/pion/webrtc/v3 v3.1.31
 require (
 	github.com/pion/rtcp v1.2.9
 	github.com/sirupsen/logrus v1.9.0
+	golang.org/x/exp v0.0.0-20221114191408-850992195362
 	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.11.0
 )
@@ -34,7 +35,7 @@ require (
 	github.com/tidwall/sjson v1.2.4 // indirect
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
 	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e // indirect
-	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
 

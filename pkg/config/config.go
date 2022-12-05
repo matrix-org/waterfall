@@ -1,40 +1,38 @@
-package main
+package config
 
 import (
 	"errors"
 	"fmt"
 	"os"
 
+	"github.com/matrix-org/waterfall/pkg/conference"
+	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
-	"maunium.net/go/mautrix/id"
 )
 
-// The mandatory SFU configuration.
+// SFU configuration.
 type Config struct {
-	// The Matrix ID (MXID) of the SFU.
-	UserID id.UserID
-	// The ULR of the homeserver that SFU talks to.
-	HomeserverURL string
-	// The access token for the Matrix SDK.
-	AccessToken string
-	// Keep-alive timeout for WebRTC connections. If no keep-alive has been received
-	// from the client for this duration, the connection is considered dead.
-	KeepAliveTimeout int
+	// Matrix configuration.
+	Matrix signaling.Config `yaml:"matrix"`
+	// Conference (call) configuration.
+	Conference conference.Config `yaml:"conference"`
+	// Starting from which level to log stuff.
+	LogLevel string `yaml:"log"`
 }
 
 // Tries to load a config from the `CONFIG` environment variable.
 // If the environment variable is not set, tries to load a config from the
 // provided path to the config file (YAML). Returns an error if the config could
 // not be loaded.
-func loadConfig(path string) (*Config, error) {
-	config, err := loadConfigFromEnv()
+func LoadConfig(path string) (*Config, error) {
+	config, err := LoadConfigFromEnv()
 	if err != nil {
 		if !errors.Is(err, ErrNoConfigEnvVar) {
 			return nil, err
 		}
 
-		return loadConfigFromPath(path)
+		return LoadConfigFromPath(path)
 	}
 
 	return config, nil
@@ -45,17 +43,17 @@ var ErrNoConfigEnvVar = errors.New("environment variable not set or invalid")
 
 // Tries to load the config from environment variable (`CONFIG`).
 // Returns an error if not all environment variables are set.
-func loadConfigFromEnv() (*Config, error) {
+func LoadConfigFromEnv() (*Config, error) {
 	configEnv := os.Getenv("CONFIG")
 	if configEnv == "" {
 		return nil, ErrNoConfigEnvVar
 	}
 
-	return loadConfigFromString(configEnv)
+	return LoadConfigFromString(configEnv)
 }
 
 // Tries to load a config from the provided path.
-func loadConfigFromPath(path string) (*Config, error) {
+func LoadConfigFromPath(path string) (*Config, error) {
 	logrus.WithField("path", path).Info("loading config")
 
 	file, err := os.ReadFile(path)
@@ -63,17 +61,24 @@ func loadConfigFromPath(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	return loadConfigFromString(string(file))
+	return LoadConfigFromString(string(file))
 }
 
 // Load config from the provided string.
 // Returns an error if the string is not a valid YAML.
-func loadConfigFromString(configString string) (*Config, error) {
+func LoadConfigFromString(configString string) (*Config, error) {
 	logrus.Info("loading config from string")
 
 	var config Config
 	if err := yaml.Unmarshal([]byte(configString), &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
+	}
+
+	if config.Matrix.UserID == "" ||
+		config.Matrix.HomeserverURL == "" ||
+		config.Matrix.AccessToken == "" ||
+		config.Conference.KeepAliveTimeout == 0 {
+		return nil, errors.New("invalid config values")
 	}
 
 	return &config, nil
