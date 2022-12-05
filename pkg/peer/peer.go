@@ -10,6 +10,7 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/slices"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -22,6 +23,7 @@ var (
 	ErrDataChannelNotAvailable    = errors.New("data channel is not available")
 	ErrDataChannelNotReady        = errors.New("data channel is not ready")
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
+	ErrCantWriteRTCP              = errors.New("can't write RTCP")
 )
 
 // A wrapped representation of the peer connection (single peer in the call).
@@ -117,16 +119,21 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 	return nil
 }
 
-func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID string, lastPLITimestamp int64) {
+func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID string, lastPLITimestamp int64) error {
 	const minimalPLIInterval = time.Millisecond * 500
 
 	packetsToSend := []rtcp.Packet{}
 	var mediaSSRC uint32
-	for _, receiver := range p.peerConnection.GetReceivers() {
-		if receiver.Track().ID() == trackID && receiver.Track().StreamID() == streamID {
-			mediaSSRC = uint32(receiver.Track().SSRC())
-			break
-		}
+	receivers := p.peerConnection.GetReceivers()
+	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
+		return receiver.Track().ID() == trackID && receiver.Track().StreamID() == streamID
+	})
+
+	if receiverIndex == -1 {
+		p.logger.Error("failed to find track to write RTCP on")
+		return ErrCantWriteRTCP
+	} else {
+		mediaSSRC = uint32(receivers[receiverIndex].Track().SSRC())
 	}
 
 	for _, packet := range packets {
@@ -159,10 +166,13 @@ func (p *Peer[ID]) WriteRTCP(packets []rtcp.Packet, streamID string, trackID str
 	if len(packetsToSend) != 0 {
 		if err := p.peerConnection.WriteRTCP(packetsToSend); err != nil {
 			if !errors.Is(err, io.ErrClosedPipe) {
-				p.logger.WithError(err).Warn("failed to write RTCP on track")
+				p.logger.WithError(err).Error("failed to write RTCP on track")
+				return err
 			}
 		}
 	}
+
+	return nil
 }
 
 // Unsubscribes from the given list of tracks.
