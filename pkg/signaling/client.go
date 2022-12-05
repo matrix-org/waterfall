@@ -45,7 +45,6 @@ func (m *MatrixClient) RunSyncing(callback func(*event.Event)) {
 	syncer.OnEvent(func(_ mautrix.EventSource, evt *event.Event) {
 		// We only care about to-device events.
 		if evt.Type.Class != event.ToDeviceEventType {
-			logrus.Warn("ignoring a not to-device event")
 			return
 		}
 
