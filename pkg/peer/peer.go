@@ -134,24 +134,24 @@ func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
 func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacketType) error {
 	// Find the right track.
 	receivers := p.peerConnection.GetReceivers()
-	trackIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
+	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
 		return receiver.Track().ID() == trackID
 	})
-	if trackIndex == -1 {
+	if receiverIndex == -1 {
 		return ErrTrackNotFound
 	}
 
-	// The SSRC that we must use when sending the RTCP packet.
+	// The ssrc that we must use when sending the RTCP packet.
 	// Otherwise the peer won't understand where the packet comes from.
-	SSRC := uint32(receivers[trackIndex].Track().SSRC())
+	ssrc := uint32(receivers[receiverIndex].Track().SSRC())
 
 	toSend := make([]rtcp.Packet, len(packets))
 	for i, packet := range packets {
 		switch packet {
 		case PictureLossIndicator:
-			toSend[i] = &rtcp.PictureLossIndication{MediaSSRC: SSRC}
+			toSend[i] = &rtcp.PictureLossIndication{MediaSSRC: ssrc}
 		case FullIntraRequest:
-			toSend[i] = &rtcp.FullIntraRequest{MediaSSRC: SSRC}
+			toSend[i] = &rtcp.FullIntraRequest{MediaSSRC: ssrc}
 		}
 	}
 
