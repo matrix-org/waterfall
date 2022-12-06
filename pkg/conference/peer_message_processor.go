@@ -112,7 +112,7 @@ func (c *Conference) processRTCPPackets(msg peer.RTCPReceived) {
 
 	for _, participant := range c.participants {
 		if published, ok := participant.publishedTracks[msg.TrackID]; ok {
-			if published.canSendKeyframeAt.After(time.Now()) {
+			if published.canSendKeyframeAt.Before(time.Now()) {
 				if err := participant.peer.WriteRTCP(msg.TrackID, msg.Packets); err == nil {
 					published.canSendKeyframeAt = time.Now().Add(sendKeyFrameInterval)
 				}
