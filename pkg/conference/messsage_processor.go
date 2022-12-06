@@ -63,7 +63,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 	case peer.DataChannelAvailable:
 		c.processDataChannelAvailableMessage(participant, msg)
 	case peer.RTCPReceived:
-		c.processForwardRTCPMessage(msg)
+		c.processRTCPPackets(msg)
 	default:
 		c.logger.Errorf("Unknown message type: %T", msg)
 	}

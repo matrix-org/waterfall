@@ -22,9 +22,9 @@ type ParticipantID struct {
 
 type PublishedTrack struct {
 	track *webrtc.TrackLocalStaticRTP
-	// The time when we sent the last PLI to the sender. We store this to avoid
-	// spamming the sender.
-	lastPLITimestamp time.Time
+	// The timestamp at which we are allowed to send the FIR or PLI request. We don't want to send them
+	// too often, so we introduce some trivial rate limiting to not "enforce" too many key frames.
+	canSendKeyframeAt time.Time
 }
 
 // Participant represents a participant in the conference.
@@ -34,7 +34,7 @@ type Participant struct {
 	peer            *peer.Peer[ParticipantID]
 	remoteSessionID id.SessionID
 	streamMetadata  event.CallSDPStreamMetadata
-	publishedTracks map[event.SFUTrackDescription]PublishedTrack
+	publishedTracks map[string]PublishedTrack
 }
 
 func (p *Participant) asMatrixRecipient() signaling.MatrixRecipient {
