@@ -15,23 +15,24 @@ RUN go mod download
 
 COPY ./pkg ./pkg
 
-RUN go build -o /waterfall ./pkg
-
+# This runs a bit slower but guarantees that the binary does not rely on
+# the underlying C environment (e.g. as "static" as possible).
+RUN CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64 \
+    go build -o /waterfall ./pkg
 
 ##
 ## Deploy
 ##
-FROM ubuntu:22.04
-
-RUN apt update \
-    && apt install -y --no-install-recommends \
-    dumb-init \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+FROM scratch
 
 WORKDIR /
 
 COPY --from=build /waterfall /usr/bin/waterfall
 
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["waterfall"]
+# We need root certificates since we use HTTPS (TLS).
+# https://uzimihsr.github.io/post/2022-09-29-golang-scratch-trust-cert/#trust-the-certificate-in-a-scratch-image
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+ENTRYPOINT ["waterfall"]
