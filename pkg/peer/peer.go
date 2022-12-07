@@ -135,10 +135,7 @@ func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacketType) error {
 	// Find the right track.
 	receivers := p.peerConnection.GetReceivers()
 	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
-		if receiver.Track() != nil {
-			return receiver.Track().ID() == trackID
-		}
-		return false
+		return receiver.Track() != nil && receiver.Track().ID() == trackID
 	})
 	if receiverIndex == -1 {
 		return ErrTrackNotFound
