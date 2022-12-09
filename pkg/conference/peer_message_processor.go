@@ -88,10 +88,8 @@ func (c *Conference) processDataChannelMessage(participant *Participant, msg pee
 		c.processSelectDCMessage(participant, sfuMessage)
 	case event.SFUOperationAnswer:
 		c.processAnswerDCMessage(participant, sfuMessage)
-	case event.SFUOperationPublish:
+	case event.SFUOperationPublish, event.SFUOperationUnpublish:
 		c.processPublishDCMessage(participant, sfuMessage)
-	case event.SFUOperationUnpublish:
-		c.processUnpublishDCMessage(participant)
 	case event.SFUOperationAlive:
 		c.processAliveDCMessage(participant)
 	case event.SFUOperationMetadata:
