@@ -64,10 +64,6 @@ func (c *Conference) processPublishDCMessage(participant *Participant, msg event
 	})
 }
 
-func (c *Conference) processUnpublishDCMessage(participant *Participant) {
-	participant.logger.Info("Received unpublish over DC")
-}
-
 func (c *Conference) processAliveDCMessage(participant *Participant) {
 	participant.peer.ProcessHeartbeat()
 }
