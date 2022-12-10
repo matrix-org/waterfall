@@ -11,7 +11,6 @@ import (
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/slices"
-	"maunium.net/go/mautrix/event"
 )
 
 var (
@@ -34,7 +33,11 @@ type Peer[ID comparable] struct {
 	logger         *logrus.Entry
 	peerConnection *webrtc.PeerConnection
 	sink           *common.MessageSink[ID, MessageContent]
-	heartbeat      chan HeartBeat
+
+	pong              chan Pong
+	sendPing          func()
+	pingInterval      time.Duration
+	keepAliveDeadline time.Duration
 
 	dataChannelMutex sync.Mutex
 	dataChannel      *webrtc.DataChannel
@@ -45,7 +48,9 @@ func NewPeer[ID comparable](
 	sdpOffer string,
 	sink *common.MessageSink[ID, MessageContent],
 	logger *logrus.Entry,
+	pingInterval time.Duration,
 	keepAliveDeadline time.Duration,
+	sendPing func(),
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -57,7 +62,11 @@ func NewPeer[ID comparable](
 		logger:         logger,
 		peerConnection: peerConnection,
 		sink:           sink,
-		heartbeat:      make(chan HeartBeat, common.UnboundedChannelSize),
+
+		pong:              make(chan Pong, common.UnboundedChannelSize),
+		pingInterval:      pingInterval,
+		keepAliveDeadline: keepAliveDeadline,
+		sendPing:          sendPing,
 	}
 
 	peerConnection.OnTrack(peer.onRtpTrackReceived)
@@ -72,8 +81,6 @@ func NewPeer[ID comparable](
 	if sdpAnswer, err := peer.ProcessSDPOffer(sdpOffer); err != nil {
 		return nil, nil, err
 	} else {
-		onDeadline := func() { peer.sink.Send(LeftTheCall{event.CallHangupKeepAliveTimeout}) }
-		startKeepAlive(keepAliveDeadline, peer.heartbeat, onDeadline)
 		return peer, sdpAnswer, nil
 	}
 }
@@ -252,6 +259,6 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 // New heartbeat received (keep-alive message that is periodically sent by the remote peer).
 // We need to update the last heartbeat time. If the peer is not active for too long, we will
 // consider peer's connection as stalled and will close it.
-func (p *Peer[ID]) ProcessHeartbeat() {
-	p.heartbeat <- HeartBeat{}
+func (p *Peer[ID]) ProcessPong() {
+	p.pong <- Pong{}
 }

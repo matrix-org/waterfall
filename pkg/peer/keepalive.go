@@ -2,18 +2,26 @@ package peer
 
 import "time"
 
-type HeartBeat struct{}
+type Pong struct{}
 
 // Starts a goroutine that will execute `onDeadLine` closure in case nothing has been published
 // to the `heartBeat` channel for `deadline` duration. The goroutine stops once the channel is closed.
-func startKeepAlive(deadline time.Duration, heartBeat <-chan HeartBeat, onDeadLine func()) {
+func startKeepAlive(
+	interval time.Duration,
+	deadline time.Duration,
+	pong <-chan Pong,
+	sendPing func(),
+	onDeadLine func(),
+) {
 	go func() {
-		for {
+		for range time.Tick(interval) {
+			sendPing()
+
 			select {
 			case <-time.After(deadline):
 				onDeadLine()
 				return
-			case _, ok := <-heartBeat:
+			case _, ok := <-pong:
 				if !ok {
 					return
 				}

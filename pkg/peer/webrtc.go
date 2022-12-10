@@ -133,6 +133,14 @@ func (p *Peer[ID]) onDataChannelReady(dc *webrtc.DataChannel) {
 	dc.OnOpen(func() {
 		p.logger.Info("Data channel opened")
 		p.sink.Send(DataChannelAvailable{})
+
+		startKeepAlive(
+			p.pingInterval,
+			p.keepAliveDeadline,
+			p.pong,
+			p.sendPing,
+			func() { p.sink.Send(LeftTheCall{event.CallHangupKeepAliveTimeout}) },
+		)
 	})
 
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
