@@ -13,6 +13,8 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 ) {
 	participant.logger.Info("Received track subscription request over DC")
 
+	// TODO: Handle unsubscribe
+
 	// Find tracks based on what we were asked for.
 	tracks := c.getTracks(msg.Subscribe)
 
@@ -44,8 +46,6 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 			return
 		}
 	}
-
-	// TODO: Handle unsubscribe
 }
 
 func (c *Conference) processNegotiateDCMessage(participant *Participant, msg event.FocusCallNegotiateEventContent) {
