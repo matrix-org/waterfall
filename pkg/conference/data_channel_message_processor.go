@@ -36,7 +36,7 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 		}
 	}
 
-	// Subscribe to the found tracks
+	// Subscribe to the found tracks.
 	for _, track := range tracks {
 		participant.logger.WithField("track_id", track.ID()).Debug("Subscribing to track")
 		if err := participant.peer.SubscribeTo(track); err != nil {
