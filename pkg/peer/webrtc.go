@@ -139,7 +139,7 @@ func (p *Peer[ID]) onDataChannelReady(dc *webrtc.DataChannel) {
 			p.keepAliveDeadline,
 			p.pong,
 			p.sendPing,
-			func() { p.sink.Send(LeftTheCall{event.CallHangupKeepAliveTimeout}) },
+			p.onDeadLine,
 		)
 	})
 

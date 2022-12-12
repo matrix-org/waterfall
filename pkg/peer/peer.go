@@ -36,6 +36,7 @@ type Peer[ID comparable] struct {
 
 	pong              chan Pong
 	sendPing          func()
+	onDeadLine        func()
 	pingInterval      time.Duration
 	keepAliveDeadline time.Duration
 
@@ -51,6 +52,7 @@ func NewPeer[ID comparable](
 	pingInterval time.Duration,
 	keepAliveDeadline time.Duration,
 	sendPing func(),
+	onDeadLine func(),
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -67,6 +69,7 @@ func NewPeer[ID comparable](
 		pingInterval:      pingInterval,
 		keepAliveDeadline: keepAliveDeadline,
 		sendPing:          sendPing,
+		onDeadLine:        onDeadLine,
 	}
 
 	peerConnection.OnTrack(peer.onRtpTrackReceived)
