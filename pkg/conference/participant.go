@@ -1,7 +1,6 @@
 package conference
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/peer"
@@ -46,8 +45,8 @@ func (p *Participant) asMatrixRecipient() signaling.MatrixRecipient {
 	}
 }
 
-func (p *Participant) sendDataChannelMessage(toSend event.SFUMessage) {
-	jsonToSend, err := json.Marshal(toSend)
+func (p *Participant) sendDataChannelMessage(toSend event.Event) {
+	jsonToSend, err := toSend.MarshalJSON()
 	if err != nil {
 		p.logger.Error("Failed to marshal data channel message")
 		return

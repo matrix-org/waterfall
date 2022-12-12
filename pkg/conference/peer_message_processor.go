@@ -1,7 +1,6 @@
 package conference
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/peer"
@@ -68,40 +67,57 @@ func (c *Conference) processICEGatheringCompleteMessage(participant *Participant
 
 func (c *Conference) processRenegotiationRequiredMessage(participant *Participant, msg peer.RenegotiationRequired) {
 	participant.logger.Info("Started renegotiation")
-	participant.sendDataChannelMessage(event.SFUMessage{
-		Op:       event.SFUOperationOffer,
-		SDP:      msg.Offer.SDP,
-		Metadata: c.getAvailableStreamsFor(participant.id),
+	participant.sendDataChannelMessage(event.Event{
+		Type: event.FocusCallNegotiate,
+		Content: event.Content{
+			Parsed: event.FocusCallNegotiateEventContent{
+				Description: event.CallData{
+					Type: event.CallDataType(msg.Offer.Type.String()),
+					SDP:  msg.Offer.SDP,
+				},
+				SDPStreamMetadata: c.getAvailableStreamsFor(participant.id),
+			},
+		},
 	})
 }
 
 func (c *Conference) processDataChannelMessage(participant *Participant, msg peer.DataChannelMessage) {
 	participant.logger.Debug("Received data channel message")
-	var sfuMessage event.SFUMessage
-	if err := json.Unmarshal([]byte(msg.Message), &sfuMessage); err != nil {
+	var focusEvent event.Event
+	if err := focusEvent.UnmarshalJSON([]byte(msg.Message)); err != nil {
 		c.logger.Errorf("Failed to unmarshal SFU message: %v", err)
 		return
 	}
 
-	switch sfuMessage.Op {
-	case event.SFUOperationSelect:
-		c.processSelectDCMessage(participant, sfuMessage)
-	case event.SFUOperationAnswer:
-		c.processAnswerDCMessage(participant, sfuMessage)
-	case event.SFUOperationPublish, event.SFUOperationUnpublish:
-		c.processPublishDCMessage(participant, sfuMessage)
-	case event.SFUOperationAlive:
-		c.processAliveDCMessage(participant)
-	case event.SFUOperationMetadata:
-		c.processMetadataDCMessage(participant, sfuMessage)
+	// FIXME: We should be able to do
+	// focusEvent.Content.ParseRaw(focusEvent.Type) but it throws an error.
+	switch focusEvent.Type.Type {
+	case event.FocusCallTrackSubscription.Type:
+		focusEvent.Content.ParseRaw(event.FocusCallTrackSubscription)
+		c.processTrackSubscriptionDCMessage(participant, *focusEvent.Content.AsFocusCallTrackSubscription())
+	case event.FocusCallNegotiate.Type:
+		focusEvent.Content.ParseRaw(event.FocusCallNegotiate)
+		c.processNegotiateDCMessage(participant, *focusEvent.Content.AsFocusCallNegotiate())
+	case event.FocusCallPong.Type:
+		focusEvent.Content.ParseRaw(event.FocusCallPong)
+		c.processPongDCMessage(participant)
+	case event.FocusCallSDPStreamMetadataChanged.Type:
+		focusEvent.Content.ParseRaw(event.FocusCallSDPStreamMetadataChanged)
+		c.processMetadataDCMessage(participant, *focusEvent.Content.AsFocusCallSDPStreamMetadataChanged())
+	default:
+		participant.logger.WithField("type", focusEvent.Type.Type).Warn("Received data channel message of unknown type")
 	}
 }
 
 func (c *Conference) processDataChannelAvailableMessage(participant *Participant, msg peer.DataChannelAvailable) {
 	participant.logger.Info("Connected data channel")
-	participant.sendDataChannelMessage(event.SFUMessage{
-		Op:       event.SFUOperationMetadata,
-		Metadata: c.getAvailableStreamsFor(participant.id),
+	participant.sendDataChannelMessage(event.Event{
+		Type: event.FocusCallSDPStreamMetadataChanged,
+		Content: event.Content{
+			Parsed: event.FocusCallSDPStreamMetadataChangedEventContent{
+				SDPStreamMetadata: c.getAvailableStreamsFor(participant.id),
+			},
+		},
 	})
 }
 

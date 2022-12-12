@@ -94,7 +94,7 @@ func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.
 }
 
 // Helper that returns the list of streams inside this conference that match the given stream IDs and track IDs.
-func (c *Conference) getTracks(identifiers []event.SFUTrackDescription) []*webrtc.TrackLocalStaticRTP {
+func (c *Conference) getTracks(identifiers []event.FocusTrackDescription) []*webrtc.TrackLocalStaticRTP {
 	tracks := make([]*webrtc.TrackLocalStaticRTP, 0)
 	for _, participant := range c.participants {
 		// Check if this participant has any of the tracks that we're looking for.
@@ -112,9 +112,13 @@ func (c *Conference) getTracks(identifiers []event.SFUTrackDescription) []*webrt
 func (c *Conference) resendMetadataToAllExcept(exceptMe ParticipantID) {
 	for participantID, participant := range c.participants {
 		if participantID != exceptMe {
-			participant.sendDataChannelMessage(event.SFUMessage{
-				Op:       event.SFUOperationMetadata,
-				Metadata: c.getAvailableStreamsFor(participantID),
+			participant.sendDataChannelMessage(event.Event{
+				Type: event.FocusCallSDPStreamMetadataChanged,
+				Content: event.Content{
+					Parsed: event.FocusCallSDPStreamMetadataChangedEventContent{
+						SDPStreamMetadata: c.getAvailableStreamsFor(participantID),
+					},
+				},
 			})
 		}
 	}

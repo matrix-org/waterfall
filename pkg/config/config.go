@@ -74,10 +74,13 @@ func LoadConfigFromString(configString string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
 	}
 
+	// TODO: We should split these up and add error messages
 	if config.Matrix.UserID == "" ||
 		config.Matrix.HomeserverURL == "" ||
 		config.Matrix.AccessToken == "" ||
-		config.Conference.KeepAliveTimeout == 0 {
+		config.Conference.KeepAliveTimeout == 0 ||
+		config.Conference.KeepAliveTimeout > 30 ||
+		config.Conference.PingInterval < 30 {
 		return nil, errors.New("invalid config values")
 	}
 
