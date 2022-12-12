@@ -78,9 +78,9 @@ func LoadConfigFromString(configString string) (*Config, error) {
 	if config.Matrix.UserID == "" ||
 		config.Matrix.HomeserverURL == "" ||
 		config.Matrix.AccessToken == "" ||
-		config.Conference.KeepAliveTimeout == 0 ||
-		config.Conference.KeepAliveTimeout > 30 ||
-		config.Conference.PingInterval < 30 {
+		config.Conference.PingPongConfig.Timeout == 0 ||
+		config.Conference.PingPongConfig.Timeout > 30 ||
+		config.Conference.PingPongConfig.Interval < 30 {
 		return nil, errors.New("invalid config values")
 	}
 

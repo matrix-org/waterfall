@@ -6,7 +6,7 @@ type Pong struct{}
 
 type PingPongConfig struct {
 	Interval    time.Duration
-	Deadline    time.Duration
+	Timeout     time.Duration
 	PongChannel chan Pong
 	SendPing    func()
 	OnDeadLine  func()
@@ -20,7 +20,7 @@ func startPingPong(config PingPongConfig) {
 			config.SendPing()
 
 			select {
-			case <-time.After(config.Deadline):
+			case <-time.After(config.Timeout):
 				config.OnDeadLine()
 				return
 			case _, ok := <-config.PongChannel:
