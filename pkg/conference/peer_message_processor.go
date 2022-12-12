@@ -89,6 +89,8 @@ func (c *Conference) processDataChannelMessage(participant *Participant, msg pee
 		return
 	}
 
+	// FIXME: We should be able to do
+	// focusEvent.Content.ParseRaw(focusEvent.Type) but it throws an error.
 	switch focusEvent.Type.Type {
 	case event.FocusCallTrackSubscription.Type:
 		focusEvent.Content.ParseRaw(event.FocusCallTrackSubscription)
