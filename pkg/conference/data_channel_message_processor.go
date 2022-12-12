@@ -51,7 +51,8 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 func (c *Conference) processNegotiateDCMessage(participant *Participant, msg event.FocusCallNegotiateEventContent) {
 	participant.streamMetadata = msg.SDPStreamMetadata
 
-	if msg.Description.Type == event.CallDataTypeOffer {
+	switch msg.Description.Type {
+	case event.CallDataTypeOffer:
 		participant.logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP offer over DC")
 
 		answer, err := participant.peer.ProcessSDPOffer(msg.Description.SDP)
@@ -72,14 +73,14 @@ func (c *Conference) processNegotiateDCMessage(participant *Participant, msg eve
 				},
 			},
 		})
-	} else if msg.Description.Type == event.CallDataTypeAnswer {
+	case event.CallDataTypeAnswer:
 		participant.logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP answer over DC")
 
 		if err := participant.peer.ProcessSDPAnswer(msg.Description.SDP); err != nil {
 			participant.logger.Errorf("Failed to set SDP answer: %v", err)
 			return
 		}
-	} else {
+	default:
 		participant.logger.Errorf("Unknown SDP description type")
 	}
 }
