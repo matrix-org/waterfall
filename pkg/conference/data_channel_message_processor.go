@@ -52,7 +52,7 @@ func (c *Conference) processNegotiateDCMessage(participant *Participant, msg eve
 	participant.streamMetadata = msg.SDPStreamMetadata
 
 	if msg.Description.Type == event.CallDataTypeOffer {
-		participant.logger.Info("Received SDP offer over DC")
+		participant.logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP offer over DC")
 
 		answer, err := participant.peer.ProcessSDPOffer(msg.Description.SDP)
 		if err != nil {
@@ -73,7 +73,7 @@ func (c *Conference) processNegotiateDCMessage(participant *Participant, msg eve
 			},
 		})
 	} else if msg.Description.Type == event.CallDataTypeAnswer {
-		participant.logger.Info("Received SDP answer over DC")
+		participant.logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP answer over DC")
 
 		if err := participant.peer.ProcessSDPAnswer(msg.Description.SDP); err != nil {
 			participant.logger.Errorf("Failed to set SDP answer: %v", err)
