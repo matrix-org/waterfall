@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/rtcp"
@@ -33,12 +32,7 @@ type Peer[ID comparable] struct {
 	logger         *logrus.Entry
 	peerConnection *webrtc.PeerConnection
 	sink           *common.MessageSink[ID, MessageContent]
-
-	pong              chan Pong
-	sendPing          func()
-	onDeadLine        func()
-	pingInterval      time.Duration
-	keepAliveDeadline time.Duration
+	pingPongConfig PingPongConfig
 
 	dataChannelMutex sync.Mutex
 	dataChannel      *webrtc.DataChannel
@@ -49,10 +43,7 @@ func NewPeer[ID comparable](
 	sdpOffer string,
 	sink *common.MessageSink[ID, MessageContent],
 	logger *logrus.Entry,
-	pingInterval time.Duration,
-	keepAliveDeadline time.Duration,
-	sendPing func(),
-	onDeadLine func(),
+	pingPongConfig PingPongConfig,
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -64,12 +55,7 @@ func NewPeer[ID comparable](
 		logger:         logger,
 		peerConnection: peerConnection,
 		sink:           sink,
-
-		pong:              make(chan Pong, common.UnboundedChannelSize),
-		pingInterval:      pingInterval,
-		keepAliveDeadline: keepAliveDeadline,
-		sendPing:          sendPing,
-		onDeadLine:        onDeadLine,
+		pingPongConfig: pingPongConfig,
 	}
 
 	peerConnection.OnTrack(peer.onRtpTrackReceived)
@@ -84,6 +70,7 @@ func NewPeer[ID comparable](
 	if sdpAnswer, err := peer.ProcessSDPOffer(sdpOffer); err != nil {
 		return nil, nil, err
 	} else {
+		startPingPong(pingPongConfig)
 		return peer, sdpAnswer, nil
 	}
 }
@@ -263,5 +250,5 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 // We need to update the last heartbeat time. If the peer is not active for too long, we will
 // consider peer's connection as stalled and will close it.
 func (p *Peer[ID]) ProcessPong() {
-	p.pong <- Pong{}
+	p.pingPongConfig.PongChannel <- Pong{}
 }

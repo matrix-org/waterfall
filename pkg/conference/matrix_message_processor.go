@@ -52,25 +52,24 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 	} else {
 		messageSink := common.NewMessageSink(participantID, c.peerMessages)
 
-		pingInterval := time.Duration(c.config.PingInterval) * time.Second
-		keepAliveDeadline := time.Duration(c.config.KeepAliveTimeout) * time.Second
-		sendPing := func() {
-			participant.sendDataChannelMessage(event.Event{
-				Type:    event.FocusCallPing,
-				Content: event.Content{},
-			})
-		}
-		onDeadLine := func() {
-			messageSink.Send(peer.LeftTheCall{Reason: event.CallHangupKeepAliveTimeout})
-		}
 		peer, answer, err := peer.NewPeer(
 			inviteEvent.Offer.SDP,
 			messageSink,
 			logger,
-			pingInterval,
-			keepAliveDeadline,
-			sendPing,
-			onDeadLine,
+			peer.PingPongConfig{
+				Interval:    time.Duration(c.config.PingInterval) * time.Second,
+				Deadline:    time.Duration(c.config.KeepAliveTimeout) * time.Second,
+				PongChannel: make(chan peer.Pong, common.UnboundedChannelSize),
+				SendPing: func() {
+					participant.sendDataChannelMessage(event.Event{
+						Type:    event.FocusCallPing,
+						Content: event.Content{},
+					})
+				},
+				OnDeadLine: func() {
+					messageSink.Send(peer.LeftTheCall{Reason: event.CallHangupKeepAliveTimeout})
+				},
+			},
 		)
 		if err != nil {
 			logger.WithError(err).Errorf("Failed to process SDP offer")
