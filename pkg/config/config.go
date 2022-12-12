@@ -74,15 +74,58 @@ func LoadConfigFromString(configString string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
 	}
 
-	// TODO: We should split these up and add error messages
-	if config.Matrix.UserID == "" ||
-		config.Matrix.HomeserverURL == "" ||
-		config.Matrix.AccessToken == "" ||
-		config.Conference.PingPongConfig.Timeout == 0 ||
-		config.Conference.PingPongConfig.Timeout > 30 ||
-		config.Conference.PingPongConfig.Interval < 30 {
-		return nil, errors.New("invalid config values")
+	if err := ValidateConfig(config); err != nil {
+		return nil, err
 	}
 
 	return &config, nil
+}
+
+func ValidateConfig(config Config) error {
+	errored := false
+
+	if config.Matrix.UserID == "" {
+		errored = true
+		fmt.Println("You must set matrix.userId")
+	}
+	if config.Matrix.HomeserverURL == "" {
+		errored = true
+		fmt.Println("You must set matrix.homeserverUrl")
+	}
+	if config.Matrix.AccessToken == "" {
+		errored = true
+		fmt.Println("You must set matrix.accessToken")
+	}
+	if config.Conference.PingPongConfig.Timeout == 0 {
+		errored = true
+		fmt.Println("You must set pingPong.timeout")
+	}
+	if config.Conference.PingPongConfig.Interval == 0 {
+		errored = true
+		fmt.Println("You must set pingPong.interval")
+	}
+
+	if config.Conference.PingPongConfig.Timeout > 30 {
+		errored = true
+		fmt.Println("pingPong.timeout must be 30s or lower")
+	}
+	if config.Conference.PingPongConfig.Interval < 30 {
+		errored = true
+		fmt.Println("pingPong.interval must be 30s or higher")
+	}
+
+	if config.Conference.PingPongConfig.Timeout < 5 {
+		errored = true
+		fmt.Println("It is not recommended for pingPong.timeout to be below 5s")
+	}
+	if config.Conference.PingPongConfig.Interval > 60*5 {
+		errored = true
+		fmt.Println("It is not recommended for pingPong.interval to be more than 300s")
+	}
+
+	if errored {
+		return errors.New("invalid config values")
+	} else {
+		return nil
+	}
 }
