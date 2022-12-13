@@ -29,10 +29,10 @@ var (
 // and informs the outside world about the things happening inside the peer by posting
 // the messages to the channel.
 type Peer[ID comparable] struct {
-	logger         *logrus.Entry
-	peerConnection *webrtc.PeerConnection
-	sink           *common.MessageSink[ID, MessageContent]
-	pingPongConfig PingPongConfig
+	logger          *logrus.Entry
+	peerConnection  *webrtc.PeerConnection
+	sink            *common.MessageSink[ID, MessageContent]
+	heartbeatConfig HeartbeatConfig
 
 	dataChannelMutex sync.Mutex
 	dataChannel      *webrtc.DataChannel
@@ -43,7 +43,7 @@ func NewPeer[ID comparable](
 	sdpOffer string,
 	sink *common.MessageSink[ID, MessageContent],
 	logger *logrus.Entry,
-	pingPongConfig PingPongConfig,
+	heartbeatConfig HeartbeatConfig,
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
 	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
@@ -52,10 +52,10 @@ func NewPeer[ID comparable](
 	}
 
 	peer := &Peer[ID]{
-		logger:         logger,
-		peerConnection: peerConnection,
-		sink:           sink,
-		pingPongConfig: pingPongConfig,
+		logger:          logger,
+		peerConnection:  peerConnection,
+		sink:            sink,
+		heartbeatConfig: heartbeatConfig,
 	}
 
 	peerConnection.OnTrack(peer.onRtpTrackReceived)
@@ -70,7 +70,7 @@ func NewPeer[ID comparable](
 	if sdpAnswer, err := peer.ProcessSDPOffer(sdpOffer); err != nil {
 		return nil, nil, err
 	} else {
-		startPingPong(pingPongConfig)
+		startHeartbeat(heartbeatConfig)
 		return peer, sdpAnswer, nil
 	}
 }
@@ -250,5 +250,5 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 // We need to update the last heartbeat time. If the peer is not active for too long, we will
 // consider peer's connection as stalled and will close it.
 func (p *Peer[ID]) ProcessPong() {
-	p.pingPongConfig.PongChannel <- Pong{}
+	p.heartbeatConfig.PongChannel <- Pong{}
 }

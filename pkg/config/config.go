@@ -74,15 +74,58 @@ func LoadConfigFromString(configString string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
 	}
 
-	// TODO: We should split these up and add error messages
-	if config.Matrix.UserID == "" ||
-		config.Matrix.HomeserverURL == "" ||
-		config.Matrix.AccessToken == "" ||
-		config.Conference.KeepAliveTimeout == 0 ||
-		config.Conference.KeepAliveTimeout > 30 ||
-		config.Conference.PingInterval < 30 {
-		return nil, errors.New("invalid config values")
+	if err := ValidateConfig(config); err != nil {
+		return nil, err
 	}
 
 	return &config, nil
+}
+
+func ValidateConfig(config Config) error {
+	errored := false
+
+	if config.Matrix.UserID == "" {
+		errored = true
+		fmt.Println("You must set matrix.userId")
+	}
+	if config.Matrix.HomeserverURL == "" {
+		errored = true
+		fmt.Println("You must set matrix.homeserverUrl")
+	}
+	if config.Matrix.AccessToken == "" {
+		errored = true
+		fmt.Println("You must set matrix.accessToken")
+	}
+	if config.Conference.HeartbeatConfig.Timeout == 0 {
+		errored = true
+		fmt.Println("You must set heartbeat.timeout")
+	}
+	if config.Conference.HeartbeatConfig.Interval == 0 {
+		errored = true
+		fmt.Println("You must set heartbeat.interval")
+	}
+
+	if config.Conference.HeartbeatConfig.Timeout > 30 {
+		errored = true
+		fmt.Println("heartbeat.timeout must be 30s or lower")
+	}
+	if config.Conference.HeartbeatConfig.Interval < 30 {
+		errored = true
+		fmt.Println("heartbeat.interval must be 30s or higher")
+	}
+
+	if config.Conference.HeartbeatConfig.Timeout < 5 {
+		errored = true
+		fmt.Println("It is not recommended for heartbeat.timeout to be below 5s")
+	}
+	if config.Conference.HeartbeatConfig.Interval > 60*5 {
+		errored = true
+		fmt.Println("It is not recommended for heartbeat.interval to be more than 300s")
+	}
+
+	if errored {
+		return errors.New("invalid config values")
+	} else {
+		return nil
+	}
 }
