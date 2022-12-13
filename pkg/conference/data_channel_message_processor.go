@@ -1,6 +1,7 @@
 package conference
 
 import (
+	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/slices"
@@ -86,7 +87,10 @@ func (c *Conference) processNegotiateDCMessage(participant *Participant, msg eve
 }
 
 func (c *Conference) processPongDCMessage(participant *Participant) {
-	participant.peer.ProcessPong()
+	// New heartbeat received (keep-alive message that is periodically sent by the remote peer).
+	// We need to update the last heartbeat time. If the peer is not active for too long, we will
+	// consider peer's connection as stalled and will close it.
+	participant.heartbeatPong <- common.Pong{}
 }
 
 func (c *Conference) processMetadataDCMessage(

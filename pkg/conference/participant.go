@@ -3,6 +3,7 @@ package conference
 import (
 	"time"
 
+	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/pion/webrtc/v3"
@@ -34,6 +35,7 @@ type Participant struct {
 	remoteSessionID id.SessionID
 	streamMetadata  event.CallSDPStreamMetadata
 	publishedTracks map[string]PublishedTrack
+	heartbeatPong   chan<- common.Pong
 }
 
 func (p *Participant) asMatrixRecipient() signaling.MatrixRecipient {
