@@ -74,58 +74,43 @@ func LoadConfigFromString(configString string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal YAML file: %w", err)
 	}
 
-	if err := ValidateConfig(config); err != nil {
+	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
 
 	return &config, nil
 }
 
-func ValidateConfig(config Config) error {
-	errored := false
-
+func validateConfig(config Config) error {
 	if config.Matrix.UserID == "" {
-		errored = true
-		fmt.Println("You must set matrix.userId")
+		return fmt.Errorf("you must set matrix.userId")
 	}
 	if config.Matrix.HomeserverURL == "" {
-		errored = true
-		fmt.Println("You must set matrix.homeserverUrl")
+		return fmt.Errorf("you must set matrix.homeserverUrl")
 	}
 	if config.Matrix.AccessToken == "" {
-		errored = true
-		fmt.Println("You must set matrix.accessToken")
+		return fmt.Errorf("you must set matrix.accessToken")
 	}
 	if config.Conference.HeartbeatConfig.Timeout == 0 {
-		errored = true
-		fmt.Println("You must set heartbeat.timeout")
+		return fmt.Errorf("you must set heartbeat.timeout")
 	}
 	if config.Conference.HeartbeatConfig.Interval == 0 {
-		errored = true
-		fmt.Println("You must set heartbeat.interval")
+		return fmt.Errorf("you must set heartbeat.interval")
 	}
 
 	if config.Conference.HeartbeatConfig.Timeout > 30 {
-		errored = true
-		fmt.Println("heartbeat.timeout must be 30s or lower")
+		return fmt.Errorf("heartbeat.timeout must be 30s or lower")
 	}
 	if config.Conference.HeartbeatConfig.Interval < 30 {
-		errored = true
-		fmt.Println("heartbeat.interval must be 30s or higher")
+		return fmt.Errorf("heartbeat.interval must be 30s or higher")
 	}
 
 	if config.Conference.HeartbeatConfig.Timeout < 5 {
-		errored = true
-		fmt.Println("It is not recommended for heartbeat.timeout to be below 5s")
+		return fmt.Errorf("heartbeat.timeout must be 5s or higher")
 	}
 	if config.Conference.HeartbeatConfig.Interval > 60*5 {
-		errored = true
-		fmt.Println("It is not recommended for heartbeat.interval to be more than 300s")
+		return fmt.Errorf("heartbeat.interval must be 5m or lower")
 	}
 
-	if errored {
-		return errors.New("invalid config values")
-	} else {
-		return nil
-	}
+	return nil
 }
