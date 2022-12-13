@@ -96,31 +96,31 @@ func ValidateConfig(config Config) error {
 		errored = true
 		fmt.Println("You must set matrix.accessToken")
 	}
-	if config.Conference.PingPongConfig.Timeout == 0 {
+	if config.Conference.HeartbeatConfig.Timeout == 0 {
 		errored = true
-		fmt.Println("You must set pingPong.timeout")
+		fmt.Println("You must set heartbeat.timeout")
 	}
-	if config.Conference.PingPongConfig.Interval == 0 {
+	if config.Conference.HeartbeatConfig.Interval == 0 {
 		errored = true
-		fmt.Println("You must set pingPong.interval")
-	}
-
-	if config.Conference.PingPongConfig.Timeout > 30 {
-		errored = true
-		fmt.Println("pingPong.timeout must be 30s or lower")
-	}
-	if config.Conference.PingPongConfig.Interval < 30 {
-		errored = true
-		fmt.Println("pingPong.interval must be 30s or higher")
+		fmt.Println("You must set heartbeat.interval")
 	}
 
-	if config.Conference.PingPongConfig.Timeout < 5 {
+	if config.Conference.HeartbeatConfig.Timeout > 30 {
 		errored = true
-		fmt.Println("It is not recommended for pingPong.timeout to be below 5s")
+		fmt.Println("heartbeat.timeout must be 30s or lower")
 	}
-	if config.Conference.PingPongConfig.Interval > 60*5 {
+	if config.Conference.HeartbeatConfig.Interval < 30 {
 		errored = true
-		fmt.Println("It is not recommended for pingPong.interval to be more than 300s")
+		fmt.Println("heartbeat.interval must be 30s or higher")
+	}
+
+	if config.Conference.HeartbeatConfig.Timeout < 5 {
+		errored = true
+		fmt.Println("It is not recommended for heartbeat.timeout to be below 5s")
+	}
+	if config.Conference.HeartbeatConfig.Interval > 60*5 {
+		errored = true
+		fmt.Println("It is not recommended for heartbeat.interval to be more than 300s")
 	}
 
 	if errored {

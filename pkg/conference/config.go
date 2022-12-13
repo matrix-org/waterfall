@@ -1,6 +1,6 @@
 package conference
 
-type PingPongConfig struct {
+type Heartbeat struct {
 	// Timeout for WebRTC connections. If the client doesn't respond to an
 	// `m.call.ping` with an `m.call.pong` for this amount of time, the
 	// connection is considered dead. (in seconds, no greater then 30)
@@ -12,5 +12,5 @@ type PingPongConfig struct {
 
 // Configuration for the group conferences (calls).
 type Config struct {
-	PingPongConfig PingPongConfig `yaml:"pingPong"`
+	HeartbeatConfig Heartbeat `yaml:"heartbeat"`
 }

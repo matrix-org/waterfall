@@ -3,6 +3,6 @@ matrix:
   userid: "@sfu:shadowfax"
   accesstoken: "..."
 conference:
-  pingPong:
+  heartbeat:
     timeout: 30
     interval: 30
