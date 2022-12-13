@@ -10,8 +10,10 @@ services:
       # Set the `CONFIG` to the configuration you want.
       CONFIG: |
         matrix:
-          homeserverurl: "http://localhost:8008"
-          userid: "@sfu:shadowfax"
-          accesstoken: "..."
+          homeserverUrl: "http://localhost:8008"
+          userId: "@sfu:shadowfax"
+          accessToken: "..."
         conference:
-          timeout: 30
+          heartbeat:
+            timeout: 30
+            interval: 30
