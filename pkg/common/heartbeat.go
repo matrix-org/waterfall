@@ -26,7 +26,10 @@ func (h *Heartbeat) Start() chan<- Pong {
 	pong := make(chan Pong, UnboundedChannelSize)
 
 	go func() {
-		for range time.Tick(h.Interval) {
+		ticker := time.NewTicker(h.Interval)
+		defer ticker.Stop()
+
+		for range ticker.C {
 			h.SendPing()
 
 			select {
