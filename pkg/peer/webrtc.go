@@ -128,10 +128,10 @@ func (p *Peer[ID]) onDataChannelReady(dc *webrtc.DataChannel) {
 	}
 
 	p.dataChannel = dc
-	p.logger.WithField("label", dc.Label()).Info("Data channel ready")
+	p.logger.WithField("label", dc.Label()).Debug("Data channel ready")
 
 	dc.OnOpen(func() {
-		p.logger.Info("Data channel opened")
+		p.logger.Debug("Data channel opened")
 		p.sink.Send(DataChannelAvailable{})
 	})
 
