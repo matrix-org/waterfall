@@ -110,6 +110,7 @@ func (p *Peer[ID]) onConnectionStateChanged(state webrtc.PeerConnectionState) {
 
 	switch state {
 	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateClosed:
+		p.logger.Debug("Ending call since we're in state: %v", state)
 		p.sink.Send(LeftTheCall{event.CallHangupUserHangup})
 	case webrtc.PeerConnectionStateConnected:
 		p.sink.Send(JoinedTheCall{})

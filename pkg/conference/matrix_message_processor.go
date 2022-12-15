@@ -68,6 +68,7 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 				}) == nil
 			},
 			OnTimeout: func() {
+				c.logger.Debug("We haven't received an m.call.ping from the client for more than the timeout")
 				messageSink.Send(peer.LeftTheCall{event.CallHangupKeepAliveTimeout})
 			},
 		}
