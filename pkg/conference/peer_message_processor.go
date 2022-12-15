@@ -13,7 +13,7 @@ func (c *Conference) processJoinedTheCallMessage(participant *Participant, messa
 }
 
 func (c *Conference) processLeftTheCallMessage(participant *Participant, msg peer.LeftTheCall) {
-	participant.logger.Info("Left the call: %s", msg.Reason)
+	participant.logger.Infof("Left the call: %s", msg.Reason)
 	c.removeParticipant(participant.id)
 	c.signaling.SendHangup(participant.asMatrixRecipient(), msg.Reason)
 }
