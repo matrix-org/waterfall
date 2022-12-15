@@ -13,7 +13,8 @@ type Heartbeat struct {
 	// After which time to consider the communication stalled.
 	Timeout time.Duration
 	// A closure that is called when ping is to be sent.
-	SendPing func()
+	// Returns `false` if an attempt to send a ping failed.
+	SendPing func() bool
 	// A closure that is called once `Timeout` is reached.
 	OnTimeout func()
 }
@@ -30,7 +31,9 @@ func (h *Heartbeat) Start() chan<- Pong {
 		defer ticker.Stop()
 
 		for range ticker.C {
-			h.SendPing()
+			if !h.sendWithRetry() {
+				return
+			}
 
 			select {
 			case <-time.After(h.Timeout):
@@ -45,4 +48,21 @@ func (h *Heartbeat) Start() chan<- Pong {
 	}()
 
 	return pong
+}
+
+// Tries to send a ping message using `SendPing` and retry it if it fails.
+// Returns `true` if the ping was sent successfully.
+func (h *Heartbeat) sendWithRetry() bool {
+	const retries = 3
+	retryInterval := h.Timeout / retries
+
+	for i := 0; i < retries; i++ {
+		if !h.SendPing() {
+			time.Sleep(retryInterval)
+			continue
+		}
+		return true
+	}
+
+	return false
 }

@@ -1,6 +1,7 @@
 package conference
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
@@ -47,15 +48,16 @@ func (p *Participant) asMatrixRecipient() signaling.MatrixRecipient {
 	}
 }
 
-func (p *Participant) sendDataChannelMessage(toSend event.Event) {
+func (p *Participant) sendDataChannelMessage(toSend event.Event) error {
 	jsonToSend, err := toSend.MarshalJSON()
 	if err != nil {
-		p.logger.Error("Failed to marshal data channel message")
-		return
+		return fmt.Errorf("Failed to marshal data channel message: %w", err)
 	}
 
 	if err := p.peer.SendOverDataChannel(string(jsonToSend)); err != nil {
 		// TODO: We must buffer the message in this case and re-send it once the data channel is recovered!
-		p.logger.Error("Failed to send data channel message")
+		return fmt.Errorf("Failed to send data channel message: %w", err)
 	}
+
+	return nil
 }
