@@ -2,6 +2,7 @@ package peer
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -178,17 +179,15 @@ func (p *Peer[ID]) SendOverDataChannel(json string) error {
 	defer p.dataChannelMutex.Unlock()
 
 	if p.dataChannel == nil {
-		p.logger.Error("can't send data over data channel: data channel is not ready")
 		return ErrDataChannelNotAvailable
 	}
 
 	if p.dataChannel.ReadyState() != webrtc.DataChannelStateOpen {
-		p.logger.Error("can't send data over data channel: data channel is not open")
 		return ErrDataChannelNotReady
 	}
 
 	if err := p.dataChannel.SendText(json); err != nil {
-		p.logger.WithError(err).Error("failed to send data over data channel")
+		return fmt.Errorf("failed to send data over data channel: %w", err)
 	}
 
 	return nil
