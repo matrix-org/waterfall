@@ -93,15 +93,21 @@ func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.
 	return streamsMetadata
 }
 
-// Helper that returns the list of streams inside this conference that match the given stream IDs and track IDs.
+// Helper that returns the list of tracks inside this conference that match the given track IDs.
 func (c *Conference) getTracks(identifiers []event.FocusTrackDescription) []*webrtc.TrackLocalStaticRTP {
 	tracks := make([]*webrtc.TrackLocalStaticRTP, 0)
-	for _, participant := range c.participants {
+	for _, identifier := range identifiers {
+		found := false
 		// Check if this participant has any of the tracks that we're looking for.
-		for _, identifier := range identifiers {
+		for _, participant := range c.participants {
 			if track, ok := participant.publishedTracks[identifier.TrackID]; ok {
 				tracks = append(tracks, track.track)
+				found = true
+				break
 			}
+		}
+		if !found {
+			c.logger.Warnf("track not found: %s", identifier.TrackID)
 		}
 	}
 
