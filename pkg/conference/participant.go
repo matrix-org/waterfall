@@ -7,7 +7,6 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
-	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -21,8 +20,12 @@ type ParticipantID struct {
 	CallID   string
 }
 
+// Represents a track that a peer has published (has already started sending to the SFU).
 type PublishedTrack struct {
-	track *webrtc.TrackLocalStaticRTP
+	// Info about the track.
+	info peer.TrackInfo
+	// Available simulcast layers.
+	layers []peer.SimulcastLayer
 	// The timestamp at which we are allowed to send the FIR or PLI request. We don't want to send them
 	// too often, so we introduce some trivial rate limiting to not "enforce" too many key frames.
 	canSendKeyframeAt time.Time

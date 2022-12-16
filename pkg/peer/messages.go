@@ -2,6 +2,7 @@ package peer
 
 import (
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -17,11 +18,16 @@ type LeftTheCall struct {
 }
 
 type NewTrackPublished struct {
-	Track *webrtc.TrackLocalStaticRTP
+	SimulcastTrackInfo
 }
 
 type PublishedTrackFailed struct {
-	Track *webrtc.TrackLocalStaticRTP
+	SimulcastTrackInfo
+}
+
+type RTPPacketReceived struct {
+	SimulcastTrackInfo
+	Packet *rtp.Packet
 }
 
 type NewICECandidate struct {
@@ -49,10 +55,3 @@ type RTCPPacket struct {
 	Type    RTCPPacketType
 	Content rtcp.Packet
 }
-
-type RTCPPacketType int
-
-const (
-	PictureLossIndicator RTCPPacketType = iota + 1
-	FullIntraRequest
-)

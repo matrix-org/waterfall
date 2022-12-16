@@ -12,10 +12,10 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 	participant.logger.Debug("Received track subscription request over DC")
 
 	if len(msg.Unsubscribe) != 0 {
-		participant.peer.UnsubscribeFrom(c.getTracks(msg.Unsubscribe))
+		participant.peer.UnsubscribeFrom(c.getTracksInfo(msg.Unsubscribe))
 	}
 	if len(msg.Subscribe) != 0 {
-		participant.peer.SubscribeTo(c.getTracks(msg.Subscribe))
+		participant.peer.SubscribeTo(c.getTracksInfo(msg.Subscribe))
 	}
 }
 

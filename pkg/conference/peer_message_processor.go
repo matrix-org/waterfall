@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/peer"
-	"github.com/pion/webrtc/v3"
+	"github.com/thoas/go-funk"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -19,27 +19,46 @@ func (c *Conference) processLeftTheCallMessage(participant *Participant, msg pee
 }
 
 func (c *Conference) processNewTrackPublishedMessage(participant *Participant, msg peer.NewTrackPublished) {
-	participant.logger.Infof("Published new track: %s", msg.Track.ID())
+	participant.logger.Infof("Published new track: %s (%s)", msg.TrackID, msg.Layer.String())
 
-	if _, ok := participant.publishedTracks[msg.Track.ID()]; ok {
-		c.logger.Errorf("Track already published: %v", msg.Track.ID())
-		return
+	if track, ok := participant.publishedTracks[msg.TrackID]; !ok {
+		participant.publishedTracks[msg.TrackID] = PublishedTrack{
+			info:   msg.TrackInfo,
+			layers: []peer.SimulcastLayer{msg.Layer},
+		}
+	} else if !funk.Contains(track.layers, msg.Layer) {
+		track.layers = append(track.layers, msg.Layer)
+		participant.publishedTracks[msg.TrackID] = track
 	}
 
-	participant.publishedTracks[msg.Track.ID()] = PublishedTrack{track: msg.Track}
+	// TODO: Oops, that's not very efficient with the simulcast since it means that when 3
+	// layers are published, we will send 3 times the same metadata.
 	c.resendMetadataToAllExcept(participant.id)
 }
 
+func (c *Conference) processRTPPacketReceivedMessage(participant *Participant, msg peer.RTPPacketReceived) {
+	// For now we just forward the lowest layer always and assume that others don't exist.
+	if msg.Layer != peer.SimulcastLayerLow {
+		// TODO: Very inefficient, use map later on a conference level to improve performance.
+		for _, participant := range c.participants {
+			tracks := participant.peer.GetSubscribedTracks()
+			if funk.Contains(tracks, func(info peer.TrackInfo) bool { return info.TrackID == msg.TrackID }) {
+				participant.peer.WriteRTP(msg.TrackID, msg.Packet)
+			}
+		}
+	}
+}
+
 func (c *Conference) processPublishedTrackFailedMessage(participant *Participant, msg peer.PublishedTrackFailed) {
-	participant.logger.Infof("Failed published track: %s", msg.Track.ID())
-	delete(participant.publishedTracks, msg.Track.ID())
+	participant.logger.Infof("Failed published track: %s", msg.TrackID)
+	delete(participant.publishedTracks, msg.TrackID)
 
 	for _, otherParticipant := range c.participants {
 		if otherParticipant.id == participant.id {
 			continue
 		}
 
-		otherParticipant.peer.UnsubscribeFrom([]*webrtc.TrackLocalStaticRTP{msg.Track})
+		otherParticipant.peer.UnsubscribeFrom([]peer.TrackInfo{msg.TrackInfo})
 	}
 
 	c.resendMetadataToAllExcept(participant.id)

@@ -4,7 +4,6 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
-	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )
@@ -56,9 +55,9 @@ func (c *Conference) removeParticipant(participantID ParticipantID) {
 	c.resendMetadataToAllExcept(participantID)
 
 	// Remove the participant's tracks from all participants who might have subscribed to them.
-	obsoleteTracks := []*webrtc.TrackLocalStaticRTP{}
+	obsoleteTracks := []peer.TrackInfo{}
 	for _, publishedTrack := range participant.publishedTracks {
-		obsoleteTracks = append(obsoleteTracks, publishedTrack.track)
+		obsoleteTracks = append(obsoleteTracks, publishedTrack.info)
 	}
 
 	for _, otherParticipant := range c.participants {
@@ -76,7 +75,7 @@ func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.
 			// Now, find out which of published tracks belong to the streams for which we have metadata
 			// available and construct a metadata map for a given participant based on that.
 			for _, track := range participant.publishedTracks {
-				trackID, streamID := track.track.ID(), track.track.StreamID()
+				trackID, streamID := track.info.TrackID, track.info.StreamID
 
 				if metadata, ok := streamsMetadata[streamID]; ok {
 					metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{}
@@ -95,14 +94,14 @@ func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.
 }
 
 // Helper that returns the list of tracks inside this conference that match the given track IDs.
-func (c *Conference) getTracks(identifiers []event.FocusTrackDescription) []*webrtc.TrackLocalStaticRTP {
-	tracks := make([]*webrtc.TrackLocalStaticRTP, 0)
+func (c *Conference) getTracksInfo(identifiers []event.FocusTrackDescription) []peer.TrackInfo {
+	tracks := make([]peer.TrackInfo, 0)
 	for _, identifier := range identifiers {
 		found := false
 		// Check if this participant has any of the tracks that we're looking for.
 		for _, participant := range c.participants {
 			if track, ok := participant.publishedTracks[identifier.TrackID]; ok {
-				tracks = append(tracks, track.track)
+				tracks = append(tracks, track.info)
 				found = true
 				break
 			}
