@@ -84,7 +84,7 @@ func (p *Peer[ID]) onNegotiationNeeded() {
 
 // A callback that is called once we receive an ICE connection state change for this peer connection.
 func (p *Peer[ID]) onICEConnectionStateChanged(state webrtc.ICEConnectionState) {
-	p.logger.WithField("state", state).Info("ICE connection state changed")
+	p.logger.Infof("ICE connection state changed: %v", state)
 
 	switch state {
 	case webrtc.ICEConnectionStateFailed, webrtc.ICEConnectionStateDisconnected:
@@ -98,15 +98,15 @@ func (p *Peer[ID]) onICEConnectionStateChanged(state webrtc.ICEConnectionState) 
 }
 
 func (p *Peer[ID]) onICEGatheringStateChanged(state webrtc.ICEGathererState) {
-	p.logger.WithField("state", state).Debug("ICE gathering state changed")
+	p.logger.Debugf("ICE gathering state changed: %v", state)
 }
 
 func (p *Peer[ID]) onSignalingStateChanged(state webrtc.SignalingState) {
-	p.logger.WithField("state", state).Debug("signaling state changed")
+	p.logger.Debugf("signaling state changed: %v", state)
 }
 
 func (p *Peer[ID]) onConnectionStateChanged(state webrtc.PeerConnectionState) {
-	p.logger.WithField("state", state).Info("Connection state changed")
+	p.logger.Infof("Connection state changed: %v", state)
 
 	switch state {
 	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateClosed:
@@ -136,7 +136,6 @@ func (p *Peer[ID]) onDataChannelReady(dc *webrtc.DataChannel) {
 	})
 
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		p.logger.WithField("message", msg).Debug("Data channel message received")
 		if msg.IsString {
 			p.sink.Send(DataChannelMessage{Message: string(msg.Data)})
 		} else {

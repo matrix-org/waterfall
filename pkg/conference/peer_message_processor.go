@@ -82,12 +82,13 @@ func (c *Conference) processRenegotiationRequiredMessage(participant *Participan
 }
 
 func (c *Conference) processDataChannelMessage(participant *Participant, msg peer.DataChannelMessage) {
-	participant.logger.Debug("Received data channel message")
 	var focusEvent event.Event
 	if err := focusEvent.UnmarshalJSON([]byte(msg.Message)); err != nil {
-		c.logger.Errorf("Failed to unmarshal SFU message: %v", err)
+		c.logger.Errorf("Failed to unmarshal data channel message: %v", err)
 		return
 	}
+
+	participant.logger.Debugf("Received data channel message: %v", focusEvent.Type.Type)
 
 	// FIXME: We should be able to do
 	// focusEvent.Content.ParseRaw(focusEvent.Type) but it throws an error.
