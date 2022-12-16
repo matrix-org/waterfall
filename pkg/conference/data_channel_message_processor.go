@@ -2,9 +2,6 @@ package conference
 
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
-	"github.com/pion/webrtc/v3"
-	"github.com/sirupsen/logrus"
-	"golang.org/x/exp/slices"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -12,40 +9,13 @@ import (
 func (c *Conference) processTrackSubscriptionDCMessage(
 	participant *Participant, msg event.FocusCallTrackSubscriptionEventContent,
 ) {
-	participant.logger.Info("Received track subscription request over DC")
+	participant.logger.Debug("Received track subscription request over DC")
 
-	// TODO: Handle unsubscribe
-
-	// Find tracks based on what we were asked for.
-	tracks := c.getTracks(msg.Subscribe)
-
-	participant.logger.WithFields(logrus.Fields{
-		"tracks_we_got":  tracks,
-		"tracks_we_want": msg,
-	}).Debug("Tracks to subscribe to")
-
-	// Let's check if we have all the tracks that we were asked for are there.
-	// If not, we will list which are not available (later on we must inform participant
-	// about it unless the participant retries it).
-	if len(tracks) != len(msg.Subscribe) {
-		for _, expected := range msg.Subscribe {
-			found := slices.IndexFunc(tracks, func(track *webrtc.TrackLocalStaticRTP) bool {
-				return track.ID() == expected.TrackID
-			})
-
-			if found == -1 {
-				c.logger.Warnf("Track not found: %s", expected.TrackID)
-			}
-		}
+	if len(msg.Unsubscribe) != 0 {
+		participant.peer.UnsubscribeFrom(c.getTracks(msg.Unsubscribe))
 	}
-
-	// Subscribe to the found tracks.
-	for _, track := range tracks {
-		participant.logger.WithField("track_id", track.ID()).Debug("Subscribing to track")
-		if err := participant.peer.SubscribeTo(track); err != nil {
-			participant.logger.Errorf("Failed to subscribe to track: %v", err)
-			return
-		}
+	if len(msg.Subscribe) != 0 {
+		participant.peer.SubscribeTo(c.getTracks(msg.Subscribe))
 	}
 }
 

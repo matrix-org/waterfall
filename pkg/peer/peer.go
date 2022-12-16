@@ -84,44 +84,48 @@ func (p *Peer[ID]) Terminate() {
 	p.sink.Seal()
 }
 
-// Adds given track to our peer connection, so that it can be sent to the remote peer.
-func (p *Peer[ID]) SubscribeTo(track *webrtc.TrackLocalStaticRTP) error {
-	rtpSender, err := p.peerConnection.AddTrack(track)
-	if err != nil {
-		p.logger.WithError(err).Error("failed to add track")
-		return ErrCantSubscribeToTrack
-	}
-
-	// Read incoming RTCP packets
-	// Before these packets are returned they are processed by interceptors. For things
-	// like NACK this needs to be called.
-	go func() {
-		for {
-			packets, _, err := rtpSender.ReadRTCP()
-			if err != nil {
-				if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-					p.logger.WithError(err).Warn("failed to read RTCP on track")
-					return
-				}
-			}
-
-			// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
-			toForward := []RTCPPacketType{}
-			for _, packet := range packets {
-				// TODO: Should we also handle NACKs?
-				switch packet.(type) {
-				case *rtcp.PictureLossIndication:
-					toForward = append(toForward, PictureLossIndicator)
-				case *rtcp.FullIntraRequest:
-					toForward = append(toForward, FullIntraRequest)
-				}
-			}
-
-			p.sink.Send(RTCPReceived{Packets: toForward, TrackID: track.ID()})
+// Adds given tracks to our peer connection, so that they can be sent to the remote peer.
+func (p *Peer[ID]) SubscribeTo(tracks []*webrtc.TrackLocalStaticRTP) {
+	for _, track := range tracks {
+		rtpSender, err := p.peerConnection.AddTrack(track)
+		if err != nil {
+			p.logger.WithError(err).Error("failed to add track")
+			continue
 		}
-	}()
 
-	return nil
+		go p.readRTCP(rtpSender)
+
+		p.logger.Infof("subscribed to track: %s", track.ID())
+	}
+}
+
+// Read incoming RTCP packets
+// Before these packets are returned they are processed by interceptors. For things
+// like NACK this needs to be called.
+func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
+	for {
+		packets, _, err := rtpSender.ReadRTCP()
+		if err != nil {
+			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
+				p.logger.WithError(err).Warn("failed to read RTCP on track")
+				return
+			}
+		}
+
+		// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
+		toForward := []RTCPPacketType{}
+		for _, packet := range packets {
+			// TODO: Should we also handle NACKs?
+			switch packet.(type) {
+			case *rtcp.PictureLossIndication:
+				toForward = append(toForward, PictureLossIndicator)
+			case *rtcp.FullIntraRequest:
+				toForward = append(toForward, FullIntraRequest)
+			}
+		}
+
+		p.sink.Send(RTCPReceived{Packets: toForward, TrackID: rtpSender.Track().ID()})
+	}
 }
 
 // Writes the specified packets to the `trackID`.
@@ -158,7 +162,7 @@ func (p *Peer[ID]) UnsubscribeFrom(tracks []*webrtc.TrackLocalStaticRTP) {
 	for _, sender := range p.peerConnection.GetSenders() {
 		currentTrack := sender.Track()
 		if currentTrack == nil {
-			return
+			continue
 		}
 
 		for _, trackToUnsubscribe := range tracks {
@@ -167,6 +171,8 @@ func (p *Peer[ID]) UnsubscribeFrom(tracks []*webrtc.TrackLocalStaticRTP) {
 			if presentTrackID == trackID && presentStreamID == streamID {
 				if err := p.peerConnection.RemoveTrack(sender); err != nil {
 					p.logger.WithError(err).Error("failed to remove track")
+				} else {
+					p.logger.Infof("unsubscribed from track: %s", trackID)
 				}
 			}
 		}
