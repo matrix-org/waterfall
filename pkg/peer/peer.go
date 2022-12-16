@@ -99,35 +99,6 @@ func (p *Peer[ID]) SubscribeTo(tracks []*webrtc.TrackLocalStaticRTP) {
 	}
 }
 
-// Read incoming RTCP packets
-// Before these packets are returned they are processed by interceptors. For things
-// like NACK this needs to be called.
-func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
-	for {
-		packets, _, err := rtpSender.ReadRTCP()
-		if err != nil {
-			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-				p.logger.WithError(err).Warn("failed to read RTCP on track")
-				return
-			}
-		}
-
-		// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
-		toForward := []RTCPPacket{}
-		for _, packet := range packets {
-			// TODO: Should we also handle NACKs?
-			switch packet.(type) {
-			case *rtcp.PictureLossIndication:
-				toForward = append(toForward, RTCPPacket{PictureLossIndicator, packet})
-			case *rtcp.FullIntraRequest:
-				toForward = append(toForward, RTCPPacket{FullIntraRequest, packet})
-			}
-		}
-
-		p.sink.Send(RTCPReceived{Packets: toForward, TrackID: rtpSender.Track().ID()})
-	}
-}
-
 // Writes the specified packets to the `trackID`.
 func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacket) error {
 	// Find the right track.
@@ -252,4 +223,33 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 	}
 
 	return &answer, nil
+}
+
+// Read incoming RTCP packets
+// Before these packets are returned they are processed by interceptors. For things
+// like NACK this needs to be called.
+func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
+	for {
+		packets, _, err := rtpSender.ReadRTCP()
+		if err != nil {
+			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
+				p.logger.WithError(err).Warn("failed to read RTCP on track")
+				return
+			}
+		}
+
+		// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
+		toForward := []RTCPPacket{}
+		for _, packet := range packets {
+			// TODO: Should we also handle NACKs?
+			switch packet.(type) {
+			case *rtcp.PictureLossIndication:
+				toForward = append(toForward, RTCPPacket{PictureLossIndicator, packet})
+			case *rtcp.FullIntraRequest:
+				toForward = append(toForward, RTCPPacket{FullIntraRequest, packet})
+			}
+		}
+
+		p.sink.Send(RTCPReceived{Packets: toForward, TrackID: rtpSender.Track().ID()})
+	}
 }
