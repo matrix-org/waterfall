@@ -47,6 +47,7 @@ func (c *Conference) removeParticipant(participantID ParticipantID) {
 
 	// Terminate the participant and remove it from the list.
 	participant.peer.Terminate()
+	close(participant.heartbeatPong)
 	delete(c.participants, participantID)
 
 	// Inform the other participants about updated metadata (since the participant left

@@ -52,37 +52,34 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 	} else {
 		messageSink := common.NewMessageSink(participantID, c.peerMessages)
 
-		peer, answer, err := peer.NewPeer(
-			inviteEvent.Offer.SDP,
-			messageSink,
-			logger,
-			peer.HeartbeatConfig{
-				Interval:    time.Duration(c.config.HeartbeatConfig.Interval) * time.Second,
-				Timeout:     time.Duration(c.config.HeartbeatConfig.Timeout) * time.Second,
-				PongChannel: make(chan peer.Pong, common.UnboundedChannelSize),
-				SendPing: func() {
-					participant.sendDataChannelMessage(event.Event{
-						Type:    event.FocusCallPing,
-						Content: event.Content{},
-					})
-				},
-				OnDeadLine: func() {
-					messageSink.Send(peer.LeftTheCall{Reason: event.CallHangupKeepAliveTimeout})
-				},
-			},
-		)
+		peerConnection, answer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, logger)
 		if err != nil {
 			logger.WithError(err).Errorf("Failed to process SDP offer")
 			return err
 		}
 
+		heartbeat := common.Heartbeat{
+			Interval: time.Duration(c.config.HeartbeatConfig.Interval) * time.Second,
+			Timeout:  time.Duration(c.config.HeartbeatConfig.Timeout) * time.Second,
+			SendPing: func() bool {
+				return participant.sendDataChannelMessage(event.Event{
+					Type:    event.FocusCallPing,
+					Content: event.Content{},
+				}) == nil
+			},
+			OnTimeout: func() {
+				messageSink.Send(peer.LeftTheCall{event.CallHangupKeepAliveTimeout})
+			},
+		}
+
 		participant = &Participant{
 			id:              participantID,
-			peer:            peer,
+			peer:            peerConnection,
 			logger:          logger,
 			remoteSessionID: inviteEvent.SenderSessionID,
 			streamMetadata:  inviteEvent.SDPStreamMetadata,
 			publishedTracks: make(map[string]PublishedTrack),
+			heartbeatPong:   heartbeat.Start(),
 		}
 
 		c.participants[participantID] = participant
