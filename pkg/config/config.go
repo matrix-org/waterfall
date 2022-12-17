@@ -98,21 +98,12 @@ func validateConfig(config Config) error {
 		return fmt.Errorf("you must set heartbeat.interval")
 	}
 
-	// MSC3898 dictates what are the limits for these values.
-	if config.Conference.HeartbeatConfig.Timeout < 30 {
-		return fmt.Errorf("heartbeat.timeout must be 30s or higher")
+	// Make sure the heartbeat values are within sane bounds
+	if config.Conference.HeartbeatConfig.Timeout < 30 && config.Conference.HeartbeatConfig.Timeout > 60*2 {
+		return fmt.Errorf("heartbeat.timeout must be between 30s and 2m")
 	}
-	if config.Conference.HeartbeatConfig.Interval > 30 {
-		return fmt.Errorf("heartbeat.interval must be 30s or lower")
-	}
-
-	// While MSC3898 isn't explicit about this, we don't want users to shoot
-	// themselves in the foot.
-	if config.Conference.HeartbeatConfig.Timeout > 60*2 {
-		return fmt.Errorf("it is not recommended for heartbeat.timeout to be higher than 2m")
-	}
-	if config.Conference.HeartbeatConfig.Interval < 5 {
-		return fmt.Errorf("it is not recommended for heartbeat.interval to be less than 5s")
+	if config.Conference.HeartbeatConfig.Interval < 5 && config.Conference.HeartbeatConfig.Interval > 30 {
+		return fmt.Errorf("heartbeat.interval must be between 5s and 30s")
 	}
 
 	return nil
