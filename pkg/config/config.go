@@ -98,18 +98,12 @@ func validateConfig(config Config) error {
 		return fmt.Errorf("you must set heartbeat.interval")
 	}
 
-	if config.Conference.HeartbeatConfig.Timeout > 30 {
-		return fmt.Errorf("heartbeat.timeout must be 30s or lower")
+	// Make sure the heartbeat values are within sane bounds
+	if config.Conference.HeartbeatConfig.Timeout < 30 && config.Conference.HeartbeatConfig.Timeout > 60*2 {
+		return fmt.Errorf("heartbeat.timeout must be between 30s and 2m")
 	}
-	if config.Conference.HeartbeatConfig.Interval > 30 {
-		return fmt.Errorf("heartbeat.interval must be 30s or lower")
-	}
-
-	if config.Conference.HeartbeatConfig.Timeout < 5 {
-		return fmt.Errorf("heartbeat.timeout must be 5s or higher")
-	}
-	if config.Conference.HeartbeatConfig.Interval > 60*5 {
-		return fmt.Errorf("heartbeat.interval must be 5m or lower")
+	if config.Conference.HeartbeatConfig.Interval < 5 && config.Conference.HeartbeatConfig.Interval > 30 {
+		return fmt.Errorf("heartbeat.interval must be between 5s and 30s")
 	}
 
 	return nil
