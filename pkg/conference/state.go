@@ -55,9 +55,9 @@ func (c *Conference) removeParticipant(participantID ParticipantID) {
 	c.resendMetadataToAllExcept(participantID)
 
 	// Remove the participant's tracks from all participants who might have subscribed to them.
-	obsoleteTracks := []peer.TrackInfo{}
+	obsoleteTracks := []string{}
 	for _, publishedTrack := range participant.publishedTracks {
-		obsoleteTracks = append(obsoleteTracks, publishedTrack.info)
+		obsoleteTracks = append(obsoleteTracks, publishedTrack.info.TrackID)
 	}
 
 	for _, otherParticipant := range c.participants {
@@ -93,21 +93,24 @@ func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.
 	return streamsMetadata
 }
 
-// Helper that returns the list of tracks inside this conference that match the given track IDs.
-func (c *Conference) getTracksInfo(identifiers []event.FocusTrackDescription) []peer.TrackInfo {
-	tracks := make([]peer.TrackInfo, 0)
-	for _, identifier := range identifiers {
+// Helper that returns the list of published tracks inside this conference that match the given track IDs.
+func (c *Conference) getTracksInfo(trackIDs []string) map[string]PublishedTrackInfo {
+	tracks := make(map[string]PublishedTrackInfo)
+	for _, identifier := range trackIDs {
 		found := false
+
 		// Check if this participant has any of the tracks that we're looking for.
 		for _, participant := range c.participants {
-			if track, ok := participant.publishedTracks[identifier.TrackID]; ok {
-				tracks = append(tracks, track.info)
+			published := participant.getPublishedTracksInfo()
+			if track, ok := published[identifier]; ok {
+				tracks[identifier] = track
 				found = true
 				break
 			}
 		}
+
 		if !found {
-			c.logger.Warnf("track not found: %s", identifier.TrackID)
+			c.logger.Warnf("track not found: %s", identifier)
 		}
 	}
 

@@ -10,15 +10,16 @@ import (
 // A callback that is called once we receive first RTP packets from a track, i.e.
 // we call this function each time a new track is received.
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-	// Get the simulcast layer from RID.
-	layer, err := RIDToSimulcastLayer(remoteTrack.RID())
-	if err != nil {
-		p.logger.WithError(err).Error("failed to parse RID")
-		return
+	// Construct a new track info assuming that there is no simulcast.
+	trackInfo := ExtendedTrackInfo{trackInfoFromTrack(remoteTrack), nil}
+
+	// Get the simulcast layer from RID. This is not a simulcast track if `err` is not nil
+	// (might be an audio track or a regular track without the simulcast).
+	if layer, err := RIDToSimulcastLayer(remoteTrack.RID()); err == nil {
+		trackInfo.Layer = &layer
 	}
 
 	// Notify others that our track has just been published.
-	trackInfo := SimulcastTrackInfo{trackInfoFromTrack(remoteTrack), layer}
 	p.sink.Send(NewTrackPublished{trackInfo})
 
 	// Start forwarding the data from the remote track to the local track,

@@ -18,15 +18,15 @@ type LeftTheCall struct {
 }
 
 type NewTrackPublished struct {
-	SimulcastTrackInfo
+	ExtendedTrackInfo
 }
 
 type PublishedTrackFailed struct {
-	SimulcastTrackInfo
+	ExtendedTrackInfo
 }
 
 type RTPPacketReceived struct {
-	SimulcastTrackInfo
+	ExtendedTrackInfo
 	Packet *rtp.Packet
 }
 

@@ -64,3 +64,77 @@ func (p *Participant) sendDataChannelMessage(toSend event.Event) error {
 
 	return nil
 }
+
+type TrackMetadata struct {
+	maxWidth, maxHeight int
+}
+
+func (t TrackMetadata) fullResolution() int {
+	return t.maxWidth * t.maxHeight
+}
+
+func (t TrackMetadata) isVideoTrack() bool {
+	return t.fullResolution() > 0
+}
+
+type PublishedTrackInfo struct {
+	peer.TrackInfo
+	availableLayers []peer.SimulcastLayer
+	metadata        TrackMetadata
+}
+
+func (p *Participant) getPublishedTracksInfo() map[string]PublishedTrackInfo {
+	tracksMetadata := make(map[string]TrackMetadata)
+	for _, metadata := range p.streamMetadata {
+		for id, track := range metadata.Tracks {
+			tracksMetadata[id] = TrackMetadata{
+				maxWidth:  track.Width,
+				maxHeight: track.Height,
+			}
+		}
+	}
+
+	publishedTracksMetadata := make(map[string]PublishedTrackInfo)
+	for id, track := range p.publishedTracks {
+		metadata, ok := tracksMetadata[id]
+
+		if !ok {
+			// We don't have metadata for this track, so we can't send it to the client.
+			p.logger.Warnf("No metadata for published track %s", id)
+			continue
+		}
+
+		publishedTracksMetadata[id] = PublishedTrackInfo{
+			TrackInfo:       track.info,
+			availableLayers: track.layers,
+			metadata:        metadata,
+		}
+	}
+
+	return publishedTracksMetadata
+}
+
+func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int) *peer.SimulcastLayer {
+	// Audio track. For them we don't have any simulcast.
+	if p.metadata.isVideoTrack() {
+		return nil
+	}
+
+	// Video track. Calculate it's full resolution based on a metadata.
+	fullResolution := p.metadata.fullResolution()
+
+	// If no explicit resolution specified, subscribe to the lowest layer.
+	desiredLayer := peer.SimulcastLayerLow
+
+	// Determine which simulcast desiredLayer to subscribe to based on the requested resolution.
+	if requestedWidth != 0 || requestedHeight != 0 {
+		desiredResolution := requestedWidth * requestedHeight
+		if ratio := float32(fullResolution) / float32(desiredResolution); ratio <= 1 {
+			desiredLayer = peer.SimulcastLayerHigh
+		} else if ratio <= 2 {
+			desiredLayer = peer.SimulcastLayerMedium
+		}
+	}
+
+	return &desiredLayer
+}

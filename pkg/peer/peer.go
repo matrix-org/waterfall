@@ -86,30 +86,34 @@ func (p *Peer[ID]) Terminate() {
 }
 
 // Adds given tracks to our peer connection, so that they can be sent to the remote peer.
-func (p *Peer[ID]) SubscribeTo(tracks []TrackInfo) {
+func (p *Peer[ID]) SubscribeTo(tracks []ExtendedTrackInfo) {
 	for _, track := range tracks {
+		// Set the RID if any (would be "" if no simulcast is used).
+		rid, _ := SimulcastLayerToRID(*track.Layer)
+		setRid := webrtc.WithRTPStreamID(rid)
+
 		// Create a new track.
-		rtpTrack, err := webrtc.NewTrackLocalStaticRTP(track.Codec, track.TrackID, track.StreamID)
+		rtpTrack, err := webrtc.NewTrackLocalStaticRTP(track.Codec, track.TrackID, track.StreamID, setRid)
 		if err != nil {
-			p.logger.WithError(err).Error("failed to create track")
+			p.logger.Errorf("Failed to create track: %s", err)
 			continue
 		}
 
 		rtpSender, err := p.peerConnection.AddTrack(rtpTrack)
 		if err != nil {
-			p.logger.WithError(err).Error("failed to add track")
+			p.logger.Errorf("Failed to add track: %s", err)
 			continue
 		}
 
 		// Start reading and forwarding RTP packets.
 		go p.readRTCP(rtpSender)
 
-		p.logger.Infof("subscribed to track: %s", track.TrackID)
+		p.logger.Infof("Subscribed to track: %s", track.TrackID)
 	}
 }
 
 // Unsubscribes from the given list of tracks.
-func (p *Peer[ID]) UnsubscribeFrom(tracks []TrackInfo) {
+func (p *Peer[ID]) UnsubscribeFrom(tracks []string) {
 	// That's unfortunately an O(m*n) operation, but we don't expect the number of tracks to be big.
 	for _, sender := range p.peerConnection.GetSenders() {
 		currentTrack := sender.Track()
@@ -118,9 +122,8 @@ func (p *Peer[ID]) UnsubscribeFrom(tracks []TrackInfo) {
 		}
 
 		for _, trackToUnsubscribe := range tracks {
-			presentTrackID, presentStreamID := currentTrack.ID(), currentTrack.StreamID()
-			trackID, streamID := trackToUnsubscribe.TrackID, trackToUnsubscribe.StreamID
-			if presentTrackID == trackID && presentStreamID == streamID {
+			presentTrackID, trackID := currentTrack.ID(), trackToUnsubscribe
+			if presentTrackID == trackID {
 				if err := p.peerConnection.RemoveTrack(sender); err != nil {
 					p.logger.WithError(err).Error("failed to remove track")
 				} else {
@@ -258,18 +261,27 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 }
 
 // Returns the information about the tracks that we're currently subscribed to.
-func (p *Peer[ID]) GetSubscribedTracks() []TrackInfo {
-	trackInfos := make([]TrackInfo, 0)
+func (p *Peer[ID]) GetSubscribedTracks() map[string]ExtendedTrackInfo {
+	trackInfos := make(map[string]ExtendedTrackInfo, 0)
 	for _, sender := range p.peerConnection.GetSenders() {
 		track, ok := sender.Track().(*webrtc.TrackLocalStaticRTP)
+		layer, err := RIDToSimulcastLayer(track.RID())
 		if ok {
-			trackInfos = append(trackInfos, TrackInfo{
+			basicInfo := TrackInfo{
 				TrackID:  track.ID(),
 				StreamID: track.StreamID(),
 				Codec:    track.Codec(),
-			})
+			}
+
+			simulcast := &layer
+			if err != nil {
+				simulcast = nil
+			}
+
+			trackInfos[track.ID()] = ExtendedTrackInfo{basicInfo, simulcast}
 		}
 	}
+
 	return trackInfos
 }
 

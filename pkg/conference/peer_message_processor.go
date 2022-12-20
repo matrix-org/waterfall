@@ -19,32 +19,47 @@ func (c *Conference) processLeftTheCallMessage(participant *Participant, msg pee
 }
 
 func (c *Conference) processNewTrackPublishedMessage(participant *Participant, msg peer.NewTrackPublished) {
-	participant.logger.Infof("Published new track: %s (%s)", msg.TrackID, msg.Layer.String())
+	participant.logger.Infof("Published new track: %s (%v)", msg.TrackID, msg.Layer)
 
-	if track, ok := participant.publishedTracks[msg.TrackID]; !ok {
+	// If this is a new track, let's add it to the list of published and inform participants.
+	track, found := participant.publishedTracks[msg.TrackID]
+	if !found {
+		layers := []peer.SimulcastLayer{}
+		if msg.Layer != nil {
+			layers = append(layers, *msg.Layer)
+		}
+
 		participant.publishedTracks[msg.TrackID] = PublishedTrack{
 			info:   msg.TrackInfo,
-			layers: []peer.SimulcastLayer{msg.Layer},
+			layers: layers,
 		}
-	} else if !funk.Contains(track.layers, msg.Layer) {
-		track.layers = append(track.layers, msg.Layer)
-		participant.publishedTracks[msg.TrackID] = track
+
+		c.resendMetadataToAllExcept(participant.id)
+		return
 	}
 
-	// TODO: Oops, that's not very efficient with the simulcast since it means that when 3
-	// layers are published, we will send 3 times the same metadata.
-	c.resendMetadataToAllExcept(participant.id)
+	// If it's just a new layer, let's add it to the list of layers of the existing published track.
+	if msg.Layer != nil && !funk.Contains(track.layers, *msg.Layer) {
+		track.layers = append(track.layers, *msg.Layer)
+		participant.publishedTracks[msg.TrackID] = track
+	}
 }
 
 func (c *Conference) processRTPPacketReceivedMessage(participant *Participant, msg peer.RTPPacketReceived) {
-	// For now we just forward the lowest layer always and assume that others don't exist.
-	if msg.Layer != peer.SimulcastLayerLow {
-		// TODO: Very inefficient, use map later on a conference level to improve performance.
-		for _, participant := range c.participants {
-			tracks := participant.peer.GetSubscribedTracks()
-			if funk.Contains(tracks, func(info peer.TrackInfo) bool { return info.TrackID == msg.TrackID }) {
-				participant.peer.WriteRTP(msg.TrackID, msg.Packet)
+	// Iterate over participants and write the RTP to those who are subscribed to the track.
+	// TODO: Very inefficient, use map later on a conference level to improve performance.
+	for _, participant := range c.participants {
+		tracks := participant.peer.GetSubscribedTracks()
+		predicate := func(id string, info peer.ExtendedTrackInfo) bool {
+			idMatch := (id == msg.TrackID)
+			if info.Layer != nil && msg.Layer != nil {
+				return idMatch && *info.Layer == *msg.Layer
 			}
+			return idMatch
+		}
+
+		if funk.Contains(tracks, predicate) {
+			participant.peer.WriteRTP(msg.TrackID, msg.Packet)
 		}
 	}
 }
@@ -58,7 +73,7 @@ func (c *Conference) processPublishedTrackFailedMessage(participant *Participant
 			continue
 		}
 
-		otherParticipant.peer.UnsubscribeFrom([]peer.TrackInfo{msg.TrackInfo})
+		otherParticipant.peer.UnsubscribeFrom([]string{msg.TrackInfo.TrackID})
 	}
 
 	c.resendMetadataToAllExcept(participant.id)
