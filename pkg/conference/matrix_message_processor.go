@@ -25,7 +25,7 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 		"device_id": participantID.DeviceID,
 	})
 
-	logger.Info("Incoming call invite")
+	logger.Info("Incoming participant")
 
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
 	// any existing calls from this device in this call should be terminated.
@@ -98,7 +98,7 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 // our internal peer connection.
 func (c *Conference) onCandidates(participantID ParticipantID, ev *event.CallCandidatesEventContent) {
 	if participant := c.getParticipant(participantID, nil); participant != nil {
-		participant.logger.Info("Received remote ICE candidates")
+		participant.logger.Debug("Received remote ICE candidates")
 
 		// Convert the candidates to the WebRTC format.
 		candidates := make([]webrtc.ICECandidateInit, len(ev.Candidates))

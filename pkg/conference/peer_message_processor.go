@@ -89,14 +89,14 @@ func (c *Conference) processNewICECandidateMessage(participant *Participant, msg
 }
 
 func (c *Conference) processICEGatheringCompleteMessage(participant *Participant, msg peer.ICEGatheringComplete) {
-	participant.logger.Info("Completed local ICE gathering")
+	participant.logger.Debug("Local ICE gathering completed")
 
 	// Send an empty array of candidates to indicate that ICE gathering is complete.
 	c.signaling.SendCandidatesGatheringFinished(participant.asMatrixRecipient())
 }
 
 func (c *Conference) processRenegotiationRequiredMessage(participant *Participant, msg peer.RenegotiationRequired) {
-	participant.logger.Info("Started renegotiation")
+	participant.logger.Info("Renegotiation started, sending SDP offer")
 	participant.sendDataChannelMessage(event.Event{
 		Type: event.FocusCallNegotiate,
 		Content: event.Content{

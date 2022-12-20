@@ -72,6 +72,7 @@ func (c *Conference) processNegotiateDCMessage(participant *Participant, msg eve
 
 	switch msg.Description.Type {
 	case event.CallDataTypeOffer:
+		participant.logger.Info("New offer from peer received")
 		participant.logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP offer over DC")
 
 		answer, err := participant.peer.ProcessSDPOffer(msg.Description.SDP)
@@ -93,6 +94,7 @@ func (c *Conference) processNegotiateDCMessage(participant *Participant, msg eve
 			},
 		})
 	case event.CallDataTypeAnswer:
+		participant.logger.Info("Renegotiation answer received")
 		participant.logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP answer over DC")
 
 		if err := participant.peer.ProcessSDPAnswer(msg.Description.SDP); err != nil {
