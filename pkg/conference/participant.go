@@ -116,8 +116,9 @@ func (p *Participant) getPublishedTracksInfo() map[string]PublishedTrackInfo {
 }
 
 func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int) peer.SimulcastLayer {
-	// Audio track. For them we don't have any simulcast.
-	if !p.metadata.isVideoTrack() {
+	// Audio track. For them we don't have any simulcast. We also don't have any simulcast for video
+	// if there was no simulcast enabled at all.
+	if !p.metadata.isVideoTrack() || len(p.availableLayers) == 0 {
 		return peer.SimulcastLayerNone
 	}
 
@@ -142,5 +143,12 @@ func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int
 		return desiredLayer
 	}
 
-	return peer.SimulcastLayerNone
+	// If the desired layer is not available, find the closest one.
+	// If the check above failed, then we either requested High or Medium.
+	if funk.Contains(p.availableLayers, peer.SimulcastLayerMedium) {
+		return peer.SimulcastLayerMedium
+	}
+
+	// Low is always there, otherwise the `availableLayers` would be empty and we would have returned earlier.
+	return peer.SimulcastLayerLow
 }
