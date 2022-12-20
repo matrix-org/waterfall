@@ -1,8 +1,6 @@
 package peer
 
 import (
-	"fmt"
-
 	"github.com/pion/webrtc/v3"
 )
 
@@ -16,34 +14,35 @@ const (
 type SimulcastLayer int
 
 const (
-	SimulcastLayerLow SimulcastLayer = iota
+	SimulcastLayerNone SimulcastLayer = iota
+	SimulcastLayerLow
 	SimulcastLayerMedium
 	SimulcastLayerHigh
 )
 
-func RIDToSimulcastLayer(rid string) (SimulcastLayer, error) {
+func RIDToSimulcastLayer(rid string) SimulcastLayer {
 	switch rid {
 	case "q": // quarter
-		return SimulcastLayerLow, nil
+		return SimulcastLayerLow
 	case "h": // half
-		return SimulcastLayerMedium, nil
+		return SimulcastLayerMedium
 	case "f": // full
-		return SimulcastLayerHigh, nil
+		return SimulcastLayerHigh
 	default:
-		return 0, fmt.Errorf("unknown rid: %s", rid)
+		return SimulcastLayerNone
 	}
 }
 
-func SimulcastLayerToRID(layer SimulcastLayer) (string, error) {
+func SimulcastLayerToRID(layer SimulcastLayer) string {
 	switch layer {
 	case SimulcastLayerLow:
-		return "q", nil
+		return "q"
 	case SimulcastLayerMedium:
-		return "h", nil
+		return "h"
 	case SimulcastLayerHigh:
-		return "f", nil
+		return "f"
 	default:
-		return "", fmt.Errorf("unknown layer: %d", layer)
+		return ""
 	}
 }
 
@@ -56,7 +55,7 @@ func (s SimulcastLayer) String() string {
 	case SimulcastLayerHigh:
 		return "high"
 	default:
-		return "unknown"
+		return ""
 	}
 }
 
@@ -74,7 +73,7 @@ type ExtendedTrackInfo struct {
 	// Information about a track.
 	TrackInfo
 	// Optional simulcast layer (if any). Would be nil for non-simulcast or audio tracks.
-	Layer *SimulcastLayer
+	Layer SimulcastLayer
 }
 
 func trackInfoFromTrack(track *webrtc.TrackRemote) TrackInfo {

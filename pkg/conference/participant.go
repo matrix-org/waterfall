@@ -8,6 +8,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
+	"github.com/thoas/go-funk"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -114,10 +115,10 @@ func (p *Participant) getPublishedTracksInfo() map[string]PublishedTrackInfo {
 	return publishedTracksMetadata
 }
 
-func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int) *peer.SimulcastLayer {
+func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int) peer.SimulcastLayer {
 	// Audio track. For them we don't have any simulcast.
-	if p.metadata.isVideoTrack() {
-		return nil
+	if !p.metadata.isVideoTrack() {
+		return peer.SimulcastLayerNone
 	}
 
 	// Video track. Calculate it's full resolution based on a metadata.
@@ -136,5 +137,10 @@ func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int
 		}
 	}
 
-	return &desiredLayer
+	// Check if the desired layer available at all.
+	if funk.Contains(p.availableLayers, desiredLayer) {
+		return desiredLayer
+	}
+
+	return peer.SimulcastLayerNone
 }

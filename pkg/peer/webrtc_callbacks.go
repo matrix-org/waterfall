@@ -11,13 +11,7 @@ import (
 // we call this function each time a new track is received.
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	// Construct a new track info assuming that there is no simulcast.
-	trackInfo := ExtendedTrackInfo{trackInfoFromTrack(remoteTrack), nil}
-
-	// Get the simulcast layer from RID. This is not a simulcast track if `err` is not nil
-	// (might be an audio track or a regular track without the simulcast).
-	if layer, err := RIDToSimulcastLayer(remoteTrack.RID()); err == nil {
-		trackInfo.Layer = &layer
-	}
+	trackInfo := ExtendedTrackInfo{trackInfoFromTrack(remoteTrack), RIDToSimulcastLayer(remoteTrack.RID())}
 
 	// Notify others that our track has just been published.
 	p.sink.Send(NewTrackPublished{trackInfo})

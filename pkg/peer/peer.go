@@ -89,8 +89,7 @@ func (p *Peer[ID]) Terminate() {
 func (p *Peer[ID]) SubscribeTo(tracks []ExtendedTrackInfo) {
 	for _, track := range tracks {
 		// Set the RID if any (would be "" if no simulcast is used).
-		rid, _ := SimulcastLayerToRID(*track.Layer)
-		setRid := webrtc.WithRTPStreamID(rid)
+		setRid := webrtc.WithRTPStreamID(SimulcastLayerToRID(track.Layer))
 
 		// Create a new track.
 		rtpTrack, err := webrtc.NewTrackLocalStaticRTP(track.Codec, track.TrackID, track.StreamID, setRid)
@@ -264,21 +263,14 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 func (p *Peer[ID]) GetSubscribedTracks() map[string]ExtendedTrackInfo {
 	trackInfos := make(map[string]ExtendedTrackInfo, 0)
 	for _, sender := range p.peerConnection.GetSenders() {
-		track, ok := sender.Track().(*webrtc.TrackLocalStaticRTP)
-		layer, err := RIDToSimulcastLayer(track.RID())
-		if ok {
+		if track, ok := sender.Track().(*webrtc.TrackLocalStaticRTP); ok {
 			basicInfo := TrackInfo{
 				TrackID:  track.ID(),
 				StreamID: track.StreamID(),
 				Codec:    track.Codec(),
 			}
 
-			simulcast := &layer
-			if err != nil {
-				simulcast = nil
-			}
-
-			trackInfos[track.ID()] = ExtendedTrackInfo{basicInfo, simulcast}
+			trackInfos[track.ID()] = ExtendedTrackInfo{basicInfo, RIDToSimulcastLayer(track.RID())}
 		}
 	}
 

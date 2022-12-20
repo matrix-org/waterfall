@@ -25,8 +25,8 @@ func (c *Conference) processNewTrackPublishedMessage(participant *Participant, m
 	track, found := participant.publishedTracks[msg.TrackID]
 	if !found {
 		layers := []peer.SimulcastLayer{}
-		if msg.Layer != nil {
-			layers = append(layers, *msg.Layer)
+		if msg.Layer != peer.SimulcastLayerNone {
+			layers = append(layers, msg.Layer)
 		}
 
 		participant.publishedTracks[msg.TrackID] = PublishedTrack{
@@ -39,8 +39,8 @@ func (c *Conference) processNewTrackPublishedMessage(participant *Participant, m
 	}
 
 	// If it's just a new layer, let's add it to the list of layers of the existing published track.
-	if msg.Layer != nil && !funk.Contains(track.layers, *msg.Layer) {
-		track.layers = append(track.layers, *msg.Layer)
+	if msg.Layer != peer.SimulcastLayerNone && !funk.Contains(track.layers, msg.Layer) {
+		track.layers = append(track.layers, msg.Layer)
 		participant.publishedTracks[msg.TrackID] = track
 	}
 }
@@ -51,11 +51,7 @@ func (c *Conference) processRTPPacketReceivedMessage(participant *Participant, m
 	for _, participant := range c.participants {
 		tracks := participant.peer.GetSubscribedTracks()
 		predicate := func(id string, info peer.ExtendedTrackInfo) bool {
-			idMatch := (id == msg.TrackID)
-			if info.Layer != nil && msg.Layer != nil {
-				return idMatch && *info.Layer == *msg.Layer
-			}
-			return idMatch
+			return id == msg.TrackID && info.Layer == msg.Layer
 		}
 
 		if funk.Contains(tracks, predicate) {

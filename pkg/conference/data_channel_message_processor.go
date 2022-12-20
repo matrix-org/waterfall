@@ -3,7 +3,6 @@ package conference
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
-	"github.com/thoas/go-funk"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -53,7 +52,7 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 		// we're subscribed to a different simulcast layer of the track, in which case we know that
 		// the user wants to switch to a different simulcast layer: then we check if the given simulcast
 		// layer is available at all and only if it's available, we switch, otherwise we ignore the request.
-		if subscribedTrack.Layer != desiredLayer && funk.Contains(track.availableLayers, desiredLayer) {
+		if subscribedTrack.Layer != desiredLayer {
 			// If we're already subscribed, but to a different simulcast layer, then we need to remove the track.
 			toUnsubscribeTrackIDs = append(toUnsubscribeTrackIDs, id)
 			// And add again, this time with a proper simulcast layer.
