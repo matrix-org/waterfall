@@ -31,7 +31,7 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 
 	// Iterate over all published tracks that correspond to the track IDs we want to subscribe to.
 	for id, track := range c.getTracksInfo(toSubscribeTrackIDs) {
-		// Get tre tracks we're subscribed to.
+		// Get the tracks we're subscribed to.
 		alreadySubscribedTo := participant.peer.GetSubscribedTracks()
 
 		// Let's find out if we're already subscribed to a given track.

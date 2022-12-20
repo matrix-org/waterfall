@@ -129,7 +129,7 @@ func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int
 	desiredLayer := peer.SimulcastLayerLow
 
 	// Determine which simulcast desiredLayer to subscribe to based on the requested resolution.
-	if requestedWidth != 0 || requestedHeight != 0 {
+	if requestedWidth != 0 && requestedHeight != 0 {
 		desiredResolution := requestedWidth * requestedHeight
 		if ratio := float32(fullResolution) / float32(desiredResolution); ratio <= 1 {
 			desiredLayer = peer.SimulcastLayerHigh

@@ -9,7 +9,6 @@ import (
 
 // Creates Pion's WebRTC API that has all required extensions configured (such as simulcast).
 func createWebRTCAPI() (*webrtc.API, error) {
-	// Enable Extension Headers needed for Simulcast.
 	mediaEngine := &webrtc.MediaEngine{}
 	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
 		return nil, fmt.Errorf("failed to register default codecs: %w", err)

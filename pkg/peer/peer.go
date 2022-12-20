@@ -104,7 +104,7 @@ func (p *Peer[ID]) SubscribeTo(tracks []ExtendedTrackInfo) {
 			continue
 		}
 
-		// Start reading and forwarding RTP packets.
+		// Start reading and forwarding RTCP packets.
 		go p.readRTCP(rtpSender)
 
 		p.logger.Infof("Subscribed to track: %s", track.TrackID)
