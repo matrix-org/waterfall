@@ -115,6 +115,7 @@ func (p *Participant) getPublishedTracksInfo() map[string]PublishedTrackInfo {
 	return publishedTracksMetadata
 }
 
+// Calculate the layer that we can use based on the requirements passed as parameters and available layers.
 func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int) peer.SimulcastLayer {
 	// Audio track. For them we don't have any simulcast. We also don't have any simulcast for video
 	// if there was no simulcast enabled at all.
@@ -139,16 +140,38 @@ func (p *PublishedTrackInfo) getDesiredLayer(requestedWidth, requestedHeight int
 	}
 
 	// Check if the desired layer available at all.
+	// If the desired layer is not available, we'll find the closest one.
 	if funk.Contains(p.availableLayers, desiredLayer) {
 		return desiredLayer
 	}
 
-	// If the desired layer is not available, find the closest one.
-	// If the check above failed, then we either requested High or Medium.
+	// If we wanted high, but high is not available, let's try to see if medium is there.
+	if desiredLayer == peer.SimulcastLayerHigh {
+		if funk.Contains(p.availableLayers, peer.SimulcastLayerMedium) {
+			return peer.SimulcastLayerMedium
+		}
+
+		// Low is always there, otherwise the `availableLayers` would be empty and we would have returned earlier.
+		return peer.SimulcastLayerLow
+	}
+
+	// If we requested medium and it's not available, we return low (unless the only available layer is high).
+	if desiredLayer == peer.SimulcastLayerMedium {
+		if funk.Contains(p.availableLayers, peer.SimulcastLayerLow) {
+			return peer.SimulcastLayerLow
+		}
+
+		// Apparently there is only single layer available: high, then we must send it. Maybe others has not yet
+		// been published - the client can always re-request a different quality later if needed.
+		return peer.SimulcastLayerHigh
+	}
+
+	// If we got here, then the low layer was requested, but it's not available.
+	// Let's try to return medium then if it's available.
 	if funk.Contains(p.availableLayers, peer.SimulcastLayerMedium) {
 		return peer.SimulcastLayerMedium
 	}
 
-	// Low is always there, otherwise the `availableLayers` would be empty and we would have returned earlier.
+	// No other choice rather than sending low.
 	return peer.SimulcastLayerLow
 }
