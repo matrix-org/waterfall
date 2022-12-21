@@ -278,8 +278,7 @@ func (p *Peer[ID]) GetSubscribedTracks() map[string]ExtendedTrackInfo {
 }
 
 // Read incoming RTCP packets
-// Before these packets are returned they are processed by interceptors. For things
-// like NACK this needs to be called.
+// Before these packets are returned they are processed by interceptors.
 func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
 	for {
 		packets, _, err := rtpSender.ReadRTCP()
@@ -302,6 +301,11 @@ func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
 			}
 		}
 
-		p.sink.Send(RTCPReceived{Packets: toForward, TrackID: rtpSender.Track().ID()})
+		track := rtpSender.Track()
+		if track == nil {
+			return
+		}
+
+		p.sink.Send(RTCPReceived{Packets: toForward, TrackID: track.ID()})
 	}
 }
