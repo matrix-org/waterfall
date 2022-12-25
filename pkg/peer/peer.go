@@ -8,7 +8,6 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/rtcp"
-	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/slices"
@@ -98,29 +97,6 @@ func (p *Peer[ID]) SubscribeTo(track ExtendedTrackInfo) *Subscription {
 
 	p.logger.Infof("Subscribed to track: %s (%s)", track.TrackID, track.Layer.String())
 	return subscription
-}
-
-// Writes an RTP packet to a given track.
-func (p *Peer[ID]) WriteRTP(trackID string, packet *rtp.Packet) error {
-	// Find the right track.
-	senders := p.peerConnection.GetSenders()
-	senderIndex := slices.IndexFunc(senders, func(sender *webrtc.RTPSender) bool {
-		return sender.Track() != nil && sender.Track().ID() == trackID
-	})
-	if senderIndex == -1 {
-		return ErrTrackNotFound
-	}
-
-	localTrack, ok := senders[senderIndex].Track().(*webrtc.TrackLocalStaticRTP)
-	if !ok {
-		return ErrTrackNotFound
-	}
-
-	if err := localTrack.WriteRTP(packet); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // Writes the specified packets to the `trackID`.
@@ -224,24 +200,6 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 	}
 
 	return &answer, nil
-}
-
-// Returns the information about the tracks that we're currently subscribed to.
-func (p *Peer[ID]) GetSubscribedTracks() map[string]ExtendedTrackInfo {
-	trackInfos := make(map[string]ExtendedTrackInfo, 0)
-	for _, sender := range p.peerConnection.GetSenders() {
-		if track, ok := sender.Track().(*webrtc.TrackLocalStaticRTP); ok {
-			basicInfo := TrackInfo{
-				TrackID:  track.ID(),
-				StreamID: track.StreamID(),
-				Codec:    track.Codec(),
-			}
-
-			trackInfos[track.ID()] = ExtendedTrackInfo{basicInfo, RIDToSimulcastLayer(track.RID())}
-		}
-	}
-
-	return trackInfos
 }
 
 // Read incoming RTCP packets
