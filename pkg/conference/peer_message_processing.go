@@ -116,7 +116,9 @@ func (c *Conference) processDataChannelAvailableMessage(p *participant.Participa
 }
 
 func (c *Conference) processRTCPPackets(p *participant.Participant, msg peer.RTCPReceived) {
-	c.tracker.ProcessRTCP(p, msg.TrackID, msg.Packets)
+	if err := c.tracker.ProcessRTCP(msg.TrackID, msg.Packets); err != nil {
+		p.Logger.Errorf("Failed to process RTCP packets: %v", err)
+	}
 }
 
 // Handle the `FocusEvent` from the DataChannel message.

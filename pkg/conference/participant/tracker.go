@@ -1,6 +1,7 @@
 package participant
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/peer"
@@ -194,24 +195,35 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 // Processes an RTP packet received on a given track.
 func (t *Tracker) ProcessRTP(info peer.ExtendedTrackInfo, packet *rtp.Packet) {
 	for _, subscription := range t.subscribers[info.TrackID] {
-		// We can't compare 2 structs in Go in many cases without using slow reflection,
-		// so we compare the relevant fields manually.
-		subscriptionInfo := subscription.TrackInfo()
-		if subscriptionInfo.TrackID == info.TrackID && subscriptionInfo.Layer == info.Layer {
+		if subscription.TrackInfo().Layer == info.Layer {
 			subscription.WriteRTP(packet)
 		}
 	}
 }
 
 // Processes RTCP packets received on a given track.
-func (t *Tracker) ProcessRTCP(participant *Participant, trackID TrackID, packets []peer.RTCPPacketType) {
+func (t *Tracker) ProcessRTCP(trackID TrackID, packets []peer.RTCPPacketType) error {
 	const sendKeyFrameInterval = 500 * time.Millisecond
 
-	if published, found := t.publishedTracks[trackID]; found {
-		if published.canSendKeyframeAt.Before(time.Now()) {
-			if err := participant.Peer.WriteRTCP(trackID, packets); err == nil {
-				published.canSendKeyframeAt = time.Now().Add(sendKeyFrameInterval)
-			}
-		}
+	published, found := t.publishedTracks[trackID]
+	if !found {
+		return fmt.Errorf("no such track: %s", trackID)
 	}
+
+	participant := t.GetParticipant(published.Owner)
+	if participant == nil {
+		return fmt.Errorf("no such participant: %s", published.Owner)
+	}
+
+	// We don't want to send keyframes too often, so we'll send them only once in a while.
+	if published.canSendKeyframeAt.Before(time.Now()) {
+		if err := participant.Peer.WriteRTCP(trackID, packets); err != nil {
+			return err
+		}
+
+		published.canSendKeyframeAt = time.Now().Add(sendKeyFrameInterval)
+		t.publishedTracks[trackID] = published
+	}
+
+	return nil
 }
