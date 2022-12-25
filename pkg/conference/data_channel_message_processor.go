@@ -8,7 +8,8 @@ import (
 
 // Handle the `FocusEvent` from the DataChannel message.
 func (c *Conference) processTrackSubscriptionDCMessage(
-	participant *Participant, msg event.FocusCallTrackSubscriptionEventContent,
+	participant *Participant,
+	msg event.FocusCallTrackSubscriptionEventContent,
 ) {
 	participant.logger.Debug("Received track subscription request over DC")
 
@@ -20,7 +21,7 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 
 	// Extract IDs and desired resolution of tracks we want to subscribe to.
 	toSubscribeTrackIDs := make([]string, 0, len(msg.Subscribe))
-	toSubscribeRequirements := make(map[string]TrackMetadata, len(msg.Subscribe))
+	toSubscribeRequirements := make(map[string]TrackMetadata)
 	for _, track := range msg.Subscribe {
 		toSubscribeTrackIDs = append(toSubscribeTrackIDs, track.TrackID)
 		toSubscribeRequirements[track.TrackID] = TrackMetadata{track.Width, track.Height}
@@ -30,12 +31,12 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 	subscribeTo := []peer.ExtendedTrackInfo{}
 
 	// Iterate over all published tracks that correspond to the track IDs we want to subscribe to.
-	for id, track := range c.getTracksInfo(toSubscribeTrackIDs) {
-		// Get the tracks we're subscribed to.
-		alreadySubscribedTo := participant.peer.GetSubscribedTracks()
+	for id, track := range c.findPublishedTracks(toSubscribeTrackIDs) {
+		// Get subscribers of this track.
+		subscribers := c.tracker.getSubscribers(id)
 
-		// Let's find out if we're already subscribed to a given track.
-		subscribedTrack, alreadySubscribed := alreadySubscribedTo[id]
+		// Let's find out if we're in a list of such subscribers.
+		subscription, alreadySubscribed := subscribers[participant.id]
 
 		// Calculate the desired simulcast layer if any.
 		requirements := toSubscribeRequirements[id]
@@ -44,7 +45,7 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 		// If we're not subscribed to the track, let's subscribe to it respecting
 		// the desired track parameters that the user specified in a request.
 		if !alreadySubscribed {
-			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.TrackInfo, desiredLayer})
+			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.info, desiredLayer})
 			continue
 		}
 
@@ -52,23 +53,23 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 		// we're subscribed to a different simulcast layer of the track, in which case we know that
 		// the user wants to switch to a different simulcast layer: then we check if the given simulcast
 		// layer is available at all and only if it's available, we switch, otherwise we ignore the request.
-		if subscribedTrack.Layer != desiredLayer {
+		if subscription.TrackInfo().Layer != desiredLayer {
 			// If we're already subscribed, but to a different simulcast layer, then we need to remove the track.
 			toUnsubscribeTrackIDs = append(toUnsubscribeTrackIDs, id)
 			// And add again, this time with a proper simulcast layer.
-			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.TrackInfo, desiredLayer})
+			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.info, desiredLayer})
 			continue
 		}
 
 		participant.logger.Warnf("Ignoring track subscription request for %s: already subscribed", id)
 	}
 
-	participant.peer.UnsubscribeFrom(toUnsubscribeTrackIDs)
-	participant.peer.SubscribeTo(subscribeTo)
+	c.tracker.Unsubscribe(participant.id, toUnsubscribeTrackIDs)
+	c.tracker.Subscribe(participant.id, subscribeTo)
 }
 
 func (c *Conference) processNegotiateDCMessage(participant *Participant, msg event.FocusCallNegotiateEventContent) {
-	participant.streamMetadata = msg.SDPStreamMetadata
+	c.updateMetadata(msg.SDPStreamMetadata)
 
 	switch msg.Description.Type {
 	case event.CallDataTypeOffer:
@@ -116,6 +117,6 @@ func (c *Conference) processPongDCMessage(participant *Participant) {
 func (c *Conference) processMetadataDCMessage(
 	participant *Participant, msg event.FocusCallSDPStreamMetadataChangedEventContent,
 ) {
-	participant.streamMetadata = msg.SDPStreamMetadata
+	c.updateMetadata(msg.SDPStreamMetadata)
 	c.resendMetadataToAllExcept(participant.id)
 }

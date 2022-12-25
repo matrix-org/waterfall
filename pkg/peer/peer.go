@@ -86,51 +86,18 @@ func (p *Peer[ID]) Terminate() {
 }
 
 // Adds given tracks to our peer connection, so that they can be sent to the remote peer.
-func (p *Peer[ID]) SubscribeTo(tracks []ExtendedTrackInfo) {
-	for _, track := range tracks {
-		// Set the RID if any (would be "" if no simulcast is used).
-		setRid := webrtc.WithRTPStreamID(SimulcastLayerToRID(track.Layer))
-
-		// Create a new track.
-		rtpTrack, err := webrtc.NewTrackLocalStaticRTP(track.Codec, track.TrackID, track.StreamID, setRid)
-		if err != nil {
-			p.logger.Errorf("Failed to create track: %s", err)
-			continue
-		}
-
-		rtpSender, err := p.peerConnection.AddTrack(rtpTrack)
-		if err != nil {
-			p.logger.Errorf("Failed to add track: %s", err)
-			continue
-		}
-
-		// Start reading and forwarding RTCP packets.
-		go p.readRTCP(rtpSender)
-
-		p.logger.Infof("Subscribed to track: %s", track.TrackID)
+func (p *Peer[ID]) SubscribeTo(track ExtendedTrackInfo) *Subscription {
+	subscription, err := NewSubscription(track, ConnectionWrapper{p.peerConnection})
+	if err != nil {
+		p.logger.Errorf("Failed to subscribe to track: %s", err)
+		return nil
 	}
-}
 
-// Unsubscribes from the given list of tracks.
-func (p *Peer[ID]) UnsubscribeFrom(tracks []string) {
-	// That's unfortunately an O(m*n) operation, but we don't expect the number of tracks to be big.
-	for _, sender := range p.peerConnection.GetSenders() {
-		currentTrack := sender.Track()
-		if currentTrack == nil {
-			continue
-		}
+	// Start reading and forwarding RTCP packets.
+	go p.readRTCP(subscription.rtpSender)
 
-		for _, trackToUnsubscribe := range tracks {
-			presentTrackID, trackID := currentTrack.ID(), trackToUnsubscribe
-			if presentTrackID == trackID {
-				if err := p.peerConnection.RemoveTrack(sender); err != nil {
-					p.logger.WithError(err).Error("failed to remove track")
-				} else {
-					p.logger.Infof("unsubscribed from track: %s", trackID)
-				}
-			}
-		}
-	}
+	p.logger.Infof("Subscribed to track: %s (%s)", track.TrackID, track.Layer.String())
+	return subscription
 }
 
 // Writes an RTP packet to a given track.

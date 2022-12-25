@@ -29,7 +29,7 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
 	// any existing calls from this device in this call should be terminated.
-	if participant := c.participants[participantID]; participant != nil {
+	if participant := c.tracker.getParticipant(participantID); participant != nil {
 		if participant.remoteSessionID == inviteEvent.SenderSessionID {
 			c.logger.Errorf("Found existing participant with equal DeviceID and SessionID")
 		} else {
@@ -37,7 +37,7 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 		}
 	}
 
-	participant := c.participants[participantID]
+	participant := c.getParticipant(participantID, nil)
 	var sdpAnswer *webrtc.SessionDescription
 
 	// If participant exists still exists, then it means that the client does not behave properly.
@@ -77,20 +77,20 @@ func (c *Conference) onNewParticipant(participantID ParticipantID, inviteEvent *
 			peer:            peerConnection,
 			logger:          logger,
 			remoteSessionID: inviteEvent.SenderSessionID,
-			streamMetadata:  inviteEvent.SDPStreamMetadata,
-			publishedTracks: make(map[string]PublishedTrack),
 			heartbeatPong:   heartbeat.Start(),
 		}
 
-		c.participants[participantID] = participant
+		c.tracker.addParticipant(participant)
 		sdpAnswer = answer
 	}
 
+	// Update streams metadata.
+	c.updateMetadata(inviteEvent.SDPStreamMetadata)
+
 	// Send the answer back to the remote peer.
-	recipient := participant.asMatrixRecipient()
-	streamMetadata := c.getAvailableStreamsFor(participantID)
 	participant.logger.WithField("sdpAnswer", sdpAnswer.SDP).Debug("Sending SDP answer")
-	c.signaling.SendSDPAnswer(recipient, streamMetadata, sdpAnswer.SDP)
+	recipient := participant.asMatrixRecipient()
+	c.signaling.SendSDPAnswer(recipient, c.getAvailableStreamsFor(participantID), sdpAnswer.SDP)
 	return nil
 }
 
@@ -134,7 +134,7 @@ func (c *Conference) onSelectAnswer(participantID ParticipantID, ev *event.CallS
 
 // Process a message from the remote peer telling that it wants to hang up the call.
 func (c *Conference) onHangup(participantID ParticipantID, ev *event.CallHangupEventContent) {
-	if participant := c.participants[participantID]; participant != nil {
+	if participant := c.getParticipant(participantID, nil); participant != nil {
 		participant.logger.Info("Received remote hangup")
 		c.removeParticipant(participantID)
 	}

@@ -15,23 +15,23 @@ type Conference struct {
 	logger      *logrus.Entry
 	endNotifier ConferenceEndNotifier
 
-	signaling    signaling.MatrixSignaling
-	participants map[ParticipantID]*Participant
+	signaling       signaling.MatrixSignaling
+	tracker         ParticipantTracker
+	streamsMetadata event.CallSDPStreamMetadata
 
 	peerMessages   chan common.Message[ParticipantID, peer.MessageContent]
 	matrixMessages common.Receiver[MatrixMessage]
 }
 
 func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMessage error) *Participant {
-	participant, ok := c.participants[participantID]
-	if !ok {
+	participant := c.tracker.getParticipant(participantID)
+
+	if participant == nil {
 		if optionalErrorMessage != nil {
 			c.logger.WithError(optionalErrorMessage)
 		} else {
 			c.logger.Error("Participant not found")
 		}
-
-		return nil
 	}
 
 	return participant
@@ -39,53 +39,34 @@ func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMe
 
 // Helper to terminate and remove a participant from the conference.
 func (c *Conference) removeParticipant(participantID ParticipantID) {
-	participant := c.getParticipant(participantID, nil)
-	if participant == nil {
-		return
+	// Remove the participant and then remove its streams from the map.
+	for streamID := range c.tracker.removeParticipant(participantID) {
+		delete(c.streamsMetadata, streamID)
 	}
-
-	// Terminate the participant and remove it from the list.
-	participant.peer.Terminate()
-	close(participant.heartbeatPong)
-	delete(c.participants, participantID)
 
 	// Inform the other participants about updated metadata (since the participant left
 	// the corresponding streams of the participant are no longer available, so we're informing
 	// others about it).
 	c.resendMetadataToAllExcept(participantID)
-
-	// Remove the participant's tracks from all participants who might have subscribed to them.
-	obsoleteTracks := []string{}
-	for _, publishedTrack := range participant.publishedTracks {
-		obsoleteTracks = append(obsoleteTracks, publishedTrack.info.TrackID)
-	}
-
-	for _, otherParticipant := range c.participants {
-		otherParticipant.peer.UnsubscribeFrom(obsoleteTracks)
-	}
 }
 
 // Helper to get the list of available streams for a given participant, i.e. the list of streams
 // that a given participant **can subscribe to**. Each stream may have multiple tracks.
 func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.CallSDPStreamMetadata {
 	streamsMetadata := make(event.CallSDPStreamMetadata)
-	for id, participant := range c.participants {
+	for trackID, track := range c.tracker.publishedTracks {
 		// Skip us. As we know about our own tracks.
-		if forParticipant != id {
-			// Now, find out which of published tracks belong to the streams for which we have metadata
-			// available and construct a metadata map for a given participant based on that.
-			for _, track := range participant.publishedTracks {
-				trackID, streamID := track.info.TrackID, track.info.StreamID
+		if track.owner != forParticipant {
+			streamID := track.info.StreamID
 
-				if metadata, ok := streamsMetadata[streamID]; ok {
-					metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{}
-					streamsMetadata[streamID] = metadata
-				} else if metadata, ok := participant.streamMetadata[streamID]; ok {
-					metadata.Tracks = event.CallSDPStreamMetadataTracks{trackID: event.CallSDPStreamMetadataTrack{}}
-					streamsMetadata[streamID] = metadata
-				} else {
-					participant.logger.Warnf("Don't have metadata for stream %s", streamID)
-				}
+			if metadata, ok := streamsMetadata[streamID]; ok {
+				metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{}
+				streamsMetadata[streamID] = metadata
+			} else if metadata, ok := c.streamsMetadata[streamID]; ok {
+				metadata.Tracks = event.CallSDPStreamMetadataTracks{trackID: event.CallSDPStreamMetadataTrack{}}
+				streamsMetadata[streamID] = metadata
+			} else {
+				c.logger.Warnf("Don't have metadata for stream %s", streamID)
 			}
 		}
 	}
@@ -94,24 +75,16 @@ func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.
 }
 
 // Helper that returns the list of published tracks inside this conference that match the given track IDs.
-func (c *Conference) getTracksInfo(trackIDs []string) map[string]PublishedTrackInfo {
-	tracks := make(map[string]PublishedTrackInfo)
+func (c *Conference) findPublishedTracks(trackIDs []string) map[string]PublishedTrack {
+	tracks := make(map[string]PublishedTrack)
 	for _, identifier := range trackIDs {
-		found := false
-
 		// Check if this participant has any of the tracks that we're looking for.
-		for _, participant := range c.participants {
-			published := participant.getPublishedTracksInfo()
-			if track, ok := published[identifier]; ok {
-				tracks[identifier] = track
-				found = true
-				break
-			}
+		if track, ok := c.tracker.publishedTracks[identifier]; ok {
+			tracks[identifier] = track
+			continue
 		}
 
-		if !found {
-			c.logger.Warnf("track not found: %s", identifier)
-		}
+		c.logger.Warnf("track not found: %s", identifier)
 	}
 
 	return tracks
@@ -119,7 +92,7 @@ func (c *Conference) getTracksInfo(trackIDs []string) map[string]PublishedTrackI
 
 // Helper that sends current metadata about all available tracks to all participants except a given one.
 func (c *Conference) resendMetadataToAllExcept(exceptMe ParticipantID) {
-	for participantID, participant := range c.participants {
+	for participantID, participant := range c.tracker.participants {
 		if participantID != exceptMe {
 			participant.sendDataChannelMessage(event.Event{
 				Type: event.FocusCallSDPStreamMetadataChanged,
@@ -131,4 +104,37 @@ func (c *Conference) resendMetadataToAllExcept(exceptMe ParticipantID) {
 			})
 		}
 	}
+}
+
+// Helper that updates the metadata each time the metadata is received.
+func (c *Conference) updateMetadata(metadata event.CallSDPStreamMetadata) {
+	// Note that this assumes that the stream IDs are unique, which is not always so!
+	// Yet, our previous implementation of the SFU has always combined the metadata for all available
+	// streams when notifying other participants in a call about any changes, so it implicitly expected
+	// them to be unique. This is something that we may want to change when switching to the mid-based
+	// signaling in the future.
+	for stream, content := range metadata {
+		c.streamsMetadata[stream] = content
+	}
+
+	for trackID, metadata := range streamIntoTrackMetadata(metadata) {
+		if track, found := c.tracker.publishedTracks[trackID]; found {
+			track.metadata = metadata
+			c.tracker.publishedTracks[trackID] = track
+		}
+	}
+}
+
+func streamIntoTrackMetadata(streamMetadata event.CallSDPStreamMetadata) map[TrackID]TrackMetadata {
+	tracksMetadata := make(map[string]TrackMetadata)
+	for _, metadata := range streamMetadata {
+		for id, track := range metadata.Tracks {
+			tracksMetadata[id] = TrackMetadata{
+				maxWidth:  track.Width,
+				maxHeight: track.Height,
+			}
+		}
+	}
+
+	return tracksMetadata
 }

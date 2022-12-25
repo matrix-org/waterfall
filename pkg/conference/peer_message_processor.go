@@ -1,10 +1,7 @@
 package conference
 
 import (
-	"time"
-
 	"github.com/matrix-org/waterfall/pkg/peer"
-	"github.com/thoas/go-funk"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -21,57 +18,21 @@ func (c *Conference) processLeftTheCallMessage(participant *Participant, msg pee
 func (c *Conference) processNewTrackPublishedMessage(participant *Participant, msg peer.NewTrackPublished) {
 	participant.logger.Infof("Published new track: %s (%v)", msg.TrackID, msg.Layer)
 
-	// If this is a new track, let's add it to the list of published and inform participants.
-	track, found := participant.publishedTracks[msg.TrackID]
-	if !found {
-		layers := []peer.SimulcastLayer{}
-		if msg.Layer != peer.SimulcastLayerNone {
-			layers = append(layers, msg.Layer)
-		}
+	// Find metadata for a given track.
+	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[msg.TrackID]
 
-		participant.publishedTracks[msg.TrackID] = PublishedTrack{
-			info:   msg.TrackInfo,
-			layers: layers,
-		}
-
-		c.resendMetadataToAllExcept(participant.id)
-		return
-	}
-
-	// If it's just a new layer, let's add it to the list of layers of the existing published track.
-	if msg.Layer != peer.SimulcastLayerNone && !funk.Contains(track.layers, msg.Layer) {
-		track.layers = append(track.layers, msg.Layer)
-		participant.publishedTracks[msg.TrackID] = track
-	}
+	// If a new track has been published, we inform everyone about new track available.
+	c.tracker.addTrack(participant.id, msg.ExtendedTrackInfo, trackMetadata)
+	c.resendMetadataToAllExcept(participant.id)
 }
 
 func (c *Conference) processRTPPacketReceivedMessage(participant *Participant, msg peer.RTPPacketReceived) {
-	// Iterate over participants and write the RTP to those who are subscribed to the track.
-	// TODO: Very inefficient, use map later on a conference level to improve performance.
-	for _, participant := range c.participants {
-		tracks := participant.peer.GetSubscribedTracks()
-		predicate := func(id string, info peer.ExtendedTrackInfo) bool {
-			return id == msg.TrackID && info.Layer == msg.Layer
-		}
-
-		if funk.Contains(tracks, predicate) {
-			participant.peer.WriteRTP(msg.TrackID, msg.Packet)
-		}
-	}
+	c.tracker.processRTP(msg.ExtendedTrackInfo, msg.Packet)
 }
 
 func (c *Conference) processPublishedTrackFailedMessage(participant *Participant, msg peer.PublishedTrackFailed) {
 	participant.logger.Infof("Failed published track: %s", msg.TrackID)
-	delete(participant.publishedTracks, msg.TrackID)
-
-	for _, otherParticipant := range c.participants {
-		if otherParticipant.id == participant.id {
-			continue
-		}
-
-		otherParticipant.peer.UnsubscribeFrom([]string{msg.TrackInfo.TrackID})
-	}
-
+	c.tracker.removeTrack(msg.TrackID)
 	c.resendMetadataToAllExcept(participant.id)
 }
 
@@ -152,18 +113,6 @@ func (c *Conference) processDataChannelAvailableMessage(participant *Participant
 	})
 }
 
-func (c *Conference) processRTCPPackets(msg peer.RTCPReceived) {
-	const sendKeyFrameInterval = 500 * time.Millisecond
-
-	for _, participant := range c.participants {
-		if published, ok := participant.publishedTracks[msg.TrackID]; ok {
-			if published.canSendKeyframeAt.Before(time.Now()) {
-				if err := participant.peer.WriteRTCP(msg.TrackID, msg.Packets); err == nil {
-					published.canSendKeyframeAt = time.Now().Add(sendKeyFrameInterval)
-				} else {
-					c.logger.Errorf("Failed to send RTCP packets: %v", err)
-				}
-			}
-		}
-	}
+func (c *Conference) processRTCPPackets(participant *Participant, msg peer.RTCPReceived) {
+	c.tracker.processRTCP(participant, msg.TrackID, msg.Packets)
 }

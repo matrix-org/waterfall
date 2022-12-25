@@ -83,3 +83,15 @@ func trackInfoFromTrack(track *webrtc.TrackRemote) TrackInfo {
 		Codec:    track.Codec().RTPCodecCapability,
 	}
 }
+
+type ConnectionWrapper struct {
+	connection *webrtc.PeerConnection
+}
+
+func (c ConnectionWrapper) Subscribe(track *webrtc.TrackLocalStaticRTP) (*webrtc.RTPSender, error) {
+	return c.connection.AddTrack(track)
+}
+
+func (c ConnectionWrapper) Unsubscribe(sender *webrtc.RTPSender) error {
+	return c.connection.RemoveTrack(sender)
+}

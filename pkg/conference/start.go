@@ -37,14 +37,15 @@ func StartConference(
 	sender, receiver := common.NewChannel[MatrixMessage]()
 
 	conference := &Conference{
-		id:             confID,
-		config:         config,
-		signaling:      signaling,
-		matrixMessages: receiver,
-		endNotifier:    conferenceEndNotifier,
-		participants:   make(map[ParticipantID]*Participant),
-		peerMessages:   make(chan common.Message[ParticipantID, peer.MessageContent], common.UnboundedChannelSize),
-		logger:         logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		id:              confID,
+		config:          config,
+		logger:          logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		signaling:       signaling,
+		tracker:         *NewParticipantTracker(),
+		streamsMetadata: make(event.CallSDPStreamMetadata),
+		endNotifier:     conferenceEndNotifier,
+		peerMessages:    make(chan common.Message[ParticipantID, peer.MessageContent], common.UnboundedChannelSize),
+		matrixMessages:  receiver,
 	}
 
 	participantID := ParticipantID{UserID: userID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}

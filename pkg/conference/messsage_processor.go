@@ -21,7 +21,7 @@ func (c *Conference) processMessages() {
 		}
 
 		// If there are no more participants, stop the conference.
-		if len(c.participants) == 0 {
+		if len(c.tracker.participants) == 0 {
 			c.logger.Info("No more participants, stopping the conference")
 			// Close the channel so that the sender can't push any messages.
 			unreadMessages := c.matrixMessages.Close()
@@ -65,7 +65,7 @@ func (c *Conference) processPeerMessage(message common.Message[ParticipantID, pe
 	case peer.DataChannelAvailable:
 		c.processDataChannelAvailableMessage(participant, msg)
 	case peer.RTCPReceived:
-		c.processRTCPPackets(msg)
+		c.processRTCPPackets(participant, msg)
 	default:
 		c.logger.Errorf("Unknown message type: %T", msg)
 	}
