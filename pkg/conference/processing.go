@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"maunium.net/go/mautrix/event"
 )
@@ -21,7 +22,7 @@ func (c *Conference) processMessages() {
 		}
 
 		// If there are no more participants, stop the conference.
-		if len(c.tracker.participants) == 0 {
+		if !c.tracker.HasParticipants() {
 			c.logger.Info("No more participants, stopping the conference")
 			// Close the channel so that the sender can't push any messages.
 			unreadMessages := c.matrixMessages.Close()
@@ -35,7 +36,7 @@ func (c *Conference) processMessages() {
 }
 
 // Process a message from a local peer.
-func (c *Conference) processPeerMessage(message common.Message[ParticipantID, peer.MessageContent]) {
+func (c *Conference) processPeerMessage(message common.Message[participant.ID, peer.MessageContent]) {
 	participant := c.getParticipant(message.Sender, errors.New("received a message from a deleted participant"))
 	if participant == nil {
 		return

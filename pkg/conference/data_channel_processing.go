@@ -2,16 +2,17 @@ package conference
 
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"maunium.net/go/mautrix/event"
 )
 
 // Handle the `FocusEvent` from the DataChannel message.
 func (c *Conference) processTrackSubscriptionDCMessage(
-	participant *Participant,
+	p *participant.Participant,
 	msg event.FocusCallTrackSubscriptionEventContent,
 ) {
-	participant.logger.Debug("Received track subscription request over DC")
+	p.Logger.Debug("Received track subscription request over DC")
 
 	// Extract IDs of the tracks we wish to unsubscribe from.
 	toUnsubscribeTrackIDs := make([]string, 0, len(msg.Unsubscribe))
@@ -21,10 +22,10 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 
 	// Extract IDs and desired resolution of tracks we want to subscribe to.
 	toSubscribeTrackIDs := make([]string, 0, len(msg.Subscribe))
-	toSubscribeRequirements := make(map[string]TrackMetadata)
+	toSubscribeRequirements := make(map[string]participant.TrackMetadata)
 	for _, track := range msg.Subscribe {
 		toSubscribeTrackIDs = append(toSubscribeTrackIDs, track.TrackID)
-		toSubscribeRequirements[track.TrackID] = TrackMetadata{track.Width, track.Height}
+		toSubscribeRequirements[track.TrackID] = participant.TrackMetadata{track.Width, track.Height}
 	}
 
 	// Calculate the list of tracks we need to subscribe and unsubscribe from based on the requirements.
@@ -32,20 +33,17 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 
 	// Iterate over all published tracks that correspond to the track IDs we want to subscribe to.
 	for id, track := range c.findPublishedTracks(toSubscribeTrackIDs) {
-		// Get subscribers of this track.
-		subscribers := c.tracker.getSubscribers(id)
-
-		// Let's find out if we're in a list of such subscribers.
-		subscription, alreadySubscribed := subscribers[participant.id]
+		// Check if we have a subscription for this track already.
+		subscription := c.tracker.GetSubscriber(id, p.ID)
 
 		// Calculate the desired simulcast layer if any.
 		requirements := toSubscribeRequirements[id]
-		desiredLayer := track.getDesiredLayer(requirements.maxWidth, requirements.maxHeight)
+		desiredLayer := track.GetDesiredLayer(requirements.MaxWidth, requirements.MaxHeight)
 
 		// If we're not subscribed to the track, let's subscribe to it respecting
 		// the desired track parameters that the user specified in a request.
-		if !alreadySubscribed {
-			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.info, desiredLayer})
+		if subscription == nil {
+			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.Info, desiredLayer})
 			continue
 		}
 
@@ -57,32 +55,32 @@ func (c *Conference) processTrackSubscriptionDCMessage(
 			// If we're already subscribed, but to a different simulcast layer, then we need to remove the track.
 			toUnsubscribeTrackIDs = append(toUnsubscribeTrackIDs, id)
 			// And add again, this time with a proper simulcast layer.
-			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.info, desiredLayer})
+			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.Info, desiredLayer})
 			continue
 		}
 
-		participant.logger.Warnf("Ignoring track subscription request for %s: already subscribed", id)
+		p.Logger.Warnf("Ignoring track subscription request for %s: already subscribed", id)
 	}
 
-	c.tracker.Unsubscribe(participant.id, toUnsubscribeTrackIDs)
-	c.tracker.Subscribe(participant.id, subscribeTo)
+	c.tracker.Unsubscribe(p.ID, toUnsubscribeTrackIDs)
+	c.tracker.Subscribe(p.ID, subscribeTo)
 }
 
-func (c *Conference) processNegotiateDCMessage(participant *Participant, msg event.FocusCallNegotiateEventContent) {
+func (c *Conference) processNegotiateDCMessage(p *participant.Participant, msg event.FocusCallNegotiateEventContent) {
 	c.updateMetadata(msg.SDPStreamMetadata)
 
 	switch msg.Description.Type {
 	case event.CallDataTypeOffer:
-		participant.logger.Info("New offer from peer received")
-		participant.logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP offer over DC")
+		p.Logger.Info("New offer from peer received")
+		p.Logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP offer over DC")
 
-		answer, err := participant.peer.ProcessSDPOffer(msg.Description.SDP)
+		answer, err := p.Peer.ProcessSDPOffer(msg.Description.SDP)
 		if err != nil {
-			participant.logger.Errorf("Failed to set SDP offer: %v", err)
+			p.Logger.Errorf("Failed to set SDP offer: %v", err)
 			return
 		}
 
-		participant.sendDataChannelMessage(event.Event{
+		p.SendDataChannelMessage(event.Event{
 			Type: event.FocusCallNegotiate,
 			Content: event.Content{
 				Parsed: event.FocusCallNegotiateEventContent{
@@ -90,33 +88,34 @@ func (c *Conference) processNegotiateDCMessage(participant *Participant, msg eve
 						Type: event.CallDataType(answer.Type.String()),
 						SDP:  answer.SDP,
 					},
-					SDPStreamMetadata: c.getAvailableStreamsFor(participant.id),
+					SDPStreamMetadata: c.getAvailableStreamsFor(p.ID),
 				},
 			},
 		})
 	case event.CallDataTypeAnswer:
-		participant.logger.Info("Renegotiation answer received")
-		participant.logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP answer over DC")
+		p.Logger.Info("Renegotiation answer received")
+		p.Logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP answer over DC")
 
-		if err := participant.peer.ProcessSDPAnswer(msg.Description.SDP); err != nil {
-			participant.logger.Errorf("Failed to set SDP answer: %v", err)
+		if err := p.Peer.ProcessSDPAnswer(msg.Description.SDP); err != nil {
+			p.Logger.Errorf("Failed to set SDP answer: %v", err)
 			return
 		}
 	default:
-		participant.logger.Errorf("Unknown SDP description type")
+		p.Logger.Errorf("Unknown SDP description type")
 	}
 }
 
-func (c *Conference) processPongDCMessage(participant *Participant) {
+func (c *Conference) processPongDCMessage(p *participant.Participant) {
 	// New heartbeat received (keep-alive message that is periodically sent by the remote peer).
 	// We need to update the last heartbeat time. If the peer is not active for too long, we will
 	// consider peer's connection as stalled and will close it.
-	participant.heartbeatPong <- common.Pong{}
+	p.HeartbeatPong <- common.Pong{}
 }
 
 func (c *Conference) processMetadataDCMessage(
-	participant *Participant, msg event.FocusCallSDPStreamMetadataChangedEventContent,
+	p *participant.Participant,
+	msg event.FocusCallSDPStreamMetadataChangedEventContent,
 ) {
 	c.updateMetadata(msg.SDPStreamMetadata)
-	c.resendMetadataToAllExcept(participant.id)
+	c.resendMetadataToAllExcept(p.ID)
 }
