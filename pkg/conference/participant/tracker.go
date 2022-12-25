@@ -98,6 +98,8 @@ func (t *Tracker) AddTrack(
 			Layers:   layers,
 			Metadata: metadata,
 		}
+
+		return
 	}
 
 	// If it's just a new layer, let's add it to the list of layers of the existing published track.

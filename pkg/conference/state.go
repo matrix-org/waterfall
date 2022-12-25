@@ -68,7 +68,7 @@ func (c *Conference) getAvailableStreamsFor(forParticipant participant.ID) event
 				metadata.Tracks = event.CallSDPStreamMetadataTracks{trackID: event.CallSDPStreamMetadataTrack{}}
 				streamsMetadata[streamID] = metadata
 			} else {
-				c.logger.Warnf("Don't have metadata for stream %s", streamID)
+				c.logger.Warnf("Don't have metadata for %s", trackID)
 			}
 		}
 	})
@@ -126,7 +126,7 @@ func (c *Conference) updateMetadata(metadata event.CallSDPStreamMetadata) {
 func streamIntoTrackMetadata(
 	streamMetadata event.CallSDPStreamMetadata,
 ) map[participant.TrackID]participant.TrackMetadata {
-	tracksMetadata := make(map[string]participant.TrackMetadata)
+	tracksMetadata := make(map[participant.TrackID]participant.TrackMetadata)
 	for _, metadata := range streamMetadata {
 		for id, track := range metadata.Tracks {
 			tracksMetadata[id] = participant.TrackMetadata{
