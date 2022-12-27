@@ -152,7 +152,7 @@ func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacket) error {
 			toSend[i] = &rtcp.PictureLossIndication{MediaSSRC: ssrc}
 		case FullIntraRequest:
 			// FIRs are a bit more complicated. They have a sequence number that must be incremented
-			// and the an additional SSRC inside FIR payload. So we rewrite the media SSRC here.
+			// and an additional SSRC inside FIR payload. So we rewrite the media SSRC here.
 			rewrittenFIR, _ := packet.Content.(*rtcp.FullIntraRequest)
 			rewrittenFIR.MediaSSRC = ssrc
 			// TODO: Check is we also need to rewrite the SSRC inside the FIR payload.
