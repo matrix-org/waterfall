@@ -130,6 +130,8 @@ func (c *Conference) processRTCPPackets(msg peer.RTCPReceived) {
 			if published.canSendKeyframeAt.Before(time.Now()) {
 				if err := participant.peer.WriteRTCP(msg.TrackID, msg.Packets); err == nil {
 					published.canSendKeyframeAt = time.Now().Add(sendKeyFrameInterval)
+				} else {
+					c.logger.Errorf("Failed to send RTCP packets: %v", err)
 				}
 			}
 		}
