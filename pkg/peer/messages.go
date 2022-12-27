@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -41,7 +42,12 @@ type DataChannelAvailable struct{}
 
 type RTCPReceived struct {
 	TrackID string
-	Packets []RTCPPacketType
+	Packets []RTCPPacket
+}
+
+type RTCPPacket struct {
+	Type    RTCPPacketType
+	Content rtcp.Packet
 }
 
 type RTCPPacketType int
