@@ -93,18 +93,20 @@ func (p *Peer[ID]) SubscribeTo(track ExtendedTrackInfo) *Subscription {
 	}
 
 	// Start reading and forwarding RTCP packets.
-	go p.readRTCP(subscription.rtpSender)
+	go p.readRTCP(subscription.rtpSender, track)
 
 	p.logger.Infof("Subscribed to track: %s (%s)", track.TrackID, track.Layer.String())
 	return subscription
 }
 
 // Writes the specified packets to the `trackID`.
-func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacket) error {
+func (p *Peer[ID]) WriteRTCP(info ExtendedTrackInfo, packets []RTCPPacket) error {
 	// Find the right track.
 	receivers := p.peerConnection.GetReceivers()
 	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
-		return receiver.Track() != nil && receiver.Track().ID() == trackID
+		return receiver.Track() != nil &&
+			receiver.Track().ID() == info.TrackID &&
+			RIDToSimulcastLayer(receiver.Track().RID()) == info.Layer
 	})
 	if receiverIndex == -1 {
 		return ErrTrackNotFound
@@ -204,7 +206,7 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 
 // Read incoming RTCP packets
 // Before these packets are returned they are processed by interceptors.
-func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
+func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender, track ExtendedTrackInfo) {
 	for {
 		packets, _, err := rtpSender.ReadRTCP()
 		if err != nil {
@@ -226,11 +228,10 @@ func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
 			}
 		}
 
-		track := rtpSender.Track()
-		if track == nil {
+		if rtpSender.Track() == nil {
 			return
 		}
 
-		p.sink.Send(RTCPReceived{Packets: toForward, TrackID: track.ID()})
+		p.sink.Send(RTCPReceived{track, toForward})
 	}
 }

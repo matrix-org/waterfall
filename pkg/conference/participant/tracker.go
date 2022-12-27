@@ -204,12 +204,12 @@ func (t *Tracker) ProcessRTP(info peer.ExtendedTrackInfo, packet *rtp.Packet) {
 }
 
 // Processes RTCP packets received on a given track.
-func (t *Tracker) ProcessRTCP(trackID TrackID, packets []peer.RTCPPacketType) error {
+func (t *Tracker) ProcessRTCP(info peer.ExtendedTrackInfo, packets []peer.RTCPPacket) error {
 	const sendKeyFrameInterval = 500 * time.Millisecond
 
-	published, found := t.publishedTracks[trackID]
+	published, found := t.publishedTracks[info.TrackID]
 	if !found {
-		return fmt.Errorf("no such track: %s", trackID)
+		return fmt.Errorf("no such track: %s", info.TrackID)
 	}
 
 	participant := t.GetParticipant(published.Owner)
@@ -219,12 +219,12 @@ func (t *Tracker) ProcessRTCP(trackID TrackID, packets []peer.RTCPPacketType) er
 
 	// We don't want to send keyframes too often, so we'll send them only once in a while.
 	if published.canSendKeyframeAt.Before(time.Now()) {
-		if err := participant.Peer.WriteRTCP(trackID, packets); err != nil {
+		if err := participant.Peer.WriteRTCP(info, packets); err != nil {
 			return err
 		}
 
 		published.canSendKeyframeAt = time.Now().Add(sendKeyFrameInterval)
-		t.publishedTracks[trackID] = published
+		t.publishedTracks[info.TrackID] = published
 	}
 
 	return nil
