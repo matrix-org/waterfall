@@ -113,14 +113,14 @@ func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
 		}
 
 		// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
-		toForward := []RTCPPacketType{}
+		toForward := []RTCPPacket{}
 		for _, packet := range packets {
 			// TODO: Should we also handle NACKs?
 			switch packet.(type) {
 			case *rtcp.PictureLossIndication:
-				toForward = append(toForward, PictureLossIndicator)
+				toForward = append(toForward, RTCPPacket{PictureLossIndicator, packet})
 			case *rtcp.FullIntraRequest:
-				toForward = append(toForward, FullIntraRequest)
+				toForward = append(toForward, RTCPPacket{FullIntraRequest, packet})
 			}
 		}
 
@@ -129,7 +129,7 @@ func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
 }
 
 // Writes the specified packets to the `trackID`.
-func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacketType) error {
+func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacket) error {
 	// Find the right track.
 	receivers := p.peerConnection.GetReceivers()
 	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
@@ -145,11 +145,18 @@ func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacketType) error {
 
 	toSend := make([]rtcp.Packet, len(packets))
 	for i, packet := range packets {
-		switch packet {
+		switch packet.Type {
 		case PictureLossIndicator:
+			// PLIs are trivial, they just have media SSRC and sender SSRC, where the last one
+			// does not seem to matter (based on Pion examples of using these).
 			toSend[i] = &rtcp.PictureLossIndication{MediaSSRC: ssrc}
 		case FullIntraRequest:
-			toSend[i] = &rtcp.FullIntraRequest{MediaSSRC: ssrc}
+			// FIRs are a bit more complicated. They have a sequence number that must be incremented
+			// and the an additional SSRC inside FIR payload. So we rewrite the media SSRC here.
+			rewrittenFIR, _ := packet.Content.(*rtcp.FullIntraRequest)
+			rewrittenFIR.MediaSSRC = ssrc
+			// TODO: Check is we also need to rewrite the SSRC inside the FIR payload.
+			toSend[i] = rewrittenFIR
 		}
 	}
 
