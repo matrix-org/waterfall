@@ -10,8 +10,8 @@ import (
 )
 
 type (
-	Subscribers      map[ID]*peer.Subscription
-	TrackSubscribers map[TrackID]Subscribers
+	Subscriptions    map[ID]*peer.Subscription
+	TrackSubscribers map[TrackID]Subscriptions
 )
 
 // Tracks participants and their corresponding tracks.
