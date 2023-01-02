@@ -100,7 +100,7 @@ func (p *Peer[ID]) SubscribeTo(track TrackInfo) *Subscription {
 }
 
 // Writes the specified packets to the `trackID`.
-func (p *Peer[ID]) WriteRTCP(info TrackInfo, packets []RTCPPacket) error {
+func (p *Peer[ID]) RequestKeyFrame(info TrackInfo) error {
 	// Find the right track.
 	receivers := p.peerConnection.GetReceivers()
 	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
@@ -116,24 +116,8 @@ func (p *Peer[ID]) WriteRTCP(info TrackInfo, packets []RTCPPacket) error {
 	// Otherwise the peer won't understand where the packet comes from.
 	ssrc := uint32(receivers[receiverIndex].Track().SSRC())
 
-	toSend := make([]rtcp.Packet, len(packets))
-	for i, packet := range packets {
-		switch packet.Type {
-		case PictureLossIndicator:
-			// PLIs are trivial, they just have media SSRC and sender SSRC, where the last one
-			// does not seem to matter (based on Pion examples of using these).
-			toSend[i] = &rtcp.PictureLossIndication{MediaSSRC: ssrc}
-		case FullIntraRequest:
-			// FIRs are a bit more complicated. They have a sequence number that must be incremented
-			// and an additional SSRC inside FIR payload. So we rewrite the media SSRC here.
-			rewrittenFIR, _ := packet.Content.(*rtcp.FullIntraRequest)
-			rewrittenFIR.MediaSSRC = ssrc
-			// TODO: Check is we also need to rewrite the SSRC inside the FIR payload.
-			toSend[i] = rewrittenFIR
-		}
-	}
-
-	return p.peerConnection.WriteRTCP(toSend)
+	rtcps := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}}
+	return p.peerConnection.WriteRTCP(rtcps)
 }
 
 // Tries to send the given message to the remote counterpart of our peer.
@@ -217,21 +201,12 @@ func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender, track TrackInfo) {
 		}
 
 		// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
-		toForward := []RTCPPacket{}
 		for _, packet := range packets {
-			// TODO: Should we also handle NACKs?
 			switch packet.(type) {
-			case *rtcp.PictureLossIndication:
-				toForward = append(toForward, RTCPPacket{PictureLossIndicator, packet})
-			case *rtcp.FullIntraRequest:
-				toForward = append(toForward, RTCPPacket{FullIntraRequest, packet})
+			// For simplicity we assume that any of the key frame requests is just a key frame request.
+			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+				p.sink.Send(KeyFrameRequestReceived{track})
 			}
 		}
-
-		if rtpSender.Track() == nil {
-			return
-		}
-
-		p.sink.Send(RTCPReceived{track, toForward})
 	}
 }

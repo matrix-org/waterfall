@@ -115,8 +115,8 @@ func (c *Conference) processDataChannelAvailableMessage(p *participant.Participa
 	})
 }
 
-func (c *Conference) processRTCPPackets(p *participant.Participant, msg peer.RTCPReceived) {
-	if err := c.tracker.ProcessRTCP(msg.TrackInfo, msg.Packets); err != nil {
+func (c *Conference) processKeyFrameRequest(p *participant.Participant, msg peer.KeyFrameRequestReceived) {
+	if err := c.tracker.ProcessKeyFrameRequest(msg.TrackInfo); err != nil {
 		p.Logger.Errorf("Failed to process RTCP on %s (%v): %v", msg.TrackID, msg.Layer, err)
 	}
 }
