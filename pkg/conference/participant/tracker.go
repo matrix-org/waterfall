@@ -70,7 +70,7 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 		if track.Owner == participantID {
 			// Odd way to add to a set in Go.
 			streamIdentifiers[track.Info.StreamID] = true
-			t.RemoveTrack(trackID)
+			t.RemovePublishedTrack(trackID)
 		}
 	}
 
@@ -79,7 +79,7 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 
 // Adds a new track to the list of published tracks, i.e. by calling it we inform the tracker that there is new track
 // that has been published and that we must take into account from now on.
-func (t *Tracker) AddTrack(
+func (t *Tracker) AddPublishedTrack(
 	participantID ID,
 	info peer.TrackInfo,
 	metadata TrackMetadata,
@@ -110,7 +110,7 @@ func (t *Tracker) AddTrack(
 }
 
 // Finds a track by the track ID.
-func (t *Tracker) FindTrack(id TrackID) *PublishedTrack {
+func (t *Tracker) FindPublishedTrack(id TrackID) *PublishedTrack {
 	if track, found := t.publishedTracks[id]; found {
 		return &track
 	}
@@ -119,14 +119,14 @@ func (t *Tracker) FindTrack(id TrackID) *PublishedTrack {
 }
 
 // Iterates over published tracks and calls a closure upon each track.
-func (t *Tracker) ForEachTrack(fn func(TrackID, PublishedTrack)) {
+func (t *Tracker) ForEachPublishedTrack(fn func(TrackID, PublishedTrack)) {
 	for id, track := range t.publishedTracks {
 		fn(id, track)
 	}
 }
 
 // Updates metadata associated with a given track.
-func (t *Tracker) UpdateTrackMetadata(id TrackID, metadata TrackMetadata) {
+func (t *Tracker) UpdatePublishedTrackMetadata(id TrackID, metadata TrackMetadata) {
 	if track, found := t.publishedTracks[id]; found {
 		track.Metadata = metadata
 		t.publishedTracks[id] = track
@@ -134,7 +134,7 @@ func (t *Tracker) UpdateTrackMetadata(id TrackID, metadata TrackMetadata) {
 }
 
 // Informs the tracker that one of the previously published tracks is gone.
-func (t *Tracker) RemoveTrack(id TrackID) {
+func (t *Tracker) RemovePublishedTrack(id TrackID) {
 	subscribers := t.subscribers[id]
 
 	// Iterate over all subscriptions and end them.

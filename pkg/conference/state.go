@@ -56,7 +56,7 @@ func (c *Conference) removeParticipant(id participant.ID) {
 func (c *Conference) getAvailableStreamsFor(forParticipant participant.ID) event.CallSDPStreamMetadata {
 	streamsMetadata := make(event.CallSDPStreamMetadata)
 
-	c.tracker.ForEachTrack(func(trackID participant.TrackID, track participant.PublishedTrack) {
+	c.tracker.ForEachPublishedTrack(func(trackID participant.TrackID, track participant.PublishedTrack) {
 		// Skip us. As we know about our own tracks.
 		if track.Owner != forParticipant {
 			streamID := track.Info.StreamID
@@ -81,7 +81,7 @@ func (c *Conference) findPublishedTracks(trackIDs []string) map[string]participa
 	tracks := make(map[string]participant.PublishedTrack)
 	for _, identifier := range trackIDs {
 		// Check if this participant has any of the tracks that we're looking for.
-		if track := c.tracker.FindTrack(identifier); track != nil {
+		if track := c.tracker.FindPublishedTrack(identifier); track != nil {
 			tracks[identifier] = *track
 		} else {
 			c.logger.Warnf("track not found: %s", identifier)
@@ -119,7 +119,7 @@ func (c *Conference) updateMetadata(metadata event.CallSDPStreamMetadata) {
 	}
 
 	for trackID, metadata := range streamIntoTrackMetadata(metadata) {
-		c.tracker.UpdateTrackMetadata(trackID, metadata)
+		c.tracker.UpdatePublishedTrackMetadata(trackID, metadata)
 	}
 }
 

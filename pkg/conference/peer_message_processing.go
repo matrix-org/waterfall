@@ -24,7 +24,7 @@ func (c *Conference) processNewTrackPublishedMessage(p *participant.Participant,
 	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[msg.TrackID]
 
 	// If a new track has been published, we inform everyone about new track available.
-	c.tracker.AddTrack(p.ID, msg.TrackInfo, trackMetadata)
+	c.tracker.AddPublishedTrack(p.ID, msg.TrackInfo, trackMetadata)
 	c.resendMetadataToAllExcept(p.ID)
 }
 
@@ -34,7 +34,7 @@ func (c *Conference) processRTPPacketReceivedMessage(p *participant.Participant,
 
 func (c *Conference) processPublishedTrackFailedMessage(p *participant.Participant, msg peer.PublishedTrackFailed) {
 	p.Logger.Infof("Failed published track: %s", msg.TrackID)
-	c.tracker.RemoveTrack(msg.TrackID)
+	c.tracker.RemovePublishedTrack(msg.TrackID)
 	c.resendMetadataToAllExcept(p.ID)
 }
 
