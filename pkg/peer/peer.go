@@ -85,8 +85,8 @@ func (p *Peer[ID]) Terminate() {
 }
 
 // Adds given tracks to our peer connection, so that they can be sent to the remote peer.
-func (p *Peer[ID]) SubscribeTo(track TrackInfo) *Subscription {
-	subscription, err := NewSubscription(track, ConnectionWrapper{p.peerConnection})
+func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) *Subscription {
+	subscription, err := NewSubscription(track, common.NewConnectionWrapper(p.peerConnection))
 	if err != nil {
 		p.logger.Errorf("Failed to subscribe to track: %s", err)
 		return nil
@@ -100,13 +100,13 @@ func (p *Peer[ID]) SubscribeTo(track TrackInfo) *Subscription {
 }
 
 // Writes the specified packets to the `trackID`.
-func (p *Peer[ID]) RequestKeyFrame(info TrackInfo) error {
+func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo) error {
 	// Find the right track.
 	receivers := p.peerConnection.GetReceivers()
 	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
 		return receiver.Track() != nil &&
 			receiver.Track().ID() == info.TrackID &&
-			RIDToSimulcastLayer(receiver.Track().RID()) == info.Layer
+			common.RIDToSimulcastLayer(receiver.Track().RID()) == info.Layer
 	})
 	if receiverIndex == -1 {
 		return ErrTrackNotFound
@@ -122,6 +122,7 @@ func (p *Peer[ID]) RequestKeyFrame(info TrackInfo) error {
 
 // Tries to send the given message to the remote counterpart of our peer.
 func (p *Peer[ID]) SendOverDataChannel(json string) error {
+
 	p.dataChannelMutex.Lock()
 	defer p.dataChannelMutex.Unlock()
 
@@ -190,7 +191,7 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 
 // Read incoming RTCP packets
 // Before these packets are returned they are processed by interceptors.
-func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender, track TrackInfo) {
+func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender, track common.TrackInfo) {
 	for {
 		packets, _, err := rtpSender.ReadRTCP()
 		if err != nil {

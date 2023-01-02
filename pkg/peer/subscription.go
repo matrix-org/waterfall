@@ -3,6 +3,7 @@ package peer
 import (
 	"fmt"
 
+	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
@@ -15,13 +16,13 @@ type ConnectionController interface {
 type Subscription struct {
 	rtpSender  *webrtc.RTPSender
 	rtpTrack   *webrtc.TrackLocalStaticRTP
-	info       TrackInfo
+	info       common.TrackInfo
 	connection ConnectionController
 }
 
-func NewSubscription(info TrackInfo, connection ConnectionController) (*Subscription, error) {
+func NewSubscription(info common.TrackInfo, connection ConnectionController) (*Subscription, error) {
 	// Set the RID if any (would be "" if no simulcast is used).
-	setRid := webrtc.WithRTPStreamID(SimulcastLayerToRID(info.Layer))
+	setRid := webrtc.WithRTPStreamID(common.SimulcastLayerToRID(info.Layer))
 
 	// Create a new track.
 	rtpTrack, err := webrtc.NewTrackLocalStaticRTP(info.Codec, info.TrackID, info.StreamID, setRid)
@@ -45,6 +46,6 @@ func (s *Subscription) WriteRTP(packet *rtp.Packet) error {
 	return s.rtpTrack.WriteRTP(packet)
 }
 
-func (s *Subscription) TrackInfo() TrackInfo {
+func (s *Subscription) TrackInfo() common.TrackInfo {
 	return s.info
 }

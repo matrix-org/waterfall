@@ -3,6 +3,7 @@ package peer
 import (
 	"io"
 
+	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -11,7 +12,7 @@ import (
 // we call this function each time a new track is received.
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	// Construct a new track info assuming that there is no simulcast.
-	trackInfo := trackInfoFromTrack(remoteTrack)
+	trackInfo := common.TrackInfoFromTrack(remoteTrack)
 
 	// Notify others that our track has just been published.
 	p.sink.Send(NewTrackPublished{trackInfo})

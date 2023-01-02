@@ -143,7 +143,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 	}
 
 	// Calculate the list of tracks we need to subscribe and unsubscribe from based on the requirements.
-	subscribeTo := []peer.TrackInfo{}
+	subscribeTo := []common.TrackInfo{}
 
 	// Iterate over all published tracks that correspond to the track IDs we want to subscribe to.
 	for id, track := range c.findPublishedTracks(toSubscribeTrackIDs) {

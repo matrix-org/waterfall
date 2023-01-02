@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
@@ -17,15 +18,15 @@ type LeftTheCall struct {
 }
 
 type NewTrackPublished struct {
-	TrackInfo
+	common.TrackInfo
 }
 
 type PublishedTrackFailed struct {
-	TrackInfo
+	common.TrackInfo
 }
 
 type RTPPacketReceived struct {
-	TrackInfo
+	common.TrackInfo
 	Packet *rtp.Packet
 }
 
@@ -46,5 +47,5 @@ type DataChannelMessage struct {
 type DataChannelAvailable struct{}
 
 type KeyFrameRequestReceived struct {
-	TrackInfo
+	common.TrackInfo
 }

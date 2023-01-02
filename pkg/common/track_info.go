@@ -1,4 +1,4 @@
-package peer
+package common
 
 import (
 	"github.com/pion/webrtc/v3"
@@ -67,7 +67,7 @@ type TrackInfo struct {
 	Layer    SimulcastLayer
 }
 
-func trackInfoFromTrack(track *webrtc.TrackRemote) TrackInfo {
+func TrackInfoFromTrack(track *webrtc.TrackRemote) TrackInfo {
 	return TrackInfo{
 		TrackID:  track.ID(),
 		StreamID: track.StreamID(),
@@ -78,6 +78,12 @@ func trackInfoFromTrack(track *webrtc.TrackRemote) TrackInfo {
 
 type ConnectionWrapper struct {
 	connection *webrtc.PeerConnection
+}
+
+func NewConnectionWrapper(connection *webrtc.PeerConnection) ConnectionWrapper {
+	return ConnectionWrapper{
+		connection: connection,
+	}
 }
 
 func (c ConnectionWrapper) Subscribe(track *webrtc.TrackLocalStaticRTP) (*webrtc.RTPSender, error) {

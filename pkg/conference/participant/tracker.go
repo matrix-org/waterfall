@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/pion/rtp"
 	"github.com/thoas/go-funk"
@@ -81,14 +82,14 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 // that has been published and that we must take into account from now on.
 func (t *Tracker) AddPublishedTrack(
 	participantID ID,
-	info peer.TrackInfo,
+	info common.TrackInfo,
 	metadata TrackMetadata,
 ) {
 	// If this is a new track, let's add it to the list of published and inform participants.
 	track, found := t.publishedTracks[info.TrackID]
 	if !found {
-		layers := []peer.SimulcastLayer{}
-		if info.Layer != peer.SimulcastLayerNone {
+		layers := []common.SimulcastLayer{}
+		if info.Layer != common.SimulcastLayerNone {
 			layers = append(layers, info.Layer)
 		}
 
@@ -103,7 +104,7 @@ func (t *Tracker) AddPublishedTrack(
 	}
 
 	// If it's just a new layer, let's add it to the list of layers of the existing published track.
-	if info.Layer != peer.SimulcastLayerNone && !funk.Contains(track.Layers, info.Layer) {
+	if info.Layer != common.SimulcastLayerNone && !funk.Contains(track.Layers, info.Layer) {
 		track.Layers = append(track.Layers, info.Layer)
 		t.publishedTracks[info.TrackID] = track
 	}
@@ -147,7 +148,7 @@ func (t *Tracker) RemovePublishedTrack(id TrackID) {
 }
 
 // Subscribes a given participant to the tracks that are passed as a parameter.
-func (t *Tracker) Subscribe(participantID ID, tracks []peer.TrackInfo) {
+func (t *Tracker) Subscribe(participantID ID, tracks []common.TrackInfo) {
 	if participant := t.GetParticipant(participantID); participant != nil {
 		for _, track := range tracks {
 			subscription := participant.Peer.SubscribeTo(track)
@@ -195,7 +196,7 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 }
 
 // Processes an RTP packet received on a given track.
-func (t *Tracker) ProcessRTP(info peer.TrackInfo, packet *rtp.Packet) {
+func (t *Tracker) ProcessRTP(info common.TrackInfo, packet *rtp.Packet) {
 	for _, subscription := range t.subscribers[info.TrackID] {
 		if subscription.TrackInfo().Layer == info.Layer {
 			subscription.WriteRTP(packet)
@@ -204,7 +205,7 @@ func (t *Tracker) ProcessRTP(info peer.TrackInfo, packet *rtp.Packet) {
 }
 
 // Processes RTCP packets received on a given track.
-func (t *Tracker) ProcessKeyFrameRequest(info peer.TrackInfo) error {
+func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo) error {
 	const sendKeyFrameInterval = 500 * time.Millisecond
 
 	published, found := t.publishedTracks[info.TrackID]
