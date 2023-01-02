@@ -18,15 +18,15 @@ type LeftTheCall struct {
 }
 
 type NewTrackPublished struct {
-	ExtendedTrackInfo
+	TrackInfo
 }
 
 type PublishedTrackFailed struct {
-	ExtendedTrackInfo
+	TrackInfo
 }
 
 type RTPPacketReceived struct {
-	ExtendedTrackInfo
+	TrackInfo
 	Packet *rtp.Packet
 }
 
@@ -47,7 +47,7 @@ type DataChannelMessage struct {
 type DataChannelAvailable struct{}
 
 type RTCPReceived struct {
-	ExtendedTrackInfo
+	TrackInfo
 	Packets []RTCPPacket
 }
 

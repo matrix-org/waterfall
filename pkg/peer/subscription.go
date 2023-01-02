@@ -15,11 +15,11 @@ type ConnectionController interface {
 type Subscription struct {
 	rtpSender  *webrtc.RTPSender
 	rtpTrack   *webrtc.TrackLocalStaticRTP
-	info       ExtendedTrackInfo
+	info       TrackInfo
 	connection ConnectionController
 }
 
-func NewSubscription(info ExtendedTrackInfo, connection ConnectionController) (*Subscription, error) {
+func NewSubscription(info TrackInfo, connection ConnectionController) (*Subscription, error) {
 	// Set the RID if any (would be "" if no simulcast is used).
 	setRid := webrtc.WithRTPStreamID(SimulcastLayerToRID(info.Layer))
 
@@ -45,6 +45,6 @@ func (s *Subscription) WriteRTP(packet *rtp.Packet) error {
 	return s.rtpTrack.WriteRTP(packet)
 }
 
-func (s *Subscription) TrackInfo() ExtendedTrackInfo {
+func (s *Subscription) TrackInfo() TrackInfo {
 	return s.info
 }

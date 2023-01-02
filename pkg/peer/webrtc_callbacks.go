@@ -11,7 +11,7 @@ import (
 // we call this function each time a new track is received.
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	// Construct a new track info assuming that there is no simulcast.
-	trackInfo := ExtendedTrackInfo{trackInfoFromTrack(remoteTrack), RIDToSimulcastLayer(remoteTrack.RID())}
+	trackInfo := trackInfoFromTrack(remoteTrack)
 
 	// Notify others that our track has just been published.
 	p.sink.Send(NewTrackPublished{trackInfo})

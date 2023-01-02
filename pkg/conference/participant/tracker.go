@@ -81,7 +81,7 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 // that has been published and that we must take into account from now on.
 func (t *Tracker) AddTrack(
 	participantID ID,
-	info peer.ExtendedTrackInfo,
+	info peer.TrackInfo,
 	metadata TrackMetadata,
 ) {
 	// If this is a new track, let's add it to the list of published and inform participants.
@@ -94,7 +94,7 @@ func (t *Tracker) AddTrack(
 
 		t.publishedTracks[info.TrackID] = PublishedTrack{
 			Owner:    participantID,
-			Info:     info.TrackInfo,
+			Info:     info,
 			Layers:   layers,
 			Metadata: metadata,
 		}
@@ -147,7 +147,7 @@ func (t *Tracker) RemoveTrack(id TrackID) {
 }
 
 // Subscribes a given participant to the tracks that are passed as a parameter.
-func (t *Tracker) Subscribe(participantID ID, tracks []peer.ExtendedTrackInfo) {
+func (t *Tracker) Subscribe(participantID ID, tracks []peer.TrackInfo) {
 	if participant := t.GetParticipant(participantID); participant != nil {
 		for _, track := range tracks {
 			subscription := participant.Peer.SubscribeTo(track)
@@ -158,7 +158,7 @@ func (t *Tracker) Subscribe(participantID ID, tracks []peer.ExtendedTrackInfo) {
 			// If we're a first subscriber, we need to initialize the list of subscribers.
 			// Otherwise it will panic (Go specifics when working with maps).
 			if _, found := t.subscribers[track.TrackID]; !found {
-				t.subscribers[track.TrackID] = make(Subscribers)
+				t.subscribers[track.TrackID] = make(Subscriptions)
 			}
 
 			// Sanity check.
@@ -195,7 +195,7 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 }
 
 // Processes an RTP packet received on a given track.
-func (t *Tracker) ProcessRTP(info peer.ExtendedTrackInfo, packet *rtp.Packet) {
+func (t *Tracker) ProcessRTP(info peer.TrackInfo, packet *rtp.Packet) {
 	for _, subscription := range t.subscribers[info.TrackID] {
 		if subscription.TrackInfo().Layer == info.Layer {
 			subscription.WriteRTP(packet)
@@ -204,7 +204,7 @@ func (t *Tracker) ProcessRTP(info peer.ExtendedTrackInfo, packet *rtp.Packet) {
 }
 
 // Processes RTCP packets received on a given track.
-func (t *Tracker) ProcessRTCP(info peer.ExtendedTrackInfo, packets []peer.RTCPPacket) error {
+func (t *Tracker) ProcessRTCP(info peer.TrackInfo, packets []peer.RTCPPacket) error {
 	const sendKeyFrameInterval = 500 * time.Millisecond
 
 	published, found := t.publishedTracks[info.TrackID]

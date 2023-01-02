@@ -64,16 +64,7 @@ type TrackInfo struct {
 	TrackID  string
 	StreamID string
 	Codec    webrtc.RTPCodecCapability
-}
-
-// Information with some extended (optional fields).
-// Ideally we would want to have different types for different tracks, but Go does not have ADTs,
-// so it's the only way to do it without writing too much of a boilerplate.
-type ExtendedTrackInfo struct {
-	// Information about a track.
-	TrackInfo
-	// Optional simulcast layer (if any). Would be nil for non-simulcast or audio tracks.
-	Layer SimulcastLayer
+	Layer    SimulcastLayer
 }
 
 func trackInfoFromTrack(track *webrtc.TrackRemote) TrackInfo {
@@ -81,6 +72,7 @@ func trackInfoFromTrack(track *webrtc.TrackRemote) TrackInfo {
 		TrackID:  track.ID(),
 		StreamID: track.StreamID(),
 		Codec:    track.Codec().RTPCodecCapability,
+		Layer:    RIDToSimulcastLayer(track.RID()),
 	}
 }
 

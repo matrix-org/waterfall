@@ -24,12 +24,12 @@ func (c *Conference) processNewTrackPublishedMessage(p *participant.Participant,
 	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[msg.TrackID]
 
 	// If a new track has been published, we inform everyone about new track available.
-	c.tracker.AddTrack(p.ID, msg.ExtendedTrackInfo, trackMetadata)
+	c.tracker.AddTrack(p.ID, msg.TrackInfo, trackMetadata)
 	c.resendMetadataToAllExcept(p.ID)
 }
 
 func (c *Conference) processRTPPacketReceivedMessage(p *participant.Participant, msg peer.RTPPacketReceived) {
-	c.tracker.ProcessRTP(msg.ExtendedTrackInfo, msg.Packet)
+	c.tracker.ProcessRTP(msg.TrackInfo, msg.Packet)
 }
 
 func (c *Conference) processPublishedTrackFailedMessage(p *participant.Participant, msg peer.PublishedTrackFailed) {
@@ -116,7 +116,7 @@ func (c *Conference) processDataChannelAvailableMessage(p *participant.Participa
 }
 
 func (c *Conference) processRTCPPackets(p *participant.Participant, msg peer.RTCPReceived) {
-	if err := c.tracker.ProcessRTCP(msg.ExtendedTrackInfo, msg.Packets); err != nil {
+	if err := c.tracker.ProcessRTCP(msg.TrackInfo, msg.Packets); err != nil {
 		p.Logger.Errorf("Failed to process RTCP on %s (%v): %v", msg.TrackID, msg.Layer, err)
 	}
 }
@@ -143,7 +143,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 	}
 
 	// Calculate the list of tracks we need to subscribe and unsubscribe from based on the requirements.
-	subscribeTo := []peer.ExtendedTrackInfo{}
+	subscribeTo := []peer.TrackInfo{}
 
 	// Iterate over all published tracks that correspond to the track IDs we want to subscribe to.
 	for id, track := range c.findPublishedTracks(toSubscribeTrackIDs) {
@@ -157,7 +157,8 @@ func (c *Conference) processTrackSubscriptionMessage(
 		// If we're not subscribed to the track, let's subscribe to it respecting
 		// the desired track parameters that the user specified in a request.
 		if subscription == nil {
-			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.Info, desiredLayer})
+			track.Info.Layer = desiredLayer
+			subscribeTo = append(subscribeTo, track.Info)
 			continue
 		}
 
@@ -169,7 +170,8 @@ func (c *Conference) processTrackSubscriptionMessage(
 			// If we're already subscribed, but to a different simulcast layer, then we need to remove the track.
 			toUnsubscribeTrackIDs = append(toUnsubscribeTrackIDs, id)
 			// And add again, this time with a proper simulcast layer.
-			subscribeTo = append(subscribeTo, peer.ExtendedTrackInfo{track.Info, desiredLayer})
+			track.Info.Layer = desiredLayer
+			subscribeTo = append(subscribeTo, track.Info)
 			continue
 		}
 
