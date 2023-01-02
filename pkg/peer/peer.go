@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/peer/state"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -33,9 +33,7 @@ type Peer[ID comparable] struct {
 	logger         *logrus.Entry
 	peerConnection *webrtc.PeerConnection
 	sink           *common.MessageSink[ID, MessageContent]
-
-	dataChannelMutex sync.Mutex
-	dataChannel      *webrtc.DataChannel
+	state          *state.PeerState
 }
 
 // Instantiates a new peer with a given SDP offer and returns a peer and the SDP answer if everything is ok.
@@ -54,6 +52,7 @@ func NewPeer[ID comparable](
 		logger:         logger,
 		peerConnection: peerConnection,
 		sink:           sink,
+		state:          state.NewPeerState(),
 	}
 
 	peerConnection.OnTrack(peer.onRtpTrackReceived)
@@ -122,19 +121,16 @@ func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo) error {
 
 // Tries to send the given message to the remote counterpart of our peer.
 func (p *Peer[ID]) SendOverDataChannel(json string) error {
-
-	p.dataChannelMutex.Lock()
-	defer p.dataChannelMutex.Unlock()
-
-	if p.dataChannel == nil {
+	dataChannel := p.state.GetDataChannel()
+	if dataChannel == nil {
 		return ErrDataChannelNotAvailable
 	}
 
-	if p.dataChannel.ReadyState() != webrtc.DataChannelStateOpen {
+	if dataChannel.ReadyState() != webrtc.DataChannelStateOpen {
 		return ErrDataChannelNotReady
 	}
 
-	if err := p.dataChannel.SendText(json); err != nil {
+	if err := dataChannel.SendText(json); err != nil {
 		return fmt.Errorf("failed to send data over data channel: %w", err)
 	}
 

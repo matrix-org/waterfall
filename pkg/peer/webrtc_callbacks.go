@@ -15,6 +15,7 @@ func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver 
 	trackInfo := common.TrackInfoFromTrack(remoteTrack)
 
 	// Notify others that our track has just been published.
+	p.state.AddRemoteTrack(remoteTrack)
 	p.sink.Send(NewTrackPublished{trackInfo})
 
 	// Start forwarding the data from the remote track to the local track,
@@ -28,6 +29,7 @@ func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver 
 				} else { // finished, no more data, but with error, inform others
 					p.logger.WithError(readErr).Error("failed to read from remote track")
 				}
+				p.state.RemoveRemoteTrack(remoteTrack)
 				p.sink.Send(PublishedTrackFailed{trackInfo})
 				return
 			}
@@ -102,16 +104,14 @@ func (p *Peer[ID]) onConnectionStateChanged(state webrtc.PeerConnectionState) {
 
 // A callback that is called once the data channel is ready to be used.
 func (p *Peer[ID]) onDataChannelReady(dc *webrtc.DataChannel) {
-	p.dataChannelMutex.Lock()
-	defer p.dataChannelMutex.Unlock()
-
-	if p.dataChannel != nil {
+	if dataChannel := p.state.GetDataChannel(); dataChannel != nil {
 		p.logger.Error("Data channel already exists")
-		p.dataChannel.Close()
+		dataChannel.Close()
+		p.state.SetDataChannel(nil)
 		return
 	}
 
-	p.dataChannel = dc
+	p.state.SetDataChannel(dc)
 	p.logger.WithField("label", dc.Label()).Debug("Data channel ready")
 
 	dc.OnOpen(func() {
