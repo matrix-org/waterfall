@@ -10,7 +10,6 @@ import (
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -101,19 +100,14 @@ func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) *Subscription {
 // Writes the specified packets to the `trackID`.
 func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo) error {
 	// Find the right track.
-	receivers := p.peerConnection.GetReceivers()
-	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
-		return receiver.Track() != nil &&
-			receiver.Track().ID() == info.TrackID &&
-			common.RIDToSimulcastLayer(receiver.Track().RID()) == info.Layer
-	})
-	if receiverIndex == -1 {
+	track := p.state.GetRemoteTrack(info.TrackID, info.Layer)
+	if track == nil {
 		return ErrTrackNotFound
 	}
 
 	// The ssrc that we must use when sending the RTCP packet.
 	// Otherwise the peer won't understand where the packet comes from.
-	ssrc := uint32(receivers[receiverIndex].Track().SSRC())
+	ssrc := uint32(track.SSRC())
 
 	rtcps := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}}
 	return p.peerConnection.WriteRTCP(rtcps)
