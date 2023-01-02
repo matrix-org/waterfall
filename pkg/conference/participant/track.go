@@ -21,7 +21,7 @@ type PublishedTrack struct {
 	Metadata TrackMetadata
 	// The timestamp at which we are allowed to send the FIR or PLI request. We don't want to send them
 	// too often, so we introduce some trivial rate limiting to not "enforce" too many key frames.
-	canSendKeyframeAt time.Time
+	canRequestKeyframeAt time.Time
 }
 
 // Calculate the layer that we can use based on the requirements passed as parameters and available layers.

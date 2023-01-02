@@ -218,12 +218,12 @@ func (t *Tracker) ProcessRTCP(info peer.TrackInfo, packets []peer.RTCPPacket) er
 	}
 
 	// We don't want to send keyframes too often, so we'll send them only once in a while.
-	if published.canSendKeyframeAt.Before(time.Now()) {
+	if published.canRequestKeyframeAt.Before(time.Now()) {
 		if err := participant.Peer.WriteRTCP(info, packets); err != nil {
 			return err
 		}
 
-		published.canSendKeyframeAt = time.Now().Add(sendKeyFrameInterval)
+		published.canRequestKeyframeAt = time.Now().Add(sendKeyFrameInterval)
 		t.publishedTracks[info.TrackID] = published
 	}
 
