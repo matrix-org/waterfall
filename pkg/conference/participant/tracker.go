@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
-	"github.com/matrix-org/waterfall/pkg/peer"
+	"github.com/matrix-org/waterfall/pkg/peer/subscription"
 	"github.com/pion/rtp"
 	"github.com/thoas/go-funk"
 )
 
 type (
-	Subscriptions    map[ID]*peer.Subscription
+	Subscriptions    map[ID]*subscription.Subscription
 	TrackSubscribers map[TrackID]Subscriptions
 )
 
@@ -175,7 +175,7 @@ func (t *Tracker) Subscribe(participantID ID, tracks []common.TrackInfo) {
 
 // Returns a subscription that corresponds to the `participantID` subscriber for the `trackID`. If no such participant
 // is subscribed to a track or no such track exists, `nil` would be returned.
-func (t *Tracker) GetSubscriber(trackID TrackID, participantID ID) *peer.Subscription {
+func (t *Tracker) GetSubscription(trackID TrackID, participantID ID) *subscription.Subscription {
 	if subscribers, found := t.subscribers[trackID]; found {
 		return subscribers[participantID]
 	}

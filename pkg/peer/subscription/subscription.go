@@ -16,7 +16,7 @@ import (
 type ConnectionController interface {
 	Subscribe(track *webrtc.TrackLocalStaticRTP) (*webrtc.RTPSender, error)
 	Unsubscribe(sender *webrtc.RTPSender) error
-	RequestKeyFrame(track common.TrackInfo) error
+	RequestKeyFrame(track common.TrackInfo)
 }
 
 type Subscription struct {
@@ -30,7 +30,7 @@ type Subscription struct {
 func NewSubscription(
 	info common.TrackInfo,
 	connection ConnectionController,
-	logger logrus.Logger,
+	logger *logrus.Entry,
 ) (*Subscription, error) {
 	// Set the RID if any (would be "" if no simulcast is used).
 	setRid := webrtc.WithRTPStreamID(common.SimulcastLayerToRID(info.Layer))
@@ -79,7 +79,7 @@ func (s *Subscription) TrackInfo() common.TrackInfo {
 }
 
 // Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.
-func (s *Subscription) readRTCP(logger logrus.Logger) {
+func (s *Subscription) readRTCP(logger *logrus.Entry) {
 	for {
 		packets, _, err := s.rtpSender.ReadRTCP()
 		if err != nil {
