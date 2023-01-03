@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
-	"github.com/thoas/go-funk"
+	"golang.org/x/exp/slices"
 )
 
 type TrackID = string
@@ -16,7 +16,7 @@ type PublishedTrack struct {
 	// Info about the track.
 	Info common.TrackInfo
 	// Available simulcast Layers.
-	Layers []common.SimulcastLayer
+	Layers []common.Simulcast
 	// Track metadata.
 	Metadata TrackMetadata
 	// The timestamp at which we are allowed to send the FIR or PLI request. We don't want to send them
@@ -25,11 +25,11 @@ type PublishedTrack struct {
 }
 
 // Calculate the layer that we can use based on the requirements passed as parameters and available layers.
-func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) common.SimulcastLayer {
+func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) common.Simulcast {
 	// Audio track. For them we don't have any simulcast. We also don't have any simulcast for video
 	// if there was no simulcast enabled at all.
 	if !p.Metadata.IsVideoTrack() || len(p.Layers) == 0 {
-		return common.SimulcastLayerNone
+		return p.Info.Simulcast
 	}
 
 	// Video track. Calculate it's full resolution based on a metadata.
@@ -50,8 +50,12 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 
 	// Check if the desired layer available at all.
 	// If the desired layer is not available, we'll find the closest one.
-	if funk.Contains(p.Layers, desiredLayer) {
-		return desiredLayer
+	layerIndex := slices.IndexFunc(p.Layers, func(simulcast common.Simulcast) bool {
+		return simulcast.Layer == desiredLayer
+	})
+
+	if layerIndex != -1 {
+		return p.Layers[layerIndex]
 	}
 
 	// Ideally, here we would need to send an error if the desired layer is not available, but we don't
@@ -59,14 +63,20 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 	// layer is somewhat cumbersome, so instead, we just return the lowest layer. It's not ideal, but ok
 	// for a quick fix.
 	priority := []common.SimulcastLayer{common.SimulcastLayerLow, common.SimulcastLayerMedium, common.SimulcastLayerHigh}
-	for _, layer := range priority {
-		if funk.Contains(p.Layers, layer) {
-			return layer
+
+	// More Go boilerplate.
+	for _, desiredLayer := range priority {
+		layerIndex := slices.IndexFunc(p.Layers, func(simulcast common.Simulcast) bool {
+			return simulcast.Layer == desiredLayer
+		})
+
+		if layerIndex != -1 {
+			return p.Layers[layerIndex]
 		}
 	}
 
 	// Actually this part will never be executed, because we always have at least one layer available.
-	return common.SimulcastLayerNone
+	return p.Info.Simulcast
 }
 
 // Metadata that we have received about this track from a user.

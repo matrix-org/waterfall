@@ -85,7 +85,7 @@ func (p *Peer[ID]) Terminate() {
 // Adds given tracks to our peer connection, so that they can be sent to the remote peer.
 func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) (*subscription.Subscription, error) {
 	connection := NewConnectionWrapper(p.peerConnection, func(ti common.TrackInfo) {
-		p.sink.Send(KeyFrameRequestReceived{ti})
+		p.RequestKeyFrame(ti)
 	})
 
 	subscription, err := subscription.NewSubscription(track, connection, p.logger)
@@ -99,16 +99,17 @@ func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) (*subscription.Subscripti
 // Writes the specified packets to the `trackID`.
 func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo) error {
 	// Find the right track.
-	track := p.state.GetRemoteTrack(info.TrackID, info.Layer)
+	track := p.state.GetRemoteTrack(info.TrackID, info.Simulcast.Layer)
 	if track == nil {
 		return ErrTrackNotFound
 	}
 
-	// The ssrc that we must use when sending the RTCP packet.
-	// Otherwise the peer won't understand where the packet comes from.
-	ssrc := uint32(track.SSRC())
+	if uint32(track.SSRC()) != info.Simulcast.SSRC {
+		return fmt.Errorf("track ssrc %d doesn't match the one in the info %d", track.SSRC(), info.Simulcast.SSRC)
+	}
 
-	rtcps := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}}
+	p.logger.Debugf("Keyframe request: %s (%s)", info.TrackID, info.Simulcast.Layer)
+	rtcps := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: info.Simulcast.SSRC}}
 	return p.peerConnection.WriteRTCP(rtcps)
 }
 
