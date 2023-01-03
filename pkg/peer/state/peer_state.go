@@ -45,18 +45,6 @@ func (p *PeerState) GetRemoteTrack(id string, simulcast common.SimulcastLayer) *
 	return p.remoteTracks[RemoteTrackId{id, simulcast}]
 }
 
-func (p *PeerState) GetRemoteTracks() []*webrtc.TrackRemote {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	tracks := make([]*webrtc.TrackRemote, 0, len(p.remoteTracks))
-	for _, track := range p.remoteTracks {
-		tracks = append(tracks, track)
-	}
-
-	return tracks
-}
-
 func (p *PeerState) SetDataChannel(dc *webrtc.DataChannel) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
