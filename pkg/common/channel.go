@@ -7,7 +7,7 @@ import "sync/atomic"
 // meaning that each attempt to send will block the channel until the receiver
 // reads it. Majority of primitives here in `waterfall` are designed under assumption
 // that sending is not blocking.
-const UnboundedChannelSize = 128
+const UnboundedChannelSize = 512
 
 // Creates a new channel, returns two counterparts of it where one can only send and another can only receive.
 // Unlike traditional Go channels, these allow the receiver to mark the channel as closed which would then fail

@@ -3,14 +3,12 @@ package peer
 import (
 	"errors"
 	"fmt"
-	"io"
-	"sync"
 
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/peer/state"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -33,9 +31,7 @@ type Peer[ID comparable] struct {
 	logger         *logrus.Entry
 	peerConnection *webrtc.PeerConnection
 	sink           *common.MessageSink[ID, MessageContent]
-
-	dataChannelMutex sync.Mutex
-	dataChannel      *webrtc.DataChannel
+	state          *state.PeerState
 }
 
 // Instantiates a new peer with a given SDP offer and returns a peer and the SDP answer if everything is ok.
@@ -44,7 +40,7 @@ func NewPeer[ID comparable](
 	sink *common.MessageSink[ID, MessageContent],
 	logger *logrus.Entry,
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
-	peerConnection, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	peerConnection, err := createPeerConnection()
 	if err != nil {
 		logger.WithError(err).Error("failed to create peer connection")
 		return nil, nil, ErrCantCreatePeerConnection
@@ -54,6 +50,7 @@ func NewPeer[ID comparable](
 		logger:         logger,
 		peerConnection: peerConnection,
 		sink:           sink,
+		state:          state.NewPeerState(),
 	}
 
 	peerConnection.OnTrack(peer.onRtpTrackReceived)
@@ -85,121 +82,49 @@ func (p *Peer[ID]) Terminate() {
 }
 
 // Adds given tracks to our peer connection, so that they can be sent to the remote peer.
-func (p *Peer[ID]) SubscribeTo(tracks []*webrtc.TrackLocalStaticRTP) {
-	for _, track := range tracks {
-		rtpSender, err := p.peerConnection.AddTrack(track)
-		if err != nil {
-			p.logger.WithError(err).Error("failed to add track")
-			continue
-		}
+func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) *Subscription {
+	connection := NewConnectionWrapper(p.peerConnection, func(ti common.TrackInfo) {
+		p.sink.Send(KeyFrameRequestReceived{ti})
+	})
 
-		go p.readRTCP(rtpSender)
-
-		p.logger.Infof("subscribed to track: %s", track.ID())
+	subscription, err := NewSubscription(track, connection)
+	if err != nil {
+		p.logger.Errorf("Failed to subscribe to track: %s", err)
+		return nil
 	}
-}
 
-// Read incoming RTCP packets
-// Before these packets are returned they are processed by interceptors. For things
-// like NACK this needs to be called.
-func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender) {
-	for {
-		packets, _, err := rtpSender.ReadRTCP()
-		if err != nil {
-			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-				p.logger.WithError(err).Warn("failed to read RTCP on track")
-				return
-			}
-		}
-
-		// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
-		toForward := []RTCPPacket{}
-		for _, packet := range packets {
-			// TODO: Should we also handle NACKs?
-			switch packet.(type) {
-			case *rtcp.PictureLossIndication:
-				toForward = append(toForward, RTCPPacket{PictureLossIndicator, packet})
-			case *rtcp.FullIntraRequest:
-				toForward = append(toForward, RTCPPacket{FullIntraRequest, packet})
-			}
-		}
-
-		p.sink.Send(RTCPReceived{Packets: toForward, TrackID: rtpSender.Track().ID()})
-	}
+	p.logger.Infof("Subscribed to track: %s (%s)", track.TrackID, track.Layer.String())
+	return subscription
 }
 
 // Writes the specified packets to the `trackID`.
-func (p *Peer[ID]) WriteRTCP(trackID string, packets []RTCPPacket) error {
+func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo) error {
 	// Find the right track.
-	receivers := p.peerConnection.GetReceivers()
-	receiverIndex := slices.IndexFunc(receivers, func(receiver *webrtc.RTPReceiver) bool {
-		return receiver.Track() != nil && receiver.Track().ID() == trackID
-	})
-	if receiverIndex == -1 {
+	track := p.state.GetRemoteTrack(info.TrackID, info.Layer)
+	if track == nil {
 		return ErrTrackNotFound
 	}
 
 	// The ssrc that we must use when sending the RTCP packet.
 	// Otherwise the peer won't understand where the packet comes from.
-	ssrc := uint32(receivers[receiverIndex].Track().SSRC())
+	ssrc := uint32(track.SSRC())
 
-	toSend := make([]rtcp.Packet, len(packets))
-	for i, packet := range packets {
-		switch packet.Type {
-		case PictureLossIndicator:
-			// PLIs are trivial, they just have media SSRC and sender SSRC, where the last one
-			// does not seem to matter (based on Pion examples of using these).
-			toSend[i] = &rtcp.PictureLossIndication{MediaSSRC: ssrc}
-		case FullIntraRequest:
-			// FIRs are a bit more complicated. They have a sequence number that must be incremented
-			// and an additional SSRC inside FIR payload. So we rewrite the media SSRC here.
-			rewrittenFIR, _ := packet.Content.(*rtcp.FullIntraRequest)
-			rewrittenFIR.MediaSSRC = ssrc
-			// TODO: Check is we also need to rewrite the SSRC inside the FIR payload.
-			toSend[i] = rewrittenFIR
-		}
-	}
-
-	return p.peerConnection.WriteRTCP(toSend)
-}
-
-// Unsubscribes from the given list of tracks.
-func (p *Peer[ID]) UnsubscribeFrom(tracks []*webrtc.TrackLocalStaticRTP) {
-	// That's unfortunately an O(m*n) operation, but we don't expect the number of tracks to be big.
-	for _, sender := range p.peerConnection.GetSenders() {
-		currentTrack := sender.Track()
-		if currentTrack == nil {
-			continue
-		}
-
-		for _, trackToUnsubscribe := range tracks {
-			presentTrackID, presentStreamID := currentTrack.ID(), currentTrack.StreamID()
-			trackID, streamID := trackToUnsubscribe.ID(), trackToUnsubscribe.StreamID()
-			if presentTrackID == trackID && presentStreamID == streamID {
-				if err := p.peerConnection.RemoveTrack(sender); err != nil {
-					p.logger.WithError(err).Error("failed to remove track")
-				} else {
-					p.logger.Infof("unsubscribed from track: %s", trackID)
-				}
-			}
-		}
-	}
+	rtcps := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: ssrc}}
+	return p.peerConnection.WriteRTCP(rtcps)
 }
 
 // Tries to send the given message to the remote counterpart of our peer.
 func (p *Peer[ID]) SendOverDataChannel(json string) error {
-	p.dataChannelMutex.Lock()
-	defer p.dataChannelMutex.Unlock()
-
-	if p.dataChannel == nil {
+	dataChannel := p.state.GetDataChannel()
+	if dataChannel == nil {
 		return ErrDataChannelNotAvailable
 	}
 
-	if p.dataChannel.ReadyState() != webrtc.DataChannelStateOpen {
+	if dataChannel.ReadyState() != webrtc.DataChannelStateOpen {
 		return ErrDataChannelNotReady
 	}
 
-	if err := p.dataChannel.SendText(json); err != nil {
+	if err := dataChannel.SendText(json); err != nil {
 		return fmt.Errorf("failed to send data over data channel: %w", err)
 	}
 

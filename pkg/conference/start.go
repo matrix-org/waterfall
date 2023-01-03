@@ -18,6 +18,7 @@ package conference
 
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
@@ -37,17 +38,18 @@ func StartConference(
 	sender, receiver := common.NewChannel[MatrixMessage]()
 
 	conference := &Conference{
-		id:             confID,
-		config:         config,
-		signaling:      signaling,
-		matrixMessages: receiver,
-		endNotifier:    conferenceEndNotifier,
-		participants:   make(map[ParticipantID]*Participant),
-		peerMessages:   make(chan common.Message[ParticipantID, peer.MessageContent], common.UnboundedChannelSize),
-		logger:         logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		id:              confID,
+		config:          config,
+		logger:          logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		signaling:       signaling,
+		tracker:         *participant.NewParticipantTracker(),
+		streamsMetadata: make(event.CallSDPStreamMetadata),
+		endNotifier:     conferenceEndNotifier,
+		peerMessages:    make(chan common.Message[participant.ID, peer.MessageContent], common.UnboundedChannelSize),
+		matrixMessages:  receiver,
 	}
 
-	participantID := ParticipantID{UserID: userID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}
+	participantID := participant.ID{UserID: userID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}
 	if err := conference.onNewParticipant(participantID, inviteEvent); err != nil {
 		return nil, err
 	}

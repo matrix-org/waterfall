@@ -1,9 +1,9 @@
 package peer
 
 import (
-	"errors"
 	"io"
 
+	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -11,44 +11,30 @@ import (
 // A callback that is called once we receive first RTP packets from a track, i.e.
 // we call this function each time a new track is received.
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-	// Create a local track, all our SFU clients that are subscribed to this
-	// peer (publisher) wil be fed via this track.
-	localTrack, err := webrtc.NewTrackLocalStaticRTP(
-		remoteTrack.Codec().RTPCodecCapability,
-		remoteTrack.ID(),
-		remoteTrack.StreamID(),
-	)
-	if err != nil {
-		p.logger.WithError(err).Error("failed to create local track")
-		return
-	}
+	// Construct a new track info assuming that there is no simulcast.
+	trackInfo := common.TrackInfoFromTrack(remoteTrack)
 
 	// Notify others that our track has just been published.
-	p.sink.Send(NewTrackPublished{Track: localTrack})
+	p.state.AddRemoteTrack(remoteTrack)
+	p.sink.Send(NewTrackPublished{trackInfo})
 
 	// Start forwarding the data from the remote track to the local track,
 	// so that everyone who is subscribed to this track will receive the data.
 	go func() {
-		rtpBuf := make([]byte, 1400)
-
 		for {
-			index, _, readErr := remoteTrack.Read(rtpBuf)
+			packet, _, readErr := remoteTrack.ReadRTP()
 			if readErr != nil {
 				if readErr == io.EOF { // finished, no more data, no error, inform others
 					p.logger.Info("remote track closed")
 				} else { // finished, no more data, but with error, inform others
 					p.logger.WithError(readErr).Error("failed to read from remote track")
 				}
-				p.sink.Send(PublishedTrackFailed{Track: localTrack})
+				p.state.RemoveRemoteTrack(remoteTrack)
+				p.sink.Send(PublishedTrackFailed{trackInfo})
 				return
 			}
 
-			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet.
-			if _, err = localTrack.Write(rtpBuf[:index]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				p.logger.WithError(err).Error("failed to write to local track")
-				p.sink.Send(PublishedTrackFailed{Track: localTrack})
-				return
-			}
+			p.sink.Send(RTPPacketReceived{trackInfo, packet})
 		}
 	}()
 }
@@ -118,16 +104,14 @@ func (p *Peer[ID]) onConnectionStateChanged(state webrtc.PeerConnectionState) {
 
 // A callback that is called once the data channel is ready to be used.
 func (p *Peer[ID]) onDataChannelReady(dc *webrtc.DataChannel) {
-	p.dataChannelMutex.Lock()
-	defer p.dataChannelMutex.Unlock()
-
-	if p.dataChannel != nil {
+	if dataChannel := p.state.GetDataChannel(); dataChannel != nil {
 		p.logger.Error("Data channel already exists")
-		p.dataChannel.Close()
+		dataChannel.Close()
+		p.state.SetDataChannel(nil)
 		return
 	}
 
-	p.dataChannel = dc
+	p.state.SetDataChannel(dc)
 	p.logger.WithField("label", dc.Label()).Debug("Data channel ready")
 
 	dc.OnOpen(func() {

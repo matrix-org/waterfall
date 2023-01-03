@@ -1,7 +1,8 @@
 package peer
 
 import (
-	"github.com/pion/rtcp"
+	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -17,11 +18,16 @@ type LeftTheCall struct {
 }
 
 type NewTrackPublished struct {
-	Track *webrtc.TrackLocalStaticRTP
+	common.TrackInfo
 }
 
 type PublishedTrackFailed struct {
-	Track *webrtc.TrackLocalStaticRTP
+	common.TrackInfo
+}
+
+type RTPPacketReceived struct {
+	common.TrackInfo
+	Packet *rtp.Packet
 }
 
 type NewICECandidate struct {
@@ -40,19 +46,6 @@ type DataChannelMessage struct {
 
 type DataChannelAvailable struct{}
 
-type RTCPReceived struct {
-	TrackID string
-	Packets []RTCPPacket
+type KeyFrameRequestReceived struct {
+	common.TrackInfo
 }
-
-type RTCPPacket struct {
-	Type    RTCPPacketType
-	Content rtcp.Packet
-}
-
-type RTCPPacketType int
-
-const (
-	PictureLossIndicator RTCPPacketType = iota + 1
-	FullIntraRequest
-)
