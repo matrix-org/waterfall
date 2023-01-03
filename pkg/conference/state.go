@@ -60,12 +60,19 @@ func (c *Conference) getAvailableStreamsFor(forParticipant participant.ID) event
 		// Skip us. As we know about our own tracks.
 		if track.Owner != forParticipant {
 			streamID := track.Info.StreamID
+			kind := track.Info.Kind.String()
 
 			if metadata, ok := streamsMetadata[streamID]; ok {
-				metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{}
+				metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{
+					Kind: kind,
+				}
 				streamsMetadata[streamID] = metadata
 			} else if metadata, ok := c.streamsMetadata[streamID]; ok {
-				metadata.Tracks = event.CallSDPStreamMetadataTracks{trackID: event.CallSDPStreamMetadataTrack{}}
+				metadata.Tracks = event.CallSDPStreamMetadataTracks{
+					trackID: event.CallSDPStreamMetadataTrack{
+						Kind: kind,
+					},
+				}
 				streamsMetadata[streamID] = metadata
 			} else {
 				c.logger.Warnf("Don't have metadata for %s", trackID)

@@ -63,6 +63,7 @@ func (s SimulcastLayer) String() string {
 type TrackInfo struct {
 	TrackID  string
 	StreamID string
+	Kind     webrtc.RTPCodecType
 	Codec    webrtc.RTPCodecCapability
 	Layer    SimulcastLayer
 }
@@ -71,6 +72,7 @@ func TrackInfoFromTrack(track *webrtc.TrackRemote) TrackInfo {
 	return TrackInfo{
 		TrackID:  track.ID(),
 		StreamID: track.StreamID(),
+		Kind:     track.Kind(),
 		Codec:    track.Codec().RTPCodecCapability,
 		Layer:    RIDToSimulcastLayer(track.RID()),
 	}
