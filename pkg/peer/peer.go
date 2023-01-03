@@ -3,7 +3,6 @@ package peer
 import (
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/state"
@@ -84,14 +83,15 @@ func (p *Peer[ID]) Terminate() {
 
 // Adds given tracks to our peer connection, so that they can be sent to the remote peer.
 func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) *Subscription {
-	subscription, err := NewSubscription(track, NewConnectionWrapper(p.peerConnection))
+	connection := NewConnectionWrapper(p.peerConnection, func(ti common.TrackInfo) {
+		p.sink.Send(KeyFrameRequestReceived{ti})
+	})
+
+	subscription, err := NewSubscription(track, connection)
 	if err != nil {
 		p.logger.Errorf("Failed to subscribe to track: %s", err)
 		return nil
 	}
-
-	// Start reading and forwarding RTCP packets.
-	go p.readRTCP(subscription.rtpSender, track)
 
 	p.logger.Infof("Subscribed to track: %s (%s)", track.TrackID, track.Layer.String())
 	return subscription
@@ -177,27 +177,4 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 	}
 
 	return &answer, nil
-}
-
-// Read incoming RTCP packets
-// Before these packets are returned they are processed by interceptors.
-func (p *Peer[ID]) readRTCP(rtpSender *webrtc.RTPSender, track common.TrackInfo) {
-	for {
-		packets, _, err := rtpSender.ReadRTCP()
-		if err != nil {
-			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-				p.logger.WithError(err).Warn("failed to read RTCP on track")
-				return
-			}
-		}
-
-		// We only want to inform others about PLIs and FIRs. We skip the rest of the packets for now.
-		for _, packet := range packets {
-			switch packet.(type) {
-			// For simplicity we assume that any of the key frame requests is just a key frame request.
-			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-				p.sink.Send(KeyFrameRequestReceived{track})
-			}
-		}
-	}
 }
