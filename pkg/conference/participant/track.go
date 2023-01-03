@@ -54,35 +54,19 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 		return desiredLayer
 	}
 
-	// If we wanted high, but high is not available, let's try to see if medium is there.
-	if desiredLayer == common.SimulcastLayerHigh {
-		if funk.Contains(p.Layers, common.SimulcastLayerMedium) {
-			return common.SimulcastLayerMedium
+	// Ideally, here we would need to send an error if the desired layer is not available, but we don't
+	// have a way to do it. So we just return the closest available layer. Handling the closest available
+	// layer is somewhat cumbersome, so instead, we just return the lowest layer. It's not ideal, but ok
+	// for a quick fix.
+	priority := []common.SimulcastLayer{common.SimulcastLayerLow, common.SimulcastLayerMedium, common.SimulcastLayerHigh}
+	for _, layer := range priority {
+		if funk.Contains(p.Layers, layer) {
+			return layer
 		}
-
-		// Low is always there, otherwise the `availableLayers` would be empty and we would have returned earlier.
-		return common.SimulcastLayerLow
 	}
 
-	// If we requested medium and it's not available, we return low (unless the only available layer is high).
-	if desiredLayer == common.SimulcastLayerMedium {
-		if funk.Contains(p.Layers, common.SimulcastLayerLow) {
-			return common.SimulcastLayerLow
-		}
-
-		// Apparently there is only single layer available: high, then we must send it. Maybe others has not yet
-		// been published - the client can always re-request a different quality later if needed.
-		return common.SimulcastLayerHigh
-	}
-
-	// If we got here, then the low layer was requested, but it's not available.
-	// Let's try to return medium then if it's available.
-	if funk.Contains(p.Layers, common.SimulcastLayerMedium) {
-		return common.SimulcastLayerMedium
-	}
-
-	// No other choice rather than sending low.
-	return common.SimulcastLayerLow
+	// Actually this part will never be executed, because we always have at least one layer available.
+	return common.SimulcastLayerNone
 }
 
 // Metadata that we have received about this track from a user.
