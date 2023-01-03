@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/rtcp"
@@ -23,7 +24,7 @@ type Subscription struct {
 	rtpTrack   *webrtc.TrackLocalStaticRTP
 	info       common.TrackInfo
 	connection ConnectionController
-	logger     logrus.Logger
+	watchdog   chan<- struct{}
 }
 
 func NewSubscription(
@@ -45,10 +46,21 @@ func NewSubscription(
 		return nil, fmt.Errorf("Failed to add track: %s", err)
 	}
 
-	subscription := &Subscription{rtpSender, rtpTrack, info, connection, logger}
+	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
+	watchdogConfig := WatchdogConfig{
+		Timeout: 2 * time.Second,
+		OnTimeout: func() {
+			logger.WithField("subscription", info.TrackID).Warn("No RTP received for 2 seconds")
+			connection.RequestKeyFrame(info)
+		},
+	}
+
+	// Start a watchdog for the subscription and create a subsription.
+	watchdog := watchdogConfig.Start()
+	subscription := &Subscription{rtpSender, rtpTrack, info, connection, watchdog}
 
 	// Start reading and forwarding RTCP packets.
-	go subscription.readRTCP()
+	go subscription.readRTCP(logger)
 
 	return subscription, nil
 }
@@ -58,6 +70,7 @@ func (s *Subscription) Unsubscribe() error {
 }
 
 func (s *Subscription) WriteRTP(packet *rtp.Packet) error {
+	s.watchdog <- struct{}{}
 	return s.rtpTrack.WriteRTP(packet)
 }
 
@@ -66,12 +79,13 @@ func (s *Subscription) TrackInfo() common.TrackInfo {
 }
 
 // Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.
-func (s *Subscription) readRTCP() {
+func (s *Subscription) readRTCP(logger logrus.Logger) {
 	for {
 		packets, _, err := s.rtpSender.ReadRTCP()
 		if err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-				s.logger.Warnf("failed to read RTCP on track: %s", err)
+				logger.Warnf("failed to read RTCP on track: %s", err)
+				close(s.watchdog)
 				return
 			}
 		}
