@@ -84,7 +84,7 @@ func (p *Peer[ID]) Terminate() {
 
 // Adds given tracks to our peer connection, so that they can be sent to the remote peer.
 func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) *Subscription {
-	subscription, err := NewSubscription(track, common.NewConnectionWrapper(p.peerConnection))
+	subscription, err := NewSubscription(track, NewConnectionWrapper(p.peerConnection))
 	if err != nil {
 		p.logger.Errorf("Failed to subscribe to track: %s", err)
 		return nil
