@@ -18,7 +18,7 @@ func (c *Conference) processLeftTheCallMessage(p *participant.Participant, msg p
 }
 
 func (c *Conference) processNewTrackPublishedMessage(p *participant.Participant, msg peer.NewTrackPublished) {
-	p.Logger.Infof("Published new track: %s (%v)", msg.TrackID, msg.Layer)
+	p.Logger.Infof("Published new track: %s (%v)", msg.TrackID, msg.Simulcast)
 
 	// Find metadata for a given track.
 	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[msg.TrackID]
@@ -117,7 +117,7 @@ func (c *Conference) processDataChannelAvailableMessage(p *participant.Participa
 
 func (c *Conference) processKeyFrameRequest(p *participant.Participant, msg peer.KeyFrameRequestReceived) {
 	if err := c.tracker.ProcessKeyFrameRequest(msg.TrackInfo); err != nil {
-		p.Logger.Errorf("Failed to process RTCP on %s (%v): %v", msg.TrackID, msg.Layer, err)
+		p.Logger.Errorf("Failed to process RTCP on %s (%v): %v", msg.TrackID, msg.Simulcast, err)
 	}
 }
 
@@ -157,7 +157,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 		// If we're not subscribed to the track, let's subscribe to it respecting
 		// the desired track parameters that the user specified in a request.
 		if subscription == nil {
-			track.Info.Layer = desiredLayer
+			track.Info.Simulcast = desiredLayer
 			subscribeTo = append(subscribeTo, track.Info)
 			continue
 		}
@@ -166,12 +166,8 @@ func (c *Conference) processTrackSubscriptionMessage(
 		// we're subscribed to a different simulcast layer of the track, in which case we know that
 		// the user wants to switch to a different simulcast layer: then we check if the given simulcast
 		// layer is available at all and only if it's available, we switch, otherwise we ignore the request.
-		if subscription.TrackInfo().Layer != desiredLayer {
-			// If we're already subscribed, but to a different simulcast layer, then we need to remove the track.
-			toUnsubscribeTrackIDs = append(toUnsubscribeTrackIDs, id)
-			// And add again, this time with a proper simulcast layer.
-			track.Info.Layer = desiredLayer
-			subscribeTo = append(subscribeTo, track.Info)
+		if subscription.TrackInfo().Simulcast != desiredLayer {
+			subscription.SwitchLayer(desiredLayer)
 			continue
 		}
 

@@ -7,7 +7,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription"
 	"github.com/pion/rtp"
-	"github.com/thoas/go-funk"
+	"golang.org/x/exp/slices"
 )
 
 type (
@@ -88,9 +88,9 @@ func (t *Tracker) AddPublishedTrack(
 	// If this is a new track, let's add it to the list of published and inform participants.
 	track, found := t.publishedTracks[info.TrackID]
 	if !found {
-		layers := []common.SimulcastLayer{}
-		if info.Layer != common.SimulcastLayerNone {
-			layers = append(layers, info.Layer)
+		layers := []common.Simulcast{}
+		if info.Simulcast.Layer != common.SimulcastLayerNone {
+			layers = append(layers, info.Simulcast)
 		}
 
 		t.publishedTracks[info.TrackID] = PublishedTrack{
@@ -104,8 +104,9 @@ func (t *Tracker) AddPublishedTrack(
 	}
 
 	// If it's just a new layer, let's add it to the list of layers of the existing published track.
-	if info.Layer != common.SimulcastLayerNone && !funk.Contains(track.Layers, info.Layer) {
-		track.Layers = append(track.Layers, info.Layer)
+	fn := func(simulcast common.Simulcast) bool { return simulcast.Layer == info.Simulcast.Layer }
+	if info.Simulcast.Layer != common.SimulcastLayerNone && slices.IndexFunc(track.Layers, fn) == -1 {
+		track.Layers = append(track.Layers, info.Simulcast)
 		t.publishedTracks[info.TrackID] = track
 	}
 }
@@ -154,11 +155,11 @@ func (t *Tracker) Subscribe(participantID ID, tracks []common.TrackInfo) {
 		for _, track := range tracks {
 			subscription, err := participant.Peer.SubscribeTo(track)
 			if err != nil {
-				participant.Logger.Errorf("Failed to subscribe to %s (%s): %s", track.TrackID, track.Layer, err)
+				participant.Logger.Errorf("Failed to subscribe to %s (%s): %s", track.TrackID, track.Simulcast, err)
 				continue
 			}
 
-			participant.Logger.Infof("Subscribed to %s (%s)", track.TrackID, track.Layer)
+			participant.Logger.Infof("Subscribed to %s (%s)", track.TrackID, track.Simulcast)
 
 			// If we're a first subscriber, we need to initialize the list of subscribers.
 			// Otherwise it will panic (Go specifics when working with maps).
@@ -202,7 +203,7 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 // Processes an RTP packet received on a given track.
 func (t *Tracker) ProcessRTP(info common.TrackInfo, packet *rtp.Packet) {
 	for participantID, subscription := range t.subscribers[info.TrackID] {
-		if subscription.TrackInfo().Layer == info.Layer {
+		if subscription.TrackInfo().Simulcast == info.Simulcast {
 			if err := subscription.WriteRTP(packet); err != nil {
 				participant := t.GetParticipant(participantID)
 				participant.Logger.Errorf("Error writing RTP packet to %s: %s", info.TrackID, err)

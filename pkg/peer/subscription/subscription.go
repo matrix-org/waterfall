@@ -20,12 +20,13 @@ type ConnectionController interface {
 }
 
 type Subscription struct {
-	rtpSender  *webrtc.RTPSender
-	rtpTrack   *webrtc.TrackLocalStaticRTP
-	info       common.TrackInfo
-	connection ConnectionController
-	watchdog   *common.WatchdogChannel
-	logger     *logrus.Entry
+	rtpSender      *webrtc.RTPSender
+	rtpTrack       *webrtc.TrackLocalStaticRTP
+	info           common.TrackInfo
+	connection     ConnectionController
+	watchdog       *common.WatchdogChannel
+	logger         *logrus.Entry
+	packetRewriter PacketRewriter
 }
 
 func NewSubscription(
@@ -33,11 +34,8 @@ func NewSubscription(
 	connection ConnectionController,
 	logger *logrus.Entry,
 ) (*Subscription, error) {
-	// Set the RID if any (would be "" if no simulcast is used).
-	setRid := webrtc.WithRTPStreamID(common.SimulcastLayerToRID(info.Layer))
-
 	// Create a new track.
-	rtpTrack, err := webrtc.NewTrackLocalStaticRTP(info.Codec, info.TrackID, info.StreamID, setRid)
+	rtpTrack, err := webrtc.NewTrackLocalStaticRTP(info.Codec, info.TrackID, info.StreamID)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create track: %s", err)
 	}
@@ -47,27 +45,33 @@ func NewSubscription(
 		return nil, fmt.Errorf("Failed to add track: %s", err)
 	}
 
+	subscription := &Subscription{rtpSender, rtpTrack, info, connection, nil, logger, NewPacketRewriter()}
+
 	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
 	watchdogConfig := common.WatchdogConfig{
 		Timeout: 2 * time.Second,
 		OnTimeout: func() {
-			logger.Warnf("No RTP on subscription for %s (%s)", info.TrackID, info.Layer)
-			connection.RequestKeyFrame(info)
+			ti := subscription.info
+			logger.Warnf("No RTP on subscription for %s (%s)", ti.TrackID, ti.Simulcast)
+			subscription.connection.RequestKeyFrame(ti)
 		},
 	}
 
 	// Start a watchdog for the subscription and create a subsription.
-	watchdog := common.StartWatchdog(watchdogConfig)
-	subscription := &Subscription{rtpSender, rtpTrack, info, connection, watchdog, logger}
+	subscription.watchdog = common.StartWatchdog(watchdogConfig)
 
 	// Start reading and forwarding RTCP packets.
 	go subscription.readRTCP()
+
+	// Request a key frame, so that we can get it from the publisher right after subscription.
+	connection.RequestKeyFrame(info)
 
 	return subscription, nil
 }
 
 func (s *Subscription) Unsubscribe() error {
 	s.watchdog.Close()
+	s.logger.Infof("Unsubscribing from %s (%s)", s.info.TrackID, s.info.Simulcast)
 	return s.connection.Unsubscribe(s.rtpSender)
 }
 
@@ -76,7 +80,19 @@ func (s *Subscription) WriteRTP(packet *rtp.Packet) error {
 		s.logger.Errorf("Subscription to %s is closed", s.info.TrackID)
 	}
 
-	return s.rtpTrack.WriteRTP(packet)
+	rewrittenPacket, err := s.packetRewriter.ProcessIncoming(packet)
+	if err != nil {
+		return err
+	}
+
+	return s.rtpTrack.WriteRTP(rewrittenPacket)
+}
+
+func (s *Subscription) SwitchLayer(simulcast common.Simulcast) {
+	s.logger.Infof("Switching layer on %s to %s", s.info.TrackID, simulcast)
+	s.info.Simulcast = simulcast
+	s.packetRewriter.SwitchLayer(simulcast.SSRC)
+	s.connection.RequestKeyFrame(s.info)
 }
 
 func (s *Subscription) TrackInfo() common.TrackInfo {
@@ -89,7 +105,7 @@ func (s *Subscription) readRTCP() {
 		packets, _, err := s.rtpSender.ReadRTCP()
 		if err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-				s.logger.Warnf("failed to read RTCP on track: %s", err)
+				s.logger.Warnf("failed to read RTCP on track: %s (%s): %s", s.info.TrackID, s.info.Simulcast, err)
 				s.watchdog.Close()
 				return
 			}
