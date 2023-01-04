@@ -145,6 +145,7 @@ func (t *Tracker) RemovePublishedTrack(id TrackID) {
 	}
 
 	delete(t.subscribers, id)
+	delete(t.publishedTracks, id)
 }
 
 // Subscribes a given participant to the tracks that are passed as a parameter.
