@@ -197,9 +197,12 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 
 // Processes an RTP packet received on a given track.
 func (t *Tracker) ProcessRTP(info common.TrackInfo, packet *rtp.Packet) {
-	for _, subscription := range t.subscribers[info.TrackID] {
+	for participantID, subscription := range t.subscribers[info.TrackID] {
 		if subscription.TrackInfo().Layer == info.Layer {
-			subscription.WriteRTP(packet)
+			if err := subscription.WriteRTP(packet); err != nil {
+				participant := t.GetParticipant(participantID)
+				participant.Logger.Errorf("Error writing RTP packet to %s: %s", info.TrackID, err)
+			}
 		}
 	}
 }
