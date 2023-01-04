@@ -31,7 +31,7 @@ func (c *Conference) getParticipant(id participant.ID, optionalErrorMessage erro
 		if optionalErrorMessage != nil {
 			c.logger.WithError(optionalErrorMessage)
 		} else {
-			c.logger.Error("Participant not found: %s (%s)", id.UserID, id.DeviceID)
+			c.logger.Errorf("Participant not found: %s (%s)", id.UserID, id.DeviceID)
 		}
 	}
 
