@@ -151,10 +151,13 @@ func (t *Tracker) RemovePublishedTrack(id TrackID) {
 func (t *Tracker) Subscribe(participantID ID, tracks []common.TrackInfo) {
 	if participant := t.GetParticipant(participantID); participant != nil {
 		for _, track := range tracks {
-			subscription := participant.Peer.SubscribeTo(track)
-			if subscription == nil {
+			subscription, err := participant.Peer.SubscribeTo(track)
+			if err != nil {
+				participant.Logger.Errorf("Failed to subscribe to %s (%s): %s", track.TrackID, track.Layer, err)
 				continue
 			}
+
+			participant.Logger.Infof("Subscribed to %s (%s)", track.TrackID, track.Layer)
 
 			// If we're a first subscriber, we need to initialize the list of subscribers.
 			// Otherwise it will panic (Go specifics when working with maps).
