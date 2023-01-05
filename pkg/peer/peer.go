@@ -6,6 +6,7 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/state"
+	"github.com/matrix-org/waterfall/pkg/peer/subscription"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -82,19 +83,17 @@ func (p *Peer[ID]) Terminate() {
 }
 
 // Adds given tracks to our peer connection, so that they can be sent to the remote peer.
-func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) *Subscription {
+func (p *Peer[ID]) SubscribeTo(track common.TrackInfo) (*subscription.Subscription, error) {
 	connection := NewConnectionWrapper(p.peerConnection, func(ti common.TrackInfo) {
 		p.sink.Send(KeyFrameRequestReceived{ti})
 	})
 
-	subscription, err := NewSubscription(track, connection)
+	subscription, err := subscription.NewSubscription(track, connection, p.logger)
 	if err != nil {
-		p.logger.Errorf("Failed to subscribe to track: %s", err)
-		return nil
+		return nil, fmt.Errorf("failed to create subscription: %w", err)
 	}
 
-	p.logger.Infof("Subscribed to track: %s (%s)", track.TrackID, track.Layer.String())
-	return subscription
+	return subscription, nil
 }
 
 // Writes the specified packets to the `trackID`.

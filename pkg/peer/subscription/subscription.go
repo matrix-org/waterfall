@@ -16,7 +16,7 @@ import (
 type ConnectionController interface {
 	Subscribe(track *webrtc.TrackLocalStaticRTP) (*webrtc.RTPSender, error)
 	Unsubscribe(sender *webrtc.RTPSender) error
-	RequestKeyFrame(track common.TrackInfo) error
+	RequestKeyFrame(track common.TrackInfo)
 }
 
 type Subscription struct {
@@ -24,13 +24,14 @@ type Subscription struct {
 	rtpTrack   *webrtc.TrackLocalStaticRTP
 	info       common.TrackInfo
 	connection ConnectionController
-	watchdog   chan<- struct{}
+	watchdog   *common.WatchdogChannel
+	logger     *logrus.Entry
 }
 
 func NewSubscription(
 	info common.TrackInfo,
 	connection ConnectionController,
-	logger logrus.Logger,
+	logger *logrus.Entry,
 ) (*Subscription, error) {
 	// Set the RID if any (would be "" if no simulcast is used).
 	setRid := webrtc.WithRTPStreamID(common.SimulcastLayerToRID(info.Layer))
@@ -47,30 +48,34 @@ func NewSubscription(
 	}
 
 	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
-	watchdogConfig := WatchdogConfig{
+	watchdogConfig := common.WatchdogConfig{
 		Timeout: 2 * time.Second,
 		OnTimeout: func() {
-			logger.WithField("subscription", info.TrackID).Warn("No RTP received for 2 seconds")
+			logger.Warnf("No RTP on subscription for %s (%s)", info.TrackID, info.Layer)
 			connection.RequestKeyFrame(info)
 		},
 	}
 
 	// Start a watchdog for the subscription and create a subsription.
-	watchdog := watchdogConfig.Start()
-	subscription := &Subscription{rtpSender, rtpTrack, info, connection, watchdog}
+	watchdog := common.StartWatchdog(watchdogConfig)
+	subscription := &Subscription{rtpSender, rtpTrack, info, connection, watchdog, logger}
 
 	// Start reading and forwarding RTCP packets.
-	go subscription.readRTCP(logger)
+	go subscription.readRTCP()
 
 	return subscription, nil
 }
 
 func (s *Subscription) Unsubscribe() error {
+	s.watchdog.Close()
 	return s.connection.Unsubscribe(s.rtpSender)
 }
 
 func (s *Subscription) WriteRTP(packet *rtp.Packet) error {
-	s.watchdog <- struct{}{}
+	if !s.watchdog.Notify() {
+		s.logger.Errorf("Subscription to %s is closed", s.info.TrackID)
+	}
+
 	return s.rtpTrack.WriteRTP(packet)
 }
 
@@ -79,13 +84,13 @@ func (s *Subscription) TrackInfo() common.TrackInfo {
 }
 
 // Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.
-func (s *Subscription) readRTCP(logger logrus.Logger) {
+func (s *Subscription) readRTCP() {
 	for {
 		packets, _, err := s.rtpSender.ReadRTCP()
 		if err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-				logger.Warnf("failed to read RTCP on track: %s", err)
-				close(s.watchdog)
+				s.logger.Warnf("failed to read RTCP on track: %s", err)
+				s.watchdog.Close()
 				return
 			}
 		}

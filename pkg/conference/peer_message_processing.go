@@ -148,7 +148,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 	// Iterate over all published tracks that correspond to the track IDs we want to subscribe to.
 	for id, track := range c.findPublishedTracks(toSubscribeTrackIDs) {
 		// Check if we have a subscription for this track already.
-		subscription := c.tracker.GetSubscriber(id, p.ID)
+		subscription := c.tracker.GetSubscription(id, p.ID)
 
 		// Calculate the desired simulcast layer if any.
 		requirements := toSubscribeRequirements[id]

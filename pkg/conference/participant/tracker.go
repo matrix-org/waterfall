@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
-	"github.com/matrix-org/waterfall/pkg/peer"
+	"github.com/matrix-org/waterfall/pkg/peer/subscription"
 	"github.com/pion/rtp"
 	"github.com/thoas/go-funk"
 )
 
 type (
-	Subscriptions    map[ID]*peer.Subscription
+	Subscriptions    map[ID]*subscription.Subscription
 	TrackSubscribers map[TrackID]Subscriptions
 )
 
@@ -145,16 +145,20 @@ func (t *Tracker) RemovePublishedTrack(id TrackID) {
 	}
 
 	delete(t.subscribers, id)
+	delete(t.publishedTracks, id)
 }
 
 // Subscribes a given participant to the tracks that are passed as a parameter.
 func (t *Tracker) Subscribe(participantID ID, tracks []common.TrackInfo) {
 	if participant := t.GetParticipant(participantID); participant != nil {
 		for _, track := range tracks {
-			subscription := participant.Peer.SubscribeTo(track)
-			if subscription == nil {
+			subscription, err := participant.Peer.SubscribeTo(track)
+			if err != nil {
+				participant.Logger.Errorf("Failed to subscribe to %s (%s): %s", track.TrackID, track.Layer, err)
 				continue
 			}
+
+			participant.Logger.Infof("Subscribed to %s (%s)", track.TrackID, track.Layer)
 
 			// If we're a first subscriber, we need to initialize the list of subscribers.
 			// Otherwise it will panic (Go specifics when working with maps).
@@ -175,7 +179,7 @@ func (t *Tracker) Subscribe(participantID ID, tracks []common.TrackInfo) {
 
 // Returns a subscription that corresponds to the `participantID` subscriber for the `trackID`. If no such participant
 // is subscribed to a track or no such track exists, `nil` would be returned.
-func (t *Tracker) GetSubscriber(trackID TrackID, participantID ID) *peer.Subscription {
+func (t *Tracker) GetSubscription(trackID TrackID, participantID ID) *subscription.Subscription {
 	if subscribers, found := t.subscribers[trackID]; found {
 		return subscribers[participantID]
 	}
@@ -197,9 +201,12 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 
 // Processes an RTP packet received on a given track.
 func (t *Tracker) ProcessRTP(info common.TrackInfo, packet *rtp.Packet) {
-	for _, subscription := range t.subscribers[info.TrackID] {
+	for participantID, subscription := range t.subscribers[info.TrackID] {
 		if subscription.TrackInfo().Layer == info.Layer {
-			subscription.WriteRTP(packet)
+			if err := subscription.WriteRTP(packet); err != nil {
+				participant := t.GetParticipant(participantID)
+				participant.Logger.Errorf("Error writing RTP packet to %s: %s", info.TrackID, err)
+			}
 		}
 	}
 }
