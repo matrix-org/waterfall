@@ -48,7 +48,7 @@ func (c *WatchdogChannel) Notify() bool {
 
 // Starts a watchdog that periodically (specified by the configuration) executes a `c.OnTimeout` closure if
 // no messages have been received on a channel for a `c.Timeout`.
-func (c *WatchdogConfig) Start() *WatchdogChannel {
+func StartWatchdog(c WatchdogConfig) *WatchdogChannel {
 	// The channel that will be used to inform the watchdog about the reception of a packet.
 	// The watchdog will be stopped once the channel is closed.
 	incoming := make(chan struct{}, UnboundedChannelSize)

@@ -57,7 +57,7 @@ func NewSubscription(
 	}
 
 	// Start a watchdog for the subscription and create a subsription.
-	watchdog := watchdogConfig.Start()
+	watchdog := common.StartWatchdog(watchdogConfig)
 	subscription := &Subscription{rtpSender, rtpTrack, info, connection, watchdog, logger}
 
 	// Start reading and forwarding RTCP packets.
