@@ -241,14 +241,5 @@ func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo) error {
 	}
 
 	// We don't want to send keyframes too often, so we'll send them only once in a while.
-	if published.canRequestKeyframeAt.Before(time.Now()) {
-		if err := participant.Peer.RequestKeyFrame(info); err != nil {
-			return err
-		}
-
-		published.canRequestKeyframeAt = time.Now().Add(sendKeyFrameInterval)
-		t.publishedTracks[info.TrackID] = published
-	}
-
-	return nil
+	return participant.Peer.RequestKeyFrame(info)
 }

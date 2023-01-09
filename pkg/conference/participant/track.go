@@ -1,8 +1,6 @@
 package participant
 
 import (
-	"time"
-
 	"github.com/matrix-org/waterfall/pkg/common"
 	"golang.org/x/exp/slices"
 )
@@ -19,9 +17,6 @@ type PublishedTrack struct {
 	Layers []common.Simulcast
 	// Track metadata.
 	Metadata TrackMetadata
-	// The timestamp at which we are allowed to send the FIR or PLI request. We don't want to send them
-	// too often, so we introduce some trivial rate limiting to not "enforce" too many key frames.
-	canRequestKeyframeAt time.Time
 }
 
 // Calculate the layer that we can use based on the requirements passed as parameters and available layers.
