@@ -19,7 +19,7 @@ type PacketRewriter struct {
 	// SSRC that we're using for all packets that we're forwarding.
 	// This is the SSRC that we're sending to the remote peer. Typically,
 	// this is the SSRC of the lowest layer for the simulcast track.
-	forwardingSSRC uint32
+	outgoingSSRC uint32
 	// The highest identifiers of the forwarded packet,i.e. the IDs of
 	// the **latest** (in terms of timestamp and number) packet. This is not
 	// necessarily the IDs of the **last forwarded packet**, due to packets
@@ -35,21 +35,15 @@ type PacketRewriter struct {
 }
 
 // Creates a new instance of the `PacketRewriter`.
-func NewPacketRewriter() PacketRewriter {
-	return *new(PacketRewriter)
+func NewPacketRewriter(outgoingSSRC uint32, selectedSSRC uint32) *PacketRewriter {
+	rewriter := new(PacketRewriter)
+	rewriter.outgoingSSRC = outgoingSSRC
+	rewriter.selectedSSRC = selectedSSRC
+	return rewriter
 }
 
 // Process new incoming packet.
 func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket, error) {
-	// This is the first packet, so we select the SSRC of it and assume that it's our
-	// starting point. We currently implicitly expect that the first packet is the lowest
-	// layer when simulcast is enabled.
-	firstPacket := (p.selectedSSRC == 0 && p.forwardingSSRC == 0)
-	if firstPacket {
-		p.selectedSSRC = packet.SSRC
-		p.forwardingSSRC = packet.SSRC
-	}
-
 	// We received a packet with the SSRC different from the **currently selected** layer.
 	// This is a mistake, we drop such a package.
 	if packet.SSRC != p.selectedSSRC {
@@ -57,10 +51,7 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 	}
 
 	// Store current incoming packet identifiers.
-	incomingIDs := PacketIdentifiers{
-		timestamp:      packet.Timestamp,
-		sequenceNumber: packet.SequenceNumber,
-	}
+	incomingIDs := PacketIdentifiers{packet.Timestamp, packet.SequenceNumber}
 
 	// Calculated outgoing IDs of the current packet.
 	outgoingIDs := PacketIdentifiers{0, 0}
@@ -74,7 +65,7 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 
 		// We make an exception for the very first packet that we're forwarding
 		// so that we start with 0 seqnum and 0 timestamp for the first packet.
-		if firstPacket {
+		if p.previouslyForwardedSSRC == 0 {
 			delta = PacketIdentifiers{0, 0}
 		}
 
@@ -87,6 +78,13 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 		// Update the SSRC of the previously forwarded packet.
 		p.previouslyForwardedSSRC = p.selectedSSRC
 	} else {
+		// If the incoming timeestamp or sequence number are smaller than the timestamp of the first packet after the switch,
+		// then we're getting the old packet (before switch), which we're not interested in, so we drop it.
+		if incomingIDs.timestamp < p.firstIncomingIDs.timestamp ||
+			incomingIDs.sequenceNumber < p.firstIncomingIDs.sequenceNumber {
+			return nil, fmt.Errorf("Ignoring old packet")
+		}
+
 		delta := incomingIDs.Sub(p.firstIncomingIDs)
 		outgoingIDs = p.firstOutgoingIDs.Add(delta)
 	}
@@ -99,7 +97,7 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 	packet.SequenceNumber = outgoingIDs.sequenceNumber
 
 	// All packets within a single subscription must have the same SSRC.
-	packet.SSRC = p.forwardingSSRC
+	packet.SSRC = p.outgoingSSRC
 
 	return packet, nil
 }

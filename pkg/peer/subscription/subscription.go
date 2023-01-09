@@ -26,7 +26,7 @@ type Subscription struct {
 	connection     ConnectionController
 	watchdog       *common.WatchdogChannel
 	logger         *logrus.Entry
-	packetRewriter PacketRewriter
+	packetRewriter *PacketRewriter
 }
 
 func NewSubscription(
@@ -45,7 +45,22 @@ func NewSubscription(
 		return nil, fmt.Errorf("Failed to add track: %s", err)
 	}
 
-	subscription := &Subscription{rtpSender, rtpTrack, info, connection, nil, logger, NewPacketRewriter()}
+	// This is the SSRC that all outgoing (rewritten) packets will have.
+	outgoingSSRC := uint32(rtpSender.GetParameters().Encodings[0].SSRC)
+
+	// This is the SSRC of the incoming packets that we expect (i.e. SSRC of the currently selected layer).
+	selectedSSRC := info.Simulcast.SSRC
+
+	// Create a subscription.
+	subscription := &Subscription{
+		rtpSender,
+		rtpTrack,
+		info,
+		connection,
+		nil,
+		logger,
+		NewPacketRewriter(outgoingSSRC, selectedSSRC),
+	}
 
 	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
 	watchdogConfig := common.WatchdogConfig{
