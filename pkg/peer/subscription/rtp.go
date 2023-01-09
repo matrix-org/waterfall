@@ -53,7 +53,7 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 	// We received a packet with the SSRC different from the **currently selected** layer.
 	// This is a mistake, we drop such a package.
 	if packet.SSRC != p.selectedSSRC {
-		return nil, fmt.Errorf("Ignoring packet as its SSR is different from the selected one")
+		return nil, fmt.Errorf("Bug: packet's SSRC is different from the selected one")
 	}
 
 	// Store current incoming packet identifiers.

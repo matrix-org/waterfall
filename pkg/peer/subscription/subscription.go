@@ -77,7 +77,7 @@ func (s *Subscription) Unsubscribe() error {
 
 func (s *Subscription) WriteRTP(packet *rtp.Packet) error {
 	if !s.watchdog.Notify() {
-		s.logger.Errorf("Subscription to %s is closed", s.info.TrackID)
+		return fmt.Errorf("Ignoring RTP, subscription %s is dead", s.info.TrackID)
 	}
 
 	rewrittenPacket, err := s.packetRewriter.ProcessIncoming(packet)
