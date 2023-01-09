@@ -7,6 +7,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription"
 	"github.com/pion/rtp"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/slices"
 )
 
@@ -72,6 +73,16 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 			// Odd way to add to a set in Go.
 			streamIdentifiers[track.Info.StreamID] = true
 			t.RemovePublishedTrack(trackID)
+		}
+	}
+
+	// Remove this participant's subscriptions.
+	for _, subscribers := range t.subscribers {
+		for subscriberID, subscription := range subscribers {
+			if subscriberID == participantID {
+				subscription.Unsubscribe()
+				delete(subscribers, subscriberID)
+			}
 		}
 	}
 
@@ -205,8 +216,11 @@ func (t *Tracker) ProcessRTP(info common.TrackInfo, packet *rtp.Packet) {
 	for participantID, subscription := range t.subscribers[info.TrackID] {
 		if subscription.TrackInfo().Simulcast == info.Simulcast {
 			if err := subscription.WriteRTP(packet); err != nil {
-				participant := t.GetParticipant(participantID)
-				participant.Logger.Errorf("Error writing RTP packet to %s: %s", info.TrackID, err)
+				if participant := t.GetParticipant(participantID); participant != nil {
+					participant.Logger.Errorf("Error writing RTP to %s: %s", info.TrackID, err)
+					continue
+				}
+				logrus.Errorf("Bug: subscription without subscriber")
 			}
 		}
 	}
