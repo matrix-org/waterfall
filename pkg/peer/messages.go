@@ -18,8 +18,14 @@ type LeftTheCall struct {
 }
 
 type NewTrackPublished struct {
+	// Information about the track (ID etc).
 	common.TrackInfo
+	// Simulcast configuration (can be `None` for non-simulcast tracks and for audio tracks).
 	Simulcast common.SimulcastLayer
+	// Output track (if any) that could be used to send data to the peer. Will be `nil` if such
+	// track does not exist, in which case the caller is expected to listen to `RtpPacketReceived`
+	// messages.
+	OutputTrack *webrtc.TrackLocalStaticRTP
 }
 
 type PublishedTrackFailed struct {

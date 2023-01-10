@@ -1,8 +1,6 @@
 package peer
 
 import (
-	"io"
-
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
@@ -13,31 +11,13 @@ import (
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	// Construct a new track info assuming that there is no simulcast.
 	trackInfo := common.TrackInfoFromTrack(remoteTrack)
-	simulcast := common.RIDToSimulcastLayer(remoteTrack.RID())
 
-	// Notify others that our track has just been published.
-	p.state.AddRemoteTrack(remoteTrack)
-	p.sink.Send(NewTrackPublished{trackInfo, simulcast})
-
-	// Start forwarding the data from the remote track to the local track,
-	// so that everyone who is subscribed to this track will receive the data.
-	go func() {
-		for {
-			packet, _, readErr := remoteTrack.ReadRTP()
-			if readErr != nil {
-				if readErr == io.EOF { // finished, no more data, no error, inform others
-					p.logger.Info("remote track closed")
-				} else { // finished, no more data, but with error, inform others
-					p.logger.WithError(readErr).Error("failed to read from remote track")
-				}
-				p.state.RemoveRemoteTrack(remoteTrack)
-				p.sink.Send(PublishedTrackFailed{trackInfo, simulcast})
-				return
-			}
-
-			p.sink.Send(RTPPacketReceived{trackInfo, simulcast, packet})
-		}
-	}()
+	switch trackInfo.Kind {
+	case webrtc.RTPCodecTypeVideo:
+		p.handleNewVideoTrack(trackInfo, remoteTrack, receiver)
+	case webrtc.RTPCodecTypeAudio:
+		p.handleNewAudioTrack(trackInfo, remoteTrack, receiver)
+	}
 }
 
 // A callback that is called once we receive an ICE candidate for this peer connection.

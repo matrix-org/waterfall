@@ -24,7 +24,7 @@ func (c *Conference) processNewTrackPublishedMessage(p *participant.Participant,
 	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[msg.TrackID]
 
 	// If a new track has been published, we inform everyone about new track available.
-	c.tracker.AddPublishedTrack(p.ID, msg.TrackInfo, msg.Simulcast, trackMetadata)
+	c.tracker.AddPublishedTrack(p.ID, msg.TrackInfo, msg.Simulcast, trackMetadata, msg.OutputTrack)
 	c.resendMetadataToAllExcept(p.ID)
 }
 

@@ -6,7 +6,6 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/state"
-	"github.com/matrix-org/waterfall/pkg/peer/subscription"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -82,25 +81,8 @@ func (p *Peer[ID]) Terminate() {
 	p.sink.Seal()
 }
 
-// Adds given tracks to our peer connection, so that they can be sent to the remote peer.
-func (p *Peer[ID]) SubscribeTo(
-	track common.TrackInfo,
-	simulcast common.SimulcastLayer,
-) (*subscription.Subscription, error) {
-	connection := NewConnectionWrapper(p.peerConnection, func(ti common.TrackInfo, layer common.SimulcastLayer) {
-		p.sink.Send(KeyFrameRequestReceived{ti, layer})
-	})
-
-	subscription, err := subscription.NewSubscription(track, simulcast, connection, p.logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create subscription: %w", err)
-	}
-
-	return subscription, nil
-}
-
 // Writes the specified packets to the `trackID`.
-func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo, simulcast common.SimulcastLayer) error {
+func (p *Peer[ID]) WritePLI(info common.TrackInfo, simulcast common.SimulcastLayer) error {
 	// Find the right track.
 	track := p.state.GetRemoteTrack(info.TrackID, simulcast)
 	if track == nil {
@@ -110,6 +92,16 @@ func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo, simulcast common.Simul
 	p.logger.Debugf("Keyframe request: %s (%s)", info.TrackID, simulcast)
 	rtcps := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}}
 	return p.peerConnection.WriteRTCP(rtcps)
+}
+
+// Implementation of the `SubscriptionController` interface.
+func (p *Peer[ID]) AddTrack(track *webrtc.TrackLocalStaticRTP) (*webrtc.RTPSender, error) {
+	return p.peerConnection.AddTrack(track)
+}
+
+// Implementation of the `SubscriptionController` interface.
+func (p *Peer[ID]) RemoveTrack(sender *webrtc.RTPSender) error {
+	return p.peerConnection.RemoveTrack(sender)
 }
 
 // Tries to send the given message to the remote counterpart of our peer.
@@ -176,4 +168,8 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 	}
 
 	return &answer, nil
+}
+
+func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo, simulcast common.SimulcastLayer) {
+	p.sink.Send(KeyFrameRequestReceived{info, simulcast})
 }

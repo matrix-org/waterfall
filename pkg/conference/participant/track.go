@@ -2,6 +2,7 @@ package participant
 
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/pion/webrtc/v3"
 	"golang.org/x/exp/slices"
 )
 
@@ -17,6 +18,9 @@ type PublishedTrack struct {
 	Layers []common.SimulcastLayer
 	// Track metadata.
 	Metadata TrackMetadata
+	// Output track (if any). I.e. a track that would contain all RTP packets
+	// of the given published track. Currently only audio tracks will have it.
+	OutputTrack *webrtc.TrackLocalStaticRTP
 }
 
 // Calculate the layer that we can use based on the requirements passed as parameters and available layers.

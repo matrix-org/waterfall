@@ -7,12 +7,13 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription"
 	"github.com/pion/rtp"
+	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/slices"
 )
 
 type (
-	Subscriptions    map[ID]*subscription.Subscription
+	Subscriptions    map[ID]subscription.Subscription
 	TrackSubscribers map[TrackID]Subscriptions
 )
 
@@ -96,6 +97,7 @@ func (t *Tracker) AddPublishedTrack(
 	info common.TrackInfo,
 	simulcast common.SimulcastLayer,
 	metadata TrackMetadata,
+	outputTrack *webrtc.TrackLocalStaticRTP,
 ) {
 	// If this is a new track, let's add it to the list of published and inform participants.
 	track, found := t.publishedTracks[info.TrackID]
@@ -106,10 +108,11 @@ func (t *Tracker) AddPublishedTrack(
 		}
 
 		t.publishedTracks[info.TrackID] = PublishedTrack{
-			Owner:    participantID,
-			Info:     info,
-			Layers:   layers,
-			Metadata: metadata,
+			Owner:       participantID,
+			Info:        info,
+			Layers:      layers,
+			Metadata:    metadata,
+			OutputTrack: outputTrack,
 		}
 
 		return
@@ -168,36 +171,64 @@ type SubscribeRequest struct {
 
 // Subscribes a given participant to the tracks that are passed as a parameter.
 func (t *Tracker) Subscribe(participantID ID, requests []SubscribeRequest) {
-	if participant := t.GetParticipant(participantID); participant != nil {
-		for _, request := range requests {
-			subscription, err := participant.Peer.SubscribeTo(request.TrackInfo, request.Simulcast)
-			if err != nil {
-				participant.Logger.Errorf("Failed to subscribe to %s (%s): %s", request.TrackID, request.Simulcast, err)
-				continue
+	participant := t.GetParticipant(participantID)
+	if participant == nil {
+		return
+	}
+
+	for _, request := range requests {
+		var (
+			sub subscription.Subscription
+			err error
+		)
+
+		switch request.Kind {
+		case webrtc.RTPCodecTypeVideo:
+			sub, err = subscription.NewVideoSubscription(
+				request.TrackInfo,
+				request.Simulcast,
+				participant.Peer,
+				func(track common.TrackInfo, simulcast common.SimulcastLayer) {
+					participant.Peer.RequestKeyFrame(track, simulcast)
+				},
+				participant.Logger,
+			)
+		case webrtc.RTPCodecTypeAudio:
+			if published := t.FindPublishedTrack(request.TrackID); published != nil {
+				sub, err = subscription.NewAudioSubscription(
+					published.OutputTrack,
+					participant.Peer,
+				)
+			} else {
+				err = fmt.Errorf("Can't subscribe to non-existent track %s", request.TrackID)
 			}
-
-			participant.Logger.Infof("Subscribed to %s (%s)", request.TrackID, request.Simulcast)
-
-			// If we're a first subscriber, we need to initialize the list of subscribers.
-			// Otherwise it will panic (Go specifics when working with maps).
-			if _, found := t.subscribers[request.TrackID]; !found {
-				t.subscribers[request.TrackID] = make(Subscriptions)
-			}
-
-			// Sanity check.
-			subscribers := t.subscribers[request.TrackID]
-			if _, ok := subscribers[participantID]; ok {
-				participant.Logger.Errorf("Bug: already subsribed to %s!", request.TrackID)
-			}
-
-			subscribers[participantID] = subscription
 		}
+
+		if err != nil {
+			participant.Logger.Errorf("failed to create subscription: %w", err)
+			continue
+		}
+
+		// If we're a first subscriber, we need to initialize the list of subscribers.
+		// Otherwise it will panic (Go specifics when working with maps).
+		if _, found := t.subscribers[request.TrackID]; !found {
+			t.subscribers[request.TrackID] = make(Subscriptions)
+		}
+
+		// Sanity check.
+		subscribers := t.subscribers[request.TrackID]
+		if _, ok := subscribers[participantID]; ok {
+			participant.Logger.Errorf("Bug: already subsribed to %s!", request.TrackID)
+		}
+
+		subscribers[participantID] = sub
+		participant.Logger.Infof("Subscribed to %s (%s)", request.TrackID, request.Simulcast)
 	}
 }
 
 // Returns a subscription that corresponds to the `participantID` subscriber for the `trackID`. If no such participant
 // is subscribed to a track or no such track exists, `nil` would be returned.
-func (t *Tracker) GetSubscription(trackID TrackID, participantID ID) *subscription.Subscription {
+func (t *Tracker) GetSubscription(trackID TrackID, participantID ID) subscription.Subscription {
 	if subscribers, found := t.subscribers[trackID]; found {
 		return subscribers[participantID]
 	}
@@ -247,5 +278,5 @@ func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo, simulcast common
 	}
 
 	// We don't want to send keyframes too often, so we'll send them only once in a while.
-	return participant.Peer.RequestKeyFrame(info, simulcast)
+	return participant.Peer.WritePLI(info, simulcast)
 }
