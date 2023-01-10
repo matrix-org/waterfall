@@ -13,9 +13,6 @@ type RewrittenRTPPacket *rtp.Packet
 type PacketRewriter struct {
 	// The SSRC of the previously forwarded packet.
 	previouslyForwardedSSRC uint32
-	// Currently selected SSRC of the layer (this one changes over time
-	// if we e.g. switch the layer that we want to forward).
-	selectedSSRC uint32
 	// SSRC that we're using for all packets that we're forwarding.
 	// This is the SSRC that we're sending to the remote peer. Typically,
 	// this is the SSRC of the lowest layer for the simulcast track.
@@ -35,21 +32,14 @@ type PacketRewriter struct {
 }
 
 // Creates a new instance of the `PacketRewriter`.
-func NewPacketRewriter(outgoingSSRC uint32, selectedSSRC uint32) *PacketRewriter {
+func NewPacketRewriter(outgoingSSRC uint32) *PacketRewriter {
 	rewriter := new(PacketRewriter)
 	rewriter.outgoingSSRC = outgoingSSRC
-	rewriter.selectedSSRC = selectedSSRC
 	return rewriter
 }
 
 // Process new incoming packet.
 func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket, error) {
-	// We received a packet with the SSRC different from the **currently selected** layer.
-	// This is a mistake, we drop such a package.
-	if packet.SSRC != p.selectedSSRC {
-		return nil, fmt.Errorf("Bug: packet's SSRC is different from the selected one")
-	}
-
 	// Store current incoming packet identifiers.
 	incomingIDs := PacketIdentifiers{packet.Timestamp, packet.SequenceNumber}
 
@@ -58,7 +48,7 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 
 	// Check if we've just switched the layer before this packet, i.e. if
 	// it is the first packet after switching layers.
-	if p.previouslyForwardedSSRC != p.selectedSSRC {
+	if p.previouslyForwardedSSRC != packet.SSRC {
 		// There is a gap of 1 seqnum to signify to the decoder that the previous frame
 		// was (probably) incomplete. That's why there's a 2 for the seqnum.
 		delta := PacketIdentifiers{1, 2}
@@ -76,7 +66,7 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 		p.firstOutgoingIDs = outgoingIDs
 
 		// Update the SSRC of the previously forwarded packet.
-		p.previouslyForwardedSSRC = p.selectedSSRC
+		p.previouslyForwardedSSRC = packet.SSRC
 	} else {
 		// If the incoming timeestamp or sequence number are smaller than the timestamp of the first packet after the switch,
 		// then we're getting the old packet (before switch), which we're not interested in, so we drop it.
@@ -100,12 +90,6 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 	packet.SSRC = p.outgoingSSRC
 
 	return packet, nil
-}
-
-// Switches the layer that we're forwarding, i.e. change the new SSRC that we're expecting from
-// the incoming packets. If the SSRC won't match, we'll drop the packet.
-func (p *PacketRewriter) SwitchLayer(ssrc uint32) {
-	p.selectedSSRC = ssrc
 }
 
 // Holds values required for the proper calculation of RTP IDs.

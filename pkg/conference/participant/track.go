@@ -14,17 +14,17 @@ type PublishedTrack struct {
 	// Info about the track.
 	Info common.TrackInfo
 	// Available simulcast Layers.
-	Layers []common.Simulcast
+	Layers []common.SimulcastLayer
 	// Track metadata.
 	Metadata TrackMetadata
 }
 
 // Calculate the layer that we can use based on the requirements passed as parameters and available layers.
-func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) common.Simulcast {
+func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) common.SimulcastLayer {
 	// Audio track. For them we don't have any simulcast. We also don't have any simulcast for video
 	// if there was no simulcast enabled at all.
 	if !p.Metadata.IsVideoTrack() || len(p.Layers) == 0 {
-		return p.Info.Simulcast
+		return common.SimulcastLayerNone
 	}
 
 	// Video track. Calculate it's full resolution based on a metadata.
@@ -45,8 +45,8 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 
 	// Check if the desired layer available at all.
 	// If the desired layer is not available, we'll find the closest one.
-	layerIndex := slices.IndexFunc(p.Layers, func(simulcast common.Simulcast) bool {
-		return simulcast.Layer == desiredLayer
+	layerIndex := slices.IndexFunc(p.Layers, func(simulcast common.SimulcastLayer) bool {
+		return simulcast == desiredLayer
 	})
 
 	if layerIndex != -1 {
@@ -61,8 +61,8 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 
 	// More Go boilerplate.
 	for _, desiredLayer := range priority {
-		layerIndex := slices.IndexFunc(p.Layers, func(simulcast common.Simulcast) bool {
-			return simulcast.Layer == desiredLayer
+		layerIndex := slices.IndexFunc(p.Layers, func(simulcast common.SimulcastLayer) bool {
+			return simulcast == desiredLayer
 		})
 
 		if layerIndex != -1 {
@@ -71,7 +71,7 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 	}
 
 	// Actually this part will never be executed, because we always have at least one layer available.
-	return p.Info.Simulcast
+	return common.SimulcastLayerLow
 }
 
 // Metadata that we have received about this track from a user.
