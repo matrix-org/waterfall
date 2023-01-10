@@ -94,14 +94,15 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 func (t *Tracker) AddPublishedTrack(
 	participantID ID,
 	info common.TrackInfo,
+	simulcast common.SimulcastLayer,
 	metadata TrackMetadata,
 ) {
 	// If this is a new track, let's add it to the list of published and inform participants.
 	track, found := t.publishedTracks[info.TrackID]
 	if !found {
-		layers := []common.Simulcast{}
-		if info.Simulcast.Layer != common.SimulcastLayerNone {
-			layers = append(layers, info.Simulcast)
+		layers := []common.SimulcastLayer{}
+		if simulcast != common.SimulcastLayerNone {
+			layers = append(layers, simulcast)
 		}
 
 		t.publishedTracks[info.TrackID] = PublishedTrack{
@@ -115,9 +116,9 @@ func (t *Tracker) AddPublishedTrack(
 	}
 
 	// If it's just a new layer, let's add it to the list of layers of the existing published track.
-	fn := func(simulcast common.Simulcast) bool { return simulcast.Layer == info.Simulcast.Layer }
-	if info.Simulcast.Layer != common.SimulcastLayerNone && slices.IndexFunc(track.Layers, fn) == -1 {
-		track.Layers = append(track.Layers, info.Simulcast)
+	fn := func(layer common.SimulcastLayer) bool { return layer == simulcast }
+	if simulcast != common.SimulcastLayerNone && slices.IndexFunc(track.Layers, fn) == -1 {
+		track.Layers = append(track.Layers, simulcast)
 		t.publishedTracks[info.TrackID] = track
 	}
 }
@@ -160,28 +161,33 @@ func (t *Tracker) RemovePublishedTrack(id TrackID) {
 	delete(t.publishedTracks, id)
 }
 
+type SubscribeRequest struct {
+	common.TrackInfo
+	Simulcast common.SimulcastLayer
+}
+
 // Subscribes a given participant to the tracks that are passed as a parameter.
-func (t *Tracker) Subscribe(participantID ID, tracks []common.TrackInfo) {
+func (t *Tracker) Subscribe(participantID ID, requests []SubscribeRequest) {
 	if participant := t.GetParticipant(participantID); participant != nil {
-		for _, track := range tracks {
-			subscription, err := participant.Peer.SubscribeTo(track)
+		for _, request := range requests {
+			subscription, err := participant.Peer.SubscribeTo(request.TrackInfo, request.Simulcast)
 			if err != nil {
-				participant.Logger.Errorf("Failed to subscribe to %s (%s): %s", track.TrackID, track.Simulcast, err)
+				participant.Logger.Errorf("Failed to subscribe to %s (%s): %s", request.TrackID, request.Simulcast, err)
 				continue
 			}
 
-			participant.Logger.Infof("Subscribed to %s (%s)", track.TrackID, track.Simulcast)
+			participant.Logger.Infof("Subscribed to %s (%s)", request.TrackID, request.Simulcast)
 
 			// If we're a first subscriber, we need to initialize the list of subscribers.
 			// Otherwise it will panic (Go specifics when working with maps).
-			if _, found := t.subscribers[track.TrackID]; !found {
-				t.subscribers[track.TrackID] = make(Subscriptions)
+			if _, found := t.subscribers[request.TrackID]; !found {
+				t.subscribers[request.TrackID] = make(Subscriptions)
 			}
 
 			// Sanity check.
-			subscribers := t.subscribers[track.TrackID]
+			subscribers := t.subscribers[request.TrackID]
 			if _, ok := subscribers[participantID]; ok {
-				participant.Logger.Errorf("Bug: already subsribed to %s!", track.TrackID)
+				participant.Logger.Errorf("Bug: already subsribed to %s!", request.TrackID)
 			}
 
 			subscribers[participantID] = subscription
@@ -212,12 +218,12 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 }
 
 // Processes an RTP packet received on a given track.
-func (t *Tracker) ProcessRTP(info common.TrackInfo, packet *rtp.Packet) {
+func (t *Tracker) ProcessRTP(info common.TrackInfo, simulcast common.SimulcastLayer, packet *rtp.Packet) {
 	for participantID, subscription := range t.subscribers[info.TrackID] {
-		if subscription.TrackInfo().Simulcast == info.Simulcast {
+		if subscription.Simulcast() == simulcast {
 			if err := subscription.WriteRTP(packet); err != nil {
 				if participant := t.GetParticipant(participantID); participant != nil {
-					participant.Logger.Errorf("Error writing RTP to %s: %s", info.TrackID, err)
+					participant.Logger.Errorf("Error writing RTP to %s (%s): %s", info.TrackID, simulcast, err)
 					continue
 				}
 				logrus.Errorf("Bug: subscription without subscriber")
@@ -227,7 +233,7 @@ func (t *Tracker) ProcessRTP(info common.TrackInfo, packet *rtp.Packet) {
 }
 
 // Processes RTCP packets received on a given track.
-func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo) error {
+func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo, simulcast common.SimulcastLayer) error {
 	const sendKeyFrameInterval = 500 * time.Millisecond
 
 	published, found := t.publishedTracks[info.TrackID]
@@ -241,5 +247,5 @@ func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo) error {
 	}
 
 	// We don't want to send keyframes too often, so we'll send them only once in a while.
-	return participant.Peer.RequestKeyFrame(info)
+	return participant.Peer.RequestKeyFrame(info, simulcast)
 }

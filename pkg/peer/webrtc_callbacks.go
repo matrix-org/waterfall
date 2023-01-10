@@ -13,10 +13,11 @@ import (
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	// Construct a new track info assuming that there is no simulcast.
 	trackInfo := common.TrackInfoFromTrack(remoteTrack)
+	simulcast := common.RIDToSimulcastLayer(remoteTrack.RID())
 
 	// Notify others that our track has just been published.
 	p.state.AddRemoteTrack(remoteTrack)
-	p.sink.Send(NewTrackPublished{trackInfo})
+	p.sink.Send(NewTrackPublished{trackInfo, simulcast})
 
 	// Start forwarding the data from the remote track to the local track,
 	// so that everyone who is subscribed to this track will receive the data.
@@ -30,11 +31,11 @@ func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver 
 					p.logger.WithError(readErr).Error("failed to read from remote track")
 				}
 				p.state.RemoveRemoteTrack(remoteTrack)
-				p.sink.Send(PublishedTrackFailed{trackInfo})
+				p.sink.Send(PublishedTrackFailed{trackInfo, simulcast})
 				return
 			}
 
-			p.sink.Send(RTPPacketReceived{trackInfo, packet})
+			p.sink.Send(RTPPacketReceived{trackInfo, simulcast, packet})
 		}
 	}()
 }

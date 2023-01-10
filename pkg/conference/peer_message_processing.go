@@ -24,12 +24,12 @@ func (c *Conference) processNewTrackPublishedMessage(p *participant.Participant,
 	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[msg.TrackID]
 
 	// If a new track has been published, we inform everyone about new track available.
-	c.tracker.AddPublishedTrack(p.ID, msg.TrackInfo, trackMetadata)
+	c.tracker.AddPublishedTrack(p.ID, msg.TrackInfo, msg.Simulcast, trackMetadata)
 	c.resendMetadataToAllExcept(p.ID)
 }
 
 func (c *Conference) processRTPPacketReceivedMessage(p *participant.Participant, msg peer.RTPPacketReceived) {
-	c.tracker.ProcessRTP(msg.TrackInfo, msg.Packet)
+	c.tracker.ProcessRTP(msg.TrackInfo, msg.Simulcast, msg.Packet)
 }
 
 func (c *Conference) processPublishedTrackFailedMessage(p *participant.Participant, msg peer.PublishedTrackFailed) {
@@ -116,8 +116,8 @@ func (c *Conference) processDataChannelAvailableMessage(p *participant.Participa
 }
 
 func (c *Conference) processKeyFrameRequest(p *participant.Participant, msg peer.KeyFrameRequestReceived) {
-	if err := c.tracker.ProcessKeyFrameRequest(msg.TrackInfo); err != nil {
-		p.Logger.Errorf("Failed to process RTCP on %s (%v): %v", msg.TrackID, msg.Simulcast, err)
+	if err := c.tracker.ProcessKeyFrameRequest(msg.TrackInfo, msg.Simulcast); err != nil {
+		p.Logger.Errorf("Failed to process RTCP on %s (%s): %s", msg.TrackID, msg.Simulcast, err)
 	}
 }
 
@@ -143,7 +143,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 	}
 
 	// Calculate the list of tracks we need to subscribe and unsubscribe from based on the requirements.
-	subscribeTo := []common.TrackInfo{}
+	subscribeTo := []participant.SubscribeRequest{}
 
 	// Iterate over all published tracks that correspond to the track IDs we want to subscribe to.
 	for id, track := range c.findPublishedTracks(toSubscribeTrackIDs) {
@@ -157,8 +157,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 		// If we're not subscribed to the track, let's subscribe to it respecting
 		// the desired track parameters that the user specified in a request.
 		if subscription == nil {
-			track.Info.Simulcast = desiredLayer
-			subscribeTo = append(subscribeTo, track.Info)
+			subscribeTo = append(subscribeTo, participant.SubscribeRequest{track.Info, desiredLayer})
 			continue
 		}
 
@@ -166,7 +165,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 		// we're subscribed to a different simulcast layer of the track, in which case we know that
 		// the user wants to switch to a different simulcast layer: then we check if the given simulcast
 		// layer is available at all and only if it's available, we switch, otherwise we ignore the request.
-		if subscription.TrackInfo().Simulcast != desiredLayer {
+		if subscription.Simulcast() != desiredLayer {
 			subscription.SwitchLayer(desiredLayer)
 			continue
 		}

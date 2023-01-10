@@ -19,15 +19,18 @@ type LeftTheCall struct {
 
 type NewTrackPublished struct {
 	common.TrackInfo
+	Simulcast common.SimulcastLayer
 }
 
 type PublishedTrackFailed struct {
 	common.TrackInfo
+	Simulcast common.SimulcastLayer
 }
 
 type RTPPacketReceived struct {
 	common.TrackInfo
-	Packet *rtp.Packet
+	Simulcast common.SimulcastLayer
+	Packet    *rtp.Packet
 }
 
 type NewICECandidate struct {
@@ -48,4 +51,5 @@ type DataChannelAvailable struct{}
 
 type KeyFrameRequestReceived struct {
 	common.TrackInfo
+	Simulcast common.SimulcastLayer
 }
