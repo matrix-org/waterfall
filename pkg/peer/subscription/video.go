@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync/atomic"
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
@@ -20,7 +21,7 @@ type VideoSubscription struct {
 	rtpTrack  *webrtc.TrackLocalStaticRTP
 
 	info           common.TrackInfo
-	currentLayer   common.SimulcastLayer
+	currentLayer   atomic.Int32 // atomic common.SimulcastLayer
 	packetRewriter *PacketRewriter
 
 	controller        SubscriptionController
@@ -50,12 +51,16 @@ func NewVideoSubscription(
 	// This is the SSRC that all outgoing (rewritten) packets will have.
 	outgoingSSRC := uint32(rtpSender.GetParameters().Encodings[0].SSRC)
 
+	// Atomic version of the common.SimulcastLayer.
+	var currentLayer atomic.Int32
+	currentLayer.Store(int32(simulcast))
+
 	// Create a subscription.
 	subscription := &VideoSubscription{
 		rtpSender,
 		rtpTrack,
 		info,
-		simulcast,
+		currentLayer,
 		NewPacketRewriter(outgoingSSRC),
 		controller,
 		requestKeyFrameFn,
@@ -67,7 +72,7 @@ func NewVideoSubscription(
 	watchdogConfig := common.WatchdogConfig{
 		Timeout: 2 * time.Second,
 		OnTimeout: func() {
-			logger.Warnf("No RTP on subscription for %s (%s)", subscription.info.TrackID, subscription.currentLayer)
+			logger.Warnf("No RTP on subscription for %s (%s)", subscription.info.TrackID, subscription.currentLayer.Load())
 			subscription.requestKeyFrame()
 		},
 	}
@@ -105,7 +110,7 @@ func (s *VideoSubscription) WriteRTP(packet *rtp.Packet) error {
 
 func (s *VideoSubscription) SwitchLayer(simulcast common.SimulcastLayer) {
 	s.logger.Infof("Switching layer on %s to %s", s.info.TrackID, simulcast)
-	s.currentLayer = simulcast
+	s.currentLayer.Store(int32(simulcast))
 	s.requestKeyFrame()
 }
 
@@ -114,7 +119,7 @@ func (s *VideoSubscription) TrackInfo() common.TrackInfo {
 }
 
 func (s *VideoSubscription) Simulcast() common.SimulcastLayer {
-	return s.currentLayer
+	return common.SimulcastLayer(s.currentLayer.Load())
 }
 
 // Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.
@@ -141,5 +146,5 @@ func (s *VideoSubscription) readRTCP() {
 }
 
 func (s *VideoSubscription) requestKeyFrame() {
-	s.requestKeyFrameFn(s.info, s.currentLayer)
+	s.requestKeyFrameFn(s.info, common.SimulcastLayer(s.currentLayer.Load()))
 }
