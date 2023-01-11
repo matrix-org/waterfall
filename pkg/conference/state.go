@@ -2,9 +2,9 @@ package conference
 
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
-	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )
@@ -16,99 +16,82 @@ type Conference struct {
 	logger      *logrus.Entry
 	endNotifier ConferenceEndNotifier
 
-	signaling    signaling.MatrixSignaling
-	participants map[ParticipantID]*Participant
+	signaling       signaling.MatrixSignaling
+	tracker         participant.Tracker
+	streamsMetadata event.CallSDPStreamMetadata
 
-	peerMessages   chan common.Message[ParticipantID, peer.MessageContent]
+	peerMessages   chan common.Message[participant.ID, peer.MessageContent]
 	matrixMessages common.Receiver[MatrixMessage]
 }
 
-func (c *Conference) getParticipant(participantID ParticipantID, optionalErrorMessage error) *Participant {
-	participant, ok := c.participants[participantID]
-	if !ok {
+func (c *Conference) getParticipant(id participant.ID, optionalErrorMessage error) *participant.Participant {
+	participant := c.tracker.GetParticipant(id)
+
+	if participant == nil {
 		if optionalErrorMessage != nil {
 			c.logger.WithError(optionalErrorMessage)
 		} else {
-			c.logger.Error("Participant not found")
+			c.logger.Errorf("Participant not found: %s (%s)", id.UserID, id.DeviceID)
 		}
-
-		return nil
 	}
 
 	return participant
 }
 
 // Helper to terminate and remove a participant from the conference.
-func (c *Conference) removeParticipant(participantID ParticipantID) {
-	participant := c.getParticipant(participantID, nil)
-	if participant == nil {
-		return
+func (c *Conference) removeParticipant(id participant.ID) {
+	// Remove the participant and then remove its streams from the map.
+	for streamID := range c.tracker.RemoveParticipant(id) {
+		delete(c.streamsMetadata, streamID)
 	}
-
-	// Terminate the participant and remove it from the list.
-	participant.peer.Terminate()
-	close(participant.heartbeatPong)
-	delete(c.participants, participantID)
 
 	// Inform the other participants about updated metadata (since the participant left
 	// the corresponding streams of the participant are no longer available, so we're informing
 	// others about it).
-	c.resendMetadataToAllExcept(participantID)
-
-	// Remove the participant's tracks from all participants who might have subscribed to them.
-	obsoleteTracks := []*webrtc.TrackLocalStaticRTP{}
-	for _, publishedTrack := range participant.publishedTracks {
-		obsoleteTracks = append(obsoleteTracks, publishedTrack.track)
-	}
-
-	for _, otherParticipant := range c.participants {
-		otherParticipant.peer.UnsubscribeFrom(obsoleteTracks)
-	}
+	c.resendMetadataToAllExcept(id)
 }
 
 // Helper to get the list of available streams for a given participant, i.e. the list of streams
 // that a given participant **can subscribe to**. Each stream may have multiple tracks.
-func (c *Conference) getAvailableStreamsFor(forParticipant ParticipantID) event.CallSDPStreamMetadata {
+func (c *Conference) getAvailableStreamsFor(forParticipant participant.ID) event.CallSDPStreamMetadata {
 	streamsMetadata := make(event.CallSDPStreamMetadata)
-	for id, participant := range c.participants {
-		// Skip us. As we know about our own tracks.
-		if forParticipant != id {
-			// Now, find out which of published tracks belong to the streams for which we have metadata
-			// available and construct a metadata map for a given participant based on that.
-			for _, track := range participant.publishedTracks {
-				trackID, streamID := track.track.ID(), track.track.StreamID()
 
-				if metadata, ok := streamsMetadata[streamID]; ok {
-					metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{}
-					streamsMetadata[streamID] = metadata
-				} else if metadata, ok := participant.streamMetadata[streamID]; ok {
-					metadata.Tracks = event.CallSDPStreamMetadataTracks{trackID: event.CallSDPStreamMetadataTrack{}}
-					streamsMetadata[streamID] = metadata
-				} else {
-					participant.logger.Warnf("Don't have metadata for stream %s", streamID)
+	c.tracker.ForEachPublishedTrack(func(trackID participant.TrackID, track participant.PublishedTrack) {
+		// Skip us. As we know about our own tracks.
+		if track.Owner != forParticipant {
+			streamID := track.Info.StreamID
+			kind := track.Info.Kind.String()
+
+			if metadata, ok := streamsMetadata[streamID]; ok {
+				metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{
+					Kind: kind,
 				}
+				streamsMetadata[streamID] = metadata
+			} else if metadata, ok := c.streamsMetadata[streamID]; ok {
+				metadata.Tracks = event.CallSDPStreamMetadataTracks{
+					trackID: event.CallSDPStreamMetadataTrack{
+						Kind: kind,
+					},
+				}
+				streamsMetadata[streamID] = metadata
+			} else {
+				c.logger.Warnf("Don't have metadata for %s", trackID)
 			}
 		}
-	}
+	})
 
 	return streamsMetadata
 }
 
-// Helper that returns the list of tracks inside this conference that match the given track IDs.
-func (c *Conference) getTracks(identifiers []event.FocusTrackDescription) []*webrtc.TrackLocalStaticRTP {
-	tracks := make([]*webrtc.TrackLocalStaticRTP, 0)
-	for _, identifier := range identifiers {
-		found := false
+// Helper that returns the list of published tracks inside this conference that match the given track IDs.
+func (c *Conference) findPublishedTracks(trackIDs []string) map[string]participant.PublishedTrack {
+	tracks := make(map[string]participant.PublishedTrack)
+	for _, identifier := range trackIDs {
 		// Check if this participant has any of the tracks that we're looking for.
-		for _, participant := range c.participants {
-			if track, ok := participant.publishedTracks[identifier.TrackID]; ok {
-				tracks = append(tracks, track.track)
-				found = true
-				break
-			}
-		}
-		if !found {
-			c.logger.Warnf("track not found: %s", identifier.TrackID)
+		if track := c.tracker.FindPublishedTrack(identifier); track != nil {
+			tracks[identifier] = *track
+		} else {
+			c.logger.Warnf("track not found: %s", identifier)
 		}
 	}
 
@@ -116,17 +99,49 @@ func (c *Conference) getTracks(identifiers []event.FocusTrackDescription) []*web
 }
 
 // Helper that sends current metadata about all available tracks to all participants except a given one.
-func (c *Conference) resendMetadataToAllExcept(exceptMe ParticipantID) {
-	for participantID, participant := range c.participants {
-		if participantID != exceptMe {
-			participant.sendDataChannelMessage(event.Event{
+func (c *Conference) resendMetadataToAllExcept(exceptMe participant.ID) {
+	c.tracker.ForEachParticipant(func(id participant.ID, participant *participant.Participant) {
+		if id != exceptMe {
+			participant.SendDataChannelMessage(event.Event{
 				Type: event.FocusCallSDPStreamMetadataChanged,
 				Content: event.Content{
 					Parsed: event.FocusCallSDPStreamMetadataChangedEventContent{
-						SDPStreamMetadata: c.getAvailableStreamsFor(participantID),
+						SDPStreamMetadata: c.getAvailableStreamsFor(id),
 					},
 				},
 			})
 		}
+	})
+}
+
+// Helper that updates the metadata each time the metadata is received.
+func (c *Conference) updateMetadata(metadata event.CallSDPStreamMetadata) {
+	// Note that this assumes that the stream IDs are unique, which is not always so!
+	// Yet, our previous implementation of the SFU has always combined the metadata for all available
+	// streams when notifying other participants in a call about any changes, so it implicitly expected
+	// them to be unique. This is something that we may want to change when switching to the mid-based
+	// signaling in the future.
+	for stream, content := range metadata {
+		c.streamsMetadata[stream] = content
 	}
+
+	for trackID, metadata := range streamIntoTrackMetadata(metadata) {
+		c.tracker.UpdatePublishedTrackMetadata(trackID, metadata)
+	}
+}
+
+func streamIntoTrackMetadata(
+	streamMetadata event.CallSDPStreamMetadata,
+) map[participant.TrackID]participant.TrackMetadata {
+	tracksMetadata := make(map[participant.TrackID]participant.TrackMetadata)
+	for _, metadata := range streamMetadata {
+		for id, track := range metadata.Tracks {
+			tracksMetadata[id] = participant.TrackMetadata{
+				MaxWidth:  track.Width,
+				MaxHeight: track.Height,
+			}
+		}
+	}
+
+	return tracksMetadata
 }

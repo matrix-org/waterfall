@@ -19,6 +19,7 @@ package main
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	conf "github.com/matrix-org/waterfall/pkg/conference"
+	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
@@ -137,7 +138,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// A helper function to deal with messages that can't be sent due to the conference closed.
 	// Not a function due to the need to capture local environment.
 	sendToConference := func(eventContent conf.MessageContent) {
-		sender := conf.ParticipantID{userID, id.DeviceID(deviceID), callID}
+		sender := participant.ID{userID, id.DeviceID(deviceID), callID}
 		// At this point the conference is not nil.
 		// Let's check if the channel is still available.
 		if conference.Send(conf.MatrixMessage{Content: eventContent, RawEvent: evt, Sender: sender}) != nil {
