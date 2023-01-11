@@ -2,7 +2,6 @@ package participant
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription"
@@ -265,8 +264,6 @@ func (t *Tracker) ProcessRTP(info common.TrackInfo, simulcast common.SimulcastLa
 
 // Processes RTCP packets received on a given track.
 func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo, simulcast common.SimulcastLayer) error {
-	const sendKeyFrameInterval = 500 * time.Millisecond
-
 	published, found := t.publishedTracks[info.TrackID]
 	if !found {
 		return fmt.Errorf("no such track: %s", info.TrackID)
