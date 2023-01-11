@@ -68,3 +68,41 @@ func StartWatchdog(c WatchdogConfig) *WatchdogChannel {
 
 	return &WatchdogChannel{incoming, sync.Mutex{}, false}
 }
+
+type Watchdog struct {
+	// Timeout after which `OnTimeout` is called.
+	timeout time.Duration
+	// A closure that is called once `Timeout` is reached.
+	onTimeout func()
+}
+
+func NewWatchdog(timeout time.Duration, onTimeout func()) *Watchdog {
+	return &Watchdog{timeout: timeout, onTimeout: onTimeout}
+}
+
+func (w Watchdog) Start(done interface{}) chan interface{} {
+	terminate := make(chan interface{})
+
+	return terminate
+}
+
+//doWork := func(
+//done <-chan interface{}, strings <-chan string,
+//) <-chan interface{} {
+//terminated := make(chan interface{}) go func() {
+//	defer fmt.Println("doWork exited.") defer close(terminated)
+//	for {
+//		select {
+//		case s := <-strings:
+//			// Do something interesting
+//			fmt.Println(s) case <-done:
+//			return
+//		} }
+//}()
+//return terminated }
+//done := make(chan interface{}) terminated := doWork(done, nil)
+//go func() {
+//	// Cancel the operation after 1 second. time.Sleep(1 * time.Second) fmt.Println("Canceling doWork goroutine...") close(done)
+//}()
+//<-terminated
+//fmt.Println("Done.")

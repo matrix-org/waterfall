@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package run
 
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
@@ -41,7 +41,7 @@ type Router struct {
 }
 
 // Creates a new instance of the SFU with the given configuration.
-func newRouter(matrix *signaling.MatrixClient, config conf.Config) chan<- RouterMessage {
+func NewRouter(matrix *signaling.MatrixClient, config conf.Config) chan<- RouterMessage {
 	router := &Router{
 		matrix:          matrix,
 		conferenceSinks: make(map[string]*common.Sender[conf.MatrixMessage]),

@@ -58,6 +58,10 @@ func NewSubscription(
 
 	// Start a watchdog for the subscription and create a subsription.
 	watchdog := common.StartWatchdog(watchdogConfig)
+	//watchdog := common.NewWatchdog(2*time.Second, func() {
+	//	logger.Warnf("No RTP on subscription for %s (%s)", info.TrackID, info.Layer)
+	//	connection.RequestKeyFrame(info)
+	//})
 	subscription := &Subscription{rtpSender, rtpTrack, info, connection, watchdog, logger}
 
 	// Start reading and forwarding RTCP packets.
@@ -90,7 +94,7 @@ func (s *Subscription) readRTCP() {
 		if err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 				s.logger.Warnf("failed to read RTCP on track: %s", err)
-				s.watchdog.Close()
+				// s.watchdog.Close()
 				return
 			}
 		}

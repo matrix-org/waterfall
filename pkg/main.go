@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package run
 
 import (
 	"flag"
@@ -89,7 +89,7 @@ func main() {
 	matrixClient := signaling.NewMatrixClient(config.Matrix)
 
 	// Create a router to route incoming To-Device messages to the right conference.
-	routerChannel := newRouter(matrixClient, config.Conference)
+	routerChannel := NewRouter(matrixClient, config.Conference)
 
 	// Start matrix client sync. This function will block until the sync fails.
 	matrixClient.RunSyncing(func(e *event.Event) {
