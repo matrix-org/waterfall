@@ -24,7 +24,7 @@ type Subscription struct {
 	rtpTrack   *webrtc.TrackLocalStaticRTP
 	info       common.TrackInfo
 	connection ConnectionController
-	watchdog   *common.WatchdogChannel
+	watchdog   *common.Watchdog
 	logger     *logrus.Entry
 }
 
@@ -48,16 +48,12 @@ func NewSubscription(
 	}
 
 	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
-	watchdogConfig := common.WatchdogConfig{
-		Timeout: 2 * time.Second,
-		OnTimeout: func() {
-			logger.Warnf("No RTP on subscription for %s (%s)", info.TrackID, info.Layer)
-			connection.RequestKeyFrame(info)
-		},
-	}
-
-	// Start a watchdog for the subscription and create a subsription.
-	watchdog := common.StartWatchdog(watchdogConfig)
+	// Start a watchdog for the subscription and create a subscription.
+	watchdog := common.NewWatchdog(2*time.Second, func() {
+		logger.Warnf("No RTP on subscription for %s (%s)", info.TrackID, info.Layer)
+		connection.RequestKeyFrame(info)
+	})
+	watchdog.Start()
 	subscription := &Subscription{rtpSender, rtpTrack, info, connection, watchdog, logger}
 
 	// Start reading and forwarding RTCP packets.
