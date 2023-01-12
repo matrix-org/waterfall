@@ -38,7 +38,7 @@ func (s *AudioSubscription) Unsubscribe() error {
 	return s.controller.RemoveTrack(s.sender)
 }
 
-func (s *AudioSubscription) WriteRTP(packet *rtp.Packet) error {
+func (s *AudioSubscription) WriteRTP(packet rtp.Packet) error {
 	return fmt.Errorf("Bug: no write RTP logic for an audio subscription!")
 }
 
