@@ -73,17 +73,38 @@ type Watchdog struct {
 	// Timeout after which `OnTimeout` is called.
 	timeout time.Duration
 	// A closure that is called once `Timeout` is reached.
-	onTimeout func()
+	onTimeout   func()
+	closeSignal chan struct{}
 }
 
 func NewWatchdog(timeout time.Duration, onTimeout func()) *Watchdog {
-	return &Watchdog{timeout: timeout, onTimeout: onTimeout}
+	return &Watchdog{timeout: timeout, onTimeout: onTimeout, closeSignal: make(chan struct{})}
 }
 
-func (w Watchdog) Start(done interface{}) chan interface{} {
-	terminate := make(chan interface{})
+func (w Watchdog) Start() chan struct{} {
+	terminate := make(chan struct{})
 
+	go func() {
+		for {
+			select {
+			case <-w.closeSignal:
+				close(terminate)
+				return
+			case <-time.After(w.timeout):
+				w.onTimeout()
+			}
+		}
+	}()
 	return terminate
+}
+
+func (w Watchdog) Close() {
+	select {
+	case <-w.closeSignal:
+		return
+	default:
+		close(w.closeSignal)
+	}
 }
 
 //doWork := func(

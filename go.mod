@@ -9,13 +9,14 @@ require (
 	github.com/pion/rtcp v1.2.9
 	github.com/pion/rtp v1.7.13
 	github.com/sirupsen/logrus v1.9.0
+	github.com/stretchr/testify v1.8.0
 	github.com/thoas/go-funk v0.9.2
-	golang.org/x/exp v0.0.0-20221114191408-850992195362
 	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.11.0
 )
 
 require (
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/pion/datachannel v1.5.2 // indirect
 	github.com/pion/dtls/v2 v2.1.3 // indirect
@@ -30,6 +31,7 @@ require (
 	github.com/pion/transport v0.13.0 // indirect
 	github.com/pion/turn/v2 v2.0.8 // indirect
 	github.com/pion/udp v0.1.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/tidwall/gjson v1.14.1 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
