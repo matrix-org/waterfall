@@ -39,7 +39,7 @@ func NewPacketRewriter(outgoingSSRC uint32) *PacketRewriter {
 }
 
 // Process new incoming packet.
-func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket, error) {
+func (p *PacketRewriter) ProcessIncoming(packet rtp.Packet) (RewrittenRTPPacket, error) {
 	// Store current incoming packet identifiers.
 	incomingIDs := PacketIdentifiers{packet.Timestamp, packet.SequenceNumber}
 
@@ -89,7 +89,7 @@ func (p *PacketRewriter) ProcessIncoming(packet *rtp.Packet) (RewrittenRTPPacket
 	// All packets within a single subscription must have the same SSRC.
 	packet.SSRC = p.outgoingSSRC
 
-	return packet, nil
+	return &packet, nil
 }
 
 // Holds values required for the proper calculation of RTP IDs.

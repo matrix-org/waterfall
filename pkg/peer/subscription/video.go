@@ -95,7 +95,7 @@ func (s *VideoSubscription) Unsubscribe() error {
 	return s.controller.RemoveTrack(s.rtpSender)
 }
 
-func (s *VideoSubscription) WriteRTP(packet *rtp.Packet) error {
+func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
 	if !s.watchdog.Notify() {
 		return fmt.Errorf("Ignoring RTP, subscription %s is dead", s.info.TrackID)
 	}

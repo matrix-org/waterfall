@@ -8,7 +8,7 @@ import (
 
 type Subscription interface {
 	Unsubscribe() error
-	WriteRTP(packet *rtp.Packet) error
+	WriteRTP(packet rtp.Packet) error
 	SwitchLayer(simulcast common.SimulcastLayer)
 	Simulcast() common.SimulcastLayer
 }

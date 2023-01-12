@@ -251,7 +251,7 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 func (t *Tracker) ProcessRTP(info common.TrackInfo, simulcast common.SimulcastLayer, packet *rtp.Packet) {
 	for participantID, subscription := range t.subscribers[info.TrackID] {
 		if subscription.Simulcast() == simulcast {
-			if err := subscription.WriteRTP(packet); err != nil {
+			if err := subscription.WriteRTP(*packet); err != nil {
 				if participant := t.GetParticipant(participantID); participant != nil {
 					participant.Logger.Errorf("Error writing RTP to %s (%s): %s", info.TrackID, simulcast, err)
 					continue
