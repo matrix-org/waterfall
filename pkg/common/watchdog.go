@@ -74,11 +74,12 @@ type Watchdog struct {
 	timeout time.Duration
 	// A closure that is called once `Timeout` is reached.
 	onTimeout   func()
+	notify      chan struct{}
 	closeSignal chan struct{}
 }
 
 func NewWatchdog(timeout time.Duration, onTimeout func()) *Watchdog {
-	return &Watchdog{timeout: timeout, onTimeout: onTimeout, closeSignal: make(chan struct{})}
+	return &Watchdog{timeout: timeout, onTimeout: onTimeout, notify: make(chan struct{}), closeSignal: make(chan struct{})}
 }
 
 func (w Watchdog) Start() chan struct{} {
@@ -87,7 +88,19 @@ func (w Watchdog) Start() chan struct{} {
 	go func() {
 		for {
 			select {
+			case <-w.notify:
+				// do nothing
 			case <-w.closeSignal:
+				// clean up notifications after terminate so sender are not blocking endless
+				go func() {
+					for {
+						select {
+						case <-w.notify:
+						default:
+							return
+						}
+					}
+				}()
 				close(terminate)
 				return
 			case <-time.After(w.timeout):
@@ -95,6 +108,7 @@ func (w Watchdog) Start() chan struct{} {
 			}
 		}
 	}()
+
 	return terminate
 }
 
@@ -104,6 +118,16 @@ func (w Watchdog) Close() {
 		return
 	default:
 		close(w.closeSignal)
+	}
+}
+
+func (w Watchdog) Notify() bool {
+	select {
+	case <-w.closeSignal:
+		return false
+	default:
+		w.notify <- struct{}{}
+		return true
 	}
 }
 
