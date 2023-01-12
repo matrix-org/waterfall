@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-go run ./pkg
+go run ./cmd/sfu

@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-go run ./pkg/*.go --cpuProfile cpuProfile.pprof --memProfile memProfile.pprof
+go run ./cmd/sfu --cpuProfile cpuProfile.pprof --memProfile memProfile.pprof

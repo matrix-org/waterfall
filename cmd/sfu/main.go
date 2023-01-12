@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package run
+package main
 
 import (
 	"flag"
@@ -23,12 +23,15 @@ import (
 	"syscall"
 
 	"github.com/matrix-org/waterfall/pkg/config"
+	"github.com/matrix-org/waterfall/pkg/profiling"
+	"github.com/matrix-org/waterfall/pkg/routing"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )
 
 func main() {
+
 	// Parse command line flags.
 	var (
 		configFilePath = flag.String("config", "config.yaml", "configuration file path")
@@ -44,10 +47,10 @@ func main() {
 	// This is useful to stop the profiler if it's enabled.
 	deferred_functions := []func(){}
 	if *cpuProfile != "" {
-		deferred_functions = append(deferred_functions, InitCPUProfiling(cpuProfile))
+		deferred_functions = append(deferred_functions, profiling.InitCPUProfiling(cpuProfile))
 	}
 	if *memProfile != "" {
-		deferred_functions = append(deferred_functions, InitMemoryProfiling(memProfile))
+		deferred_functions = append(deferred_functions, profiling.InitMemoryProfiling(memProfile))
 	}
 
 	// Handle signal interruptions.
@@ -89,7 +92,7 @@ func main() {
 	matrixClient := signaling.NewMatrixClient(config.Matrix)
 
 	// Create a router to route incoming To-Device messages to the right conference.
-	routerChannel := NewRouter(matrixClient, config.Conference)
+	routerChannel := routing.NewRouter(matrixClient, config.Conference)
 
 	// Start matrix client sync. This function will block until the sync fails.
 	matrixClient.RunSyncing(func(e *event.Event) {
