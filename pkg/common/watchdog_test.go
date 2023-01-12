@@ -33,8 +33,7 @@ func TestWatchdog_Start(t *testing.T) {
 
 func TestWatchdog_Close(t *testing.T) {
 	w := testSetup(t)
-	var terminated chan struct{}
-	terminated = w.Start()
+	terminated := w.Start()
 
 	select {
 	case <-terminated:
