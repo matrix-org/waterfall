@@ -31,7 +31,6 @@ import (
 )
 
 func main() {
-
 	// Parse command line flags.
 	var (
 		configFilePath = flag.String("config", "config.yaml", "configuration file path")

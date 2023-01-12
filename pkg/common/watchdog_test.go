@@ -1,16 +1,18 @@
-package common
+package common_test
 
 import (
-	"github.com/stretchr/testify/assert"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/stretchr/testify/assert"
 )
 
-func testSetup(t *testing.T) *Watchdog {
+func testSetup(t *testing.T) *common.Watchdog {
 	t.Helper()
-	w := NewWatchdog(2*time.Second, func() {})
+	w := common.NewWatchdog(2*time.Second, func() {})
 
 	t.Cleanup(func() {
 		w.Close()
@@ -27,7 +29,6 @@ func TestWatchdog_Start(t *testing.T) {
 	default:
 		assert.True(t, true)
 	}
-
 }
 
 func TestWatchdog_Close(t *testing.T) {
@@ -95,7 +96,6 @@ func TestWatchdog_Multithreading(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				w.Notify()
-
 			}()
 		}
 	}()
