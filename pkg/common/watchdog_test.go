@@ -126,3 +126,27 @@ func TestWatchdog_Multithreading(t *testing.T) {
 		t.Fatal("Should finish in time")
 	}
 }
+
+func BenchmarkWatchdog_Notify(b *testing.B) {
+	w := common.NewWatchdog(2*time.Second, func() {})
+	w.Start()
+	// run the Fib function b.N times
+	for n := 0; n < b.N; n++ {
+		w.Notify()
+	}
+	w.Close()
+}
+
+func BenchmarkWatchdogChannel_Notify(b *testing.B) {
+	watchdogConfig := common.WatchdogConfig{
+		Timeout:   2 * time.Second,
+		OnTimeout: func() {},
+	}
+	w := common.StartWatchdog(watchdogConfig)
+
+	// run the Fib function b.N times
+	for n := 0; n < b.N; n++ {
+		w.Notify()
+	}
+	w.Close()
+}
