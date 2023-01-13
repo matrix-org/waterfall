@@ -10,7 +10,6 @@ require (
 	github.com/pion/rtp v1.7.13
 	github.com/sirupsen/logrus v1.9.0
 	github.com/thoas/go-funk v0.9.2
-	golang.org/x/exp v0.0.0-20221114191408-850992195362
 	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.11.0
 )
