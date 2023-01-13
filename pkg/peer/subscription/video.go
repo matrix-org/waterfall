@@ -72,7 +72,8 @@ func NewVideoSubscription(
 	watchdogConfig := common.WatchdogConfig{
 		Timeout: 2 * time.Second,
 		OnTimeout: func() {
-			logger.Warnf("No RTP on subscription for %s (%s)", subscription.info.TrackID, subscription.currentLayer.Load())
+			layer := common.SimulcastLayer(subscription.currentLayer.Load())
+			logger.Warnf("No RTP on subscription for %s (%s)", subscription.info.TrackID, layer)
 			subscription.requestKeyFrame()
 		},
 	}

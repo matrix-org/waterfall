@@ -170,7 +170,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 			continue
 		}
 
-		p.Logger.Warnf("Ignoring track subscription request for %s: already subscribed", id)
+		p.Logger.Debugf("Ignoring track subscription request for %s: already subscribed", id)
 	}
 
 	c.tracker.Unsubscribe(p.ID, toUnsubscribeTrackIDs)
