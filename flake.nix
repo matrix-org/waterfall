@@ -30,7 +30,9 @@
             default = waterfall;
             docker = pkgs.dockerTools.buildLayeredImage {
               name = "waterfall";
-              config.Cmd = [ "${waterfall}/bin/cmd/sfu" ];
+              config = {
+                 Cmd = [ "${waterfall}/bin/sfu"  ];
+              };
             };
           };
           devShells.default = pkgs.mkShell {
