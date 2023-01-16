@@ -143,6 +143,6 @@ func (m *MatrixForConference) sendToDevice(user MatrixRecipient, eventType event
 	}
 
 	if _, err := m.client.SendToDevice(eventType, sendRequest); err != nil {
-		logger.Errorf("failed to send to-device event: %w", err)
+		logger.Errorf("failed to send to-device event: %v", err)
 	}
 }
