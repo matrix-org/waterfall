@@ -18,18 +18,18 @@ func (c *Conference) processLeftTheCallMessage(p *participant.Participant, msg p
 }
 
 func (c *Conference) processNewTrackPublishedMessage(p *participant.Participant, msg peer.NewTrackPublished) {
-	p.Logger.Infof("Published new track: %s (%v)", msg.TrackID, msg.Simulcast)
+	p.Logger.Infof("Published new track: %s (%v)", msg.TrackID, msg.SimulcastLayer)
 
 	// Find metadata for a given track.
 	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[msg.TrackID]
 
 	// If a new track has been published, we inform everyone about new track available.
-	c.tracker.AddPublishedTrack(p.ID, msg.TrackInfo, msg.Simulcast, trackMetadata, msg.OutputTrack)
+	c.tracker.AddPublishedTrack(p.ID, msg.TrackInfo, msg.SimulcastLayer, trackMetadata, msg.OutputTrack)
 	c.resendMetadataToAllExcept(p.ID)
 }
 
 func (c *Conference) processRTPPacketReceivedMessage(p *participant.Participant, msg peer.RTPPacketReceived) {
-	c.tracker.ProcessRTP(msg.TrackInfo, msg.Simulcast, msg.Packet)
+	c.tracker.ProcessRTP(msg.TrackInfo, msg.SimulcastLayer, msg.Packet)
 }
 
 func (c *Conference) processPublishedTrackFailedMessage(p *participant.Participant, msg peer.PublishedTrackFailed) {
@@ -116,8 +116,8 @@ func (c *Conference) processDataChannelAvailableMessage(p *participant.Participa
 }
 
 func (c *Conference) processKeyFrameRequest(p *participant.Participant, msg peer.KeyFrameRequestReceived) {
-	if err := c.tracker.ProcessKeyFrameRequest(msg.TrackInfo, msg.Simulcast); err != nil {
-		p.Logger.Errorf("Failed to process RTCP on %s (%s): %s", msg.TrackID, msg.Simulcast, err)
+	if err := c.tracker.ProcessKeyFrameRequest(msg.TrackInfo, msg.SimulcastLayer); err != nil {
+		p.Logger.Errorf("Failed to process RTCP on %s (%s): %s", msg.TrackID, msg.SimulcastLayer, err)
 	}
 }
 
