@@ -92,7 +92,7 @@ func NewVideoSubscription(
 
 func (s *VideoSubscription) Unsubscribe() error {
 	s.watchdog.Close()
-	s.logger.Infof("Unsubscribing from %s (%s)", s.info.TrackID, s.currentLayer)
+	s.logger.Infof("Unsubscribing from %s (%s)", s.info.TrackID, common.SimulcastLayer(s.currentLayer.Load()))
 	return s.controller.RemoveTrack(s.rtpSender)
 }
 
@@ -129,7 +129,8 @@ func (s *VideoSubscription) readRTCP() {
 		packets, _, err := s.rtpSender.ReadRTCP()
 		if err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-				s.logger.Warnf("failed to read RTCP on track: %s (%s): %s", s.info.TrackID, s.currentLayer, err)
+				layer := common.SimulcastLayer(s.currentLayer.Load())
+				s.logger.Warnf("failed to read RTCP on track: %s (%s): %s", s.info.TrackID, layer, err)
 				s.watchdog.Close()
 				return
 			}
