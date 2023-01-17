@@ -2,9 +2,9 @@
 
 ## Why
 
-Waterfall is a cascaded, decentralised SFU. The intention is to
-be a implementation of Matrix's [MSC3401: Native Group VoIP
-signalling](https://github.com/matrix-org/matrix-spec-proposals/blob/matthew/group-voip/proposals/3401-group-voip.md).
+Waterfall is a cascaded, decentralised SFU. The intention is to be a
+implementation of Matrix's [MSC3898: Native Matrix VoIP signalling for cascaded
+foci (SFUs, MCUs...)](https://github.com/matrix-org/matrix-spec-proposals/pull/3898).
 This example is self contained and doesn't require any external software. The
 project was informed by the following goals.
 
