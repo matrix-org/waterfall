@@ -204,7 +204,7 @@ func (t *Tracker) Subscribe(participantID ID, requests []SubscribeRequest) {
 		}
 
 		if err != nil {
-			participant.Logger.Errorf("failed to create subscription: %w", err)
+			participant.Logger.Errorf("failed to create subscription: %s", err)
 			continue
 		}
 

@@ -9,7 +9,7 @@ require (
 	github.com/pion/rtcp v1.2.9
 	github.com/pion/rtp v1.7.13
 	github.com/sirupsen/logrus v1.9.0
-	github.com/thoas/go-funk v0.9.2
+	golang.org/x/exp v0.0.0-20230116083435-1de6713980de
 	gopkg.in/yaml.v3 v3.0.1
 	maunium.net/go/mautrix v0.11.0
 )
