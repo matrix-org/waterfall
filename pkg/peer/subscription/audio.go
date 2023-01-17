@@ -50,6 +50,8 @@ func (s *AudioSubscription) Simulcast() common.SimulcastLayer {
 }
 
 func (s *AudioSubscription) readRTCP() {
+	// Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.
+	// For things like NACK this needs to be called.
 	for {
 		if _, _, err := s.sender.ReadRTCP(); err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
