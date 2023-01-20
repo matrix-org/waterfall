@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
 
@@ -15,29 +16,10 @@ func (p *Peer[ID]) handleNewVideoTrack(
 ) {
 	simulcast := common.RIDToSimulcastLayer(remoteTrack.RID())
 
-	// Notify others that our track has just been published.
-	p.state.AddRemoteTrack(remoteTrack)
-	p.sink.Send(NewTrackPublished{trackInfo, simulcast, nil})
-
-	// Start forwarding the data from the remote track to the local track,
-	// so that everyone who is subscribed to this track will receive the data.
-	go func() {
-		for {
-			packet, _, readErr := remoteTrack.ReadRTP()
-			if readErr != nil {
-				if readErr == io.EOF { // finished, no more data, no error, inform others
-					p.logger.Info("remote track closed")
-				} else { // finished, no more data, but with error, inform others
-					p.logger.WithError(readErr).Error("failed to read from remote track")
-				}
-				p.state.RemoveRemoteTrack(remoteTrack)
-				p.sink.Send(PublishedTrackFailed{trackInfo, simulcast})
-				return
-			}
-
-			p.sink.Send(RTPPacketReceived{trackInfo, simulcast, packet})
-		}
-	}()
+	p.handleRemoteTrack(remoteTrack, trackInfo, simulcast, nil, func(packet *rtp.Packet) error {
+		p.sink.Send(RTPPacketReceived{trackInfo, simulcast, packet})
+		return nil
+	})
 }
 
 func (p *Peer[ID]) handleNewAudioTrack(
@@ -57,22 +39,36 @@ func (p *Peer[ID]) handleNewAudioTrack(
 		return
 	}
 
+	p.handleRemoteTrack(remoteTrack, trackInfo, common.SimulcastLayerNone, localTrack, func(packet *rtp.Packet) error {
+		if err = localTrack.WriteRTP(packet); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+			return err
+		}
+		return nil
+	})
+}
+
+func (p *Peer[ID]) handleRemoteTrack(
+	remoteTrack *webrtc.TrackRemote,
+	trackInfo common.TrackInfo,
+	simulcast common.SimulcastLayer,
+	outputTrack *webrtc.TrackLocalStaticRTP,
+	handleRtpFn func(*rtp.Packet) error,
+) {
+	// Notify others that our track has just been published.
 	p.state.AddRemoteTrack(remoteTrack)
-	p.sink.Send(NewTrackPublished{trackInfo, common.SimulcastLayerNone, localTrack})
+	p.sink.Send(NewTrackPublished{trackInfo, simulcast, outputTrack})
 
-	// Start forwarding the data from the remote track to the local track,
-	// so that everyone who is subscribed to this track will receive the data.
+	// Start a go-routine that reads the data from the remote track.
 	go func() {
-		rtpBuf := make([]byte, 1400)
-
 		// Call this when this goroutine ends.
 		defer func() {
-			p.sink.Send(PublishedTrackFailed{trackInfo, common.SimulcastLayerNone})
 			p.state.RemoveRemoteTrack(remoteTrack)
+			p.sink.Send(PublishedTrackFailed{trackInfo, simulcast})
 		}()
 
 		for {
-			index, _, readErr := remoteTrack.Read(rtpBuf)
+			// Read the data from the remote track.
+			packet, _, readErr := remoteTrack.ReadRTP()
 			if readErr != nil {
 				if readErr == io.EOF { // finished, no more data, no error, inform others
 					p.logger.Info("remote track closed")
@@ -82,9 +78,9 @@ func (p *Peer[ID]) handleNewAudioTrack(
 				return
 			}
 
-			// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet.
-			if _, err = localTrack.Write(rtpBuf[:index]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-				p.logger.WithError(err).Error("failed to write to local track")
+			// Handle the RTP packet.
+			if err := handleRtpFn(packet); err != nil {
+				p.logger.WithError(err).Error("failed to handle RTP packet")
 				return
 			}
 		}
