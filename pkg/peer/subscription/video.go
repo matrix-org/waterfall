@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
-	"github.com/matrix-org/waterfall/pkg/packet"
+	"github.com/matrix-org/waterfall/pkg/peer/subscription/rewriter"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -23,7 +23,7 @@ type VideoSubscription struct {
 
 	info           common.TrackInfo
 	currentLayer   atomic.Int32 // atomic common.SimulcastLayer
-	packetRewriter *packet.PacketRewriter
+	packetRewriter *rewriter.PacketRewriter
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
@@ -62,7 +62,7 @@ func NewVideoSubscription(
 		rtpTrack,
 		info,
 		currentLayer,
-		packet.NewPacketRewriter(outgoingSSRC),
+		rewriter.NewPacketRewriter(outgoingSSRC),
 		controller,
 		requestKeyFrameFn,
 		nil,

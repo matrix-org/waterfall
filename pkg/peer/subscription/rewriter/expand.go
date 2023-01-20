@@ -1,4 +1,4 @@
-package packet
+package rewriter
 
 // Expands a counter (whether it's a sequence number, timestamp or any other counter
 // into a counter of a different size based on the latest observed counter value).
