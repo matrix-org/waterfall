@@ -8,23 +8,18 @@ type RewrittenRTPPacket *rtp.Packet
 
 // A structure that is used to rewrite the RTP packets that are being forwarded.
 type PacketRewriter struct {
-	// SSRC that we're using for all packets that we're forwarding.
-	// This is the SSRC that we're sending to the remote peer. Typically,
-	// this is the SSRC of the lowest layer for the simulcast track.
-	outgoingSSRC uint32
-	// The highest identifiers of the forwarded packet,i.e. the IDs of
-	// the **latest** (in terms of timestamp and number) packet. This is not
-	// necessarily the IDs of the **last forwarded packet**, due to packets
-	// that may arrive out-of-order.
+	// The highest identifiers of the outgoing packet returned by the processing
+	// function. This is the **latest** identifier in terms of seqNum and ts, not
+	// the identifier of the **last** forwarded packet.
 	latestOutgoing ExpandedPacketIdentifiers
 	// State of the rewriter. Currently we only have a forwarding state.
+	// We'll also have "switching" state in the future to handle smooth layer switching.
 	state forwardingState
 }
 
 // Creates a new instance of the `PacketRewriter`.
-func NewPacketRewriter(outgoingSSRC uint32) *PacketRewriter {
+func NewPacketRewriter() *PacketRewriter {
 	rewriter := new(PacketRewriter)
-	rewriter.outgoingSSRC = outgoingSSRC
 	return rewriter
 }
 
@@ -39,9 +34,6 @@ func (p *PacketRewriter) ProcessIncoming(packet rtp.Packet) (RewrittenRTPPacket,
 	// Rewrite the IDs of the incoming packet and return it.
 	packet.Timestamp = uint32(outgoingIDs.timestamp)
 	packet.SequenceNumber = uint16(outgoingIDs.sequenceNumber)
-
-	// All packets within a single subscription must have the same SSRC.
-	packet.SSRC = p.outgoingSSRC
 
 	return &packet, nil
 }

@@ -49,9 +49,6 @@ func NewVideoSubscription(
 		return nil, fmt.Errorf("Failed to add track: %s", err)
 	}
 
-	// This is the SSRC that all outgoing (rewritten) packets will have.
-	outgoingSSRC := uint32(rtpSender.GetParameters().Encodings[0].SSRC)
-
 	// Atomic version of the common.SimulcastLayer.
 	var currentLayer atomic.Int32
 	currentLayer.Store(int32(simulcast))
@@ -62,7 +59,7 @@ func NewVideoSubscription(
 		rtpTrack,
 		info,
 		currentLayer,
-		rewriter.NewPacketRewriter(outgoingSSRC),
+		rewriter.NewPacketRewriter(),
 		controller,
 		requestKeyFrameFn,
 		nil,
