@@ -27,7 +27,7 @@ type PublishedTrack struct {
 func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) common.SimulcastLayer {
 	// Audio track. For them we don't have any simulcast. We also don't have any simulcast for video
 	// if there was no simulcast enabled at all.
-	if !p.Metadata.IsVideoTrack() || len(p.Layers) == 0 {
+	if p.Info.Kind == webrtc.RTPCodecTypeAudio || len(p.Layers) == 0 {
 		return common.SimulcastLayerNone
 	}
 
@@ -86,8 +86,4 @@ type TrackMetadata struct {
 
 func (t TrackMetadata) FullResolution() int {
 	return t.MaxWidth * t.MaxHeight
-}
-
-func (t TrackMetadata) IsVideoTrack() bool {
-	return t.FullResolution() > 0
 }
