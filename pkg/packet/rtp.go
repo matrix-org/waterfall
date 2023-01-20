@@ -48,7 +48,7 @@ func (p *PacketRewriter) ProcessIncoming(packet rtp.Packet) (RewrittenRTPPacket,
 
 	// Check if we've just switched the layer before this packet, i.e. if
 	// it is the first packet after switching layers.
-	if p.previouslyForwardedSSRC != packet.SSRC { //nolint: nestif
+	if p.previouslyForwardedSSRC != packet.SSRC {
 		// Calculate the delta between the current packet and the previous one.
 		// We assume that the previous packet was the last one of the previous layer.
 		// These are OK to expand without any checks, as they are only used as a base
@@ -79,29 +79,21 @@ func (p *PacketRewriter) ProcessIncoming(packet rtp.Packet) (RewrittenRTPPacket,
 		// Update the SSRC of the previously forwarded packet.
 		p.previouslyForwardedSSRC = packet.SSRC
 	} else {
-		// Here we assume that if the IDs of the incoming packet are lower than
-		// the first packet we were forwarding after switching layers, then it is a roll over.
-		// Note, that shis is not 100% correct as in reality packets may arrive out-of-order!
-		// FIXME: Do it better!
-		expandedIncomingIDs := ExpandedPacketIdentifiers{
-			uint64(incomingIDs.timestamp), uint32(incomingIDs.sequenceNumber),
-		}
+		// Expand the sequence number.
+		latestSequenceNumber := uint64(p.latestIncomingIDs.sequenceNumber)
+		expandedSequenceNumber := uint32(expandCounter(uint64(incomingIDs.sequenceNumber), 16, &latestSequenceNumber))
+		p.latestIncomingIDs.sequenceNumber = uint32(latestSequenceNumber)
 
-		// Expand the sequence number if necessary.
-		if incomingIDs.sequenceNumber < uint16(p.firstIncomingIDs.sequenceNumber) {
-			roc := p.latestIncomingIDs.sequenceNumber >> 16
-			expandedIncomingIDs.sequenceNumber = uint32(incomingIDs.sequenceNumber) + (roc+1)<<16
-		}
+		// Expand the timestamp.
+		expandedTimestamp := expandCounter(uint64(incomingIDs.timestamp), 32, &p.latestIncomingIDs.timestamp)
 
-		// Expand the timestamp if necessary.
-		if incomingIDs.timestamp < uint32(p.firstIncomingIDs.timestamp) {
-			roc := p.latestIncomingIDs.timestamp >> 32
-			expandedIncomingIDs.timestamp = uint64(incomingIDs.timestamp) + (roc+1)<<32
-		}
+		// Expanded identifiers.
+		expandedIncomingIDs := ExpandedPacketIdentifiers{expandedTimestamp, expandedSequenceNumber}
 
-		p.latestIncomingIDs.Max(expandedIncomingIDs)
-
+		// Now we can safely calculate the delta.
 		delta := expandedIncomingIDs.Sub(p.firstIncomingIDs)
+
+		// The outgoing IDs are the delta added to the first outgoing IDs.
 		outgoingIDs = p.firstOutgoingIDs.Add(delta)
 	}
 
