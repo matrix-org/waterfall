@@ -99,12 +99,7 @@ func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
 		return fmt.Errorf("Ignoring RTP, subscription %s is dead", s.info.TrackID)
 	}
 
-	rewrittenPacket, err := s.packetRewriter.ProcessIncoming(packet)
-	if err != nil {
-		return err
-	}
-
-	return s.rtpTrack.WriteRTP(rewrittenPacket)
+	return s.rtpTrack.WriteRTP(s.packetRewriter.ProcessIncoming(packet))
 }
 
 func (s *VideoSubscription) SwitchLayer(simulcast common.SimulcastLayer) {

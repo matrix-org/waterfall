@@ -24,7 +24,7 @@ func NewPacketRewriter() *PacketRewriter {
 }
 
 // Process new incoming packet.
-func (p *PacketRewriter) ProcessIncoming(packet rtp.Packet) (RewrittenRTPPacket, error) {
+func (p *PacketRewriter) ProcessIncoming(packet rtp.Packet) RewrittenRTPPacket {
 	incomingIDs := TruncatedPacketIdentifiers{packet.Timestamp, packet.SequenceNumber}
 	outgoingIDs := p.state.process(packet.SSRC, incomingIDs, p.latestOutgoing)
 
@@ -35,7 +35,7 @@ func (p *PacketRewriter) ProcessIncoming(packet rtp.Packet) (RewrittenRTPPacket,
 	packet.Timestamp = uint32(outgoingIDs.timestamp)
 	packet.SequenceNumber = uint16(outgoingIDs.sequenceNumber)
 
-	return &packet, nil
+	return &packet
 }
 
 // The state of the forwarding/rewriting process for a single SSRC, i.e. a
@@ -71,11 +71,11 @@ func (s *forwardingState) process(
 
 	// Expand the sequence number.
 	latestSequenceNumber := uint64(s.latestIncoming.sequenceNumber)
-	expandedSequenceNumber := uint32(expandCounter(uint64(incomingIDs.sequenceNumber), 16, &latestSequenceNumber))
+	expandedSequenceNumber := uint32(ExpandCounter(uint64(incomingIDs.sequenceNumber), 16, &latestSequenceNumber))
 	s.latestIncoming.sequenceNumber = uint32(latestSequenceNumber)
 
 	// Expand the timestamp.
-	expandedTimestamp := expandCounter(uint64(incomingIDs.timestamp), 32, &s.latestIncoming.timestamp)
+	expandedTimestamp := ExpandCounter(uint64(incomingIDs.timestamp), 32, &s.latestIncoming.timestamp)
 
 	// Expanded identifiers.
 	expandedIncomingIDs := ExpandedPacketIdentifiers{expandedTimestamp, expandedSequenceNumber}
@@ -94,14 +94,10 @@ func (s *forwardingState) reset(
 	incoming TruncatedPacketIdentifiers,
 	latestOutgoing ExpandedPacketIdentifiers,
 ) ExpandedPacketIdentifiers {
-	// Set the new SSRC.
-	s.ssrc = newSSRC
-
 	// Update incoming IDs of the first packet after switching layers.
 	// These are OK to expand without any checks, as they are only used as a base
 	// for the future values. In other words, we are only tracking the ROC since
 	// the switching point, and that is now, so the ROC is 0.
-
 	s.firstIncoming = ExpandedPacketIdentifiers{uint64(incoming.timestamp), uint32(incoming.sequenceNumber)}
 	s.latestIncoming = s.firstIncoming
 
@@ -123,6 +119,9 @@ func (s *forwardingState) reset(
 	// as well as our new "base" for calculation of timestamps.
 	outgoingIDs := latestOutgoing.Add(delta)
 	s.firstOutgoing = outgoingIDs
+
+	// Update the SSRC.
+	s.ssrc = newSSRC
 
 	return outgoingIDs
 }

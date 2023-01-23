@@ -7,7 +7,7 @@ package rewriter
 // updates the value of the latest observed counter. Returns expanded counter value
 // that can be casted to any smaller type. The `width` defines the width of the
 // truncated counter in bits.
-func expandCounter(truncated, width uint64, latest *uint64) uint64 {
+func ExpandCounter(truncated, width uint64, latest *uint64) uint64 {
 	// Mask that selects the truncated counter actual value.
 	var mask uint64 = 1<<width - 1
 
