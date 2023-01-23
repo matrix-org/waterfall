@@ -1,7 +1,7 @@
 package rewriter
 
-// Expands a counter (whether it's a sequence number, timestamp or any other counter
-// into a counter of a different size based on the latest observed counter value).
+// Expands a counter (whether it's a sequence number, timestamp or any other counter)
+// into an expanded counter using the latest observed counter value for a calculation.
 // It's impossible to reliably extend the counter without knowing the "max" value of
 // the previously observed counter (i.e. the latest counter value). This function also
 // updates the value of the latest observed counter. Returns expanded counter value
