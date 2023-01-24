@@ -17,3 +17,5 @@ services:
           heartbeat:
             timeout: 30
             interval: 30
+        webrtc:
+          simulcast: true
