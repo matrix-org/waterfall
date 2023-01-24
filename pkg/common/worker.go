@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// Configuration for the watchdog.
-type WatchdogConfig struct {
+// Configuration for the worker.
+type WorkerConfig struct {
 	// Timeout after which `OnTimeout` is called.
 	Timeout time.Duration
 	// A closure that is called once `Timeout` is reached.
@@ -15,14 +15,14 @@ type WatchdogConfig struct {
 
 // We need to wrap the channel in a struct so that we can close it from the outside and
 // check by the sender if the channel is closed (there is no elegant way to do it in Go).
-type WatchdogChannel struct {
+type Worker struct {
 	channel chan<- struct{}
 	mutex   sync.Mutex
 	closed  bool
 }
 
-// Close the channel unless already closed.
-func (c *WatchdogChannel) Close() {
+// Stop the channel unless already closed.
+func (c *Worker) Stop() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -32,9 +32,9 @@ func (c *WatchdogChannel) Close() {
 	}
 }
 
-// Notify the watchdog that a packet has been received. Return `true` if the notification
+// Send a task to the worker. Returns `true` if the task
 // has been sent, `false` if the channel is already closed.
-func (c *WatchdogChannel) Notify() bool {
+func (c *Worker) Send() bool {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -46,11 +46,11 @@ func (c *WatchdogChannel) Notify() bool {
 	return false
 }
 
-// Starts a watchdog that periodically (specified by the configuration) executes a `c.OnTimeout` closure if
-// no messages have been received on a channel for a `c.Timeout`.
-func StartWatchdog(c WatchdogConfig) *WatchdogChannel {
-	// The channel that will be used to inform the watchdog about the reception of a packet.
-	// The watchdog will be stopped once the channel is closed.
+// Starts a worker that periodically (specified by the configuration) executes a `c.OnTimeout` closure if
+// no tasks have been received on a channel for a `c.Timeout`.
+func StartWorker(c WorkerConfig) *Worker {
+	// The channel that will be used to inform the worker about the reception of a task.
+	// The worker will be stopped once the channel is closed.
 	incoming := make(chan struct{}, UnboundedChannelSize)
 
 	go func() {
@@ -66,5 +66,5 @@ func StartWatchdog(c WatchdogConfig) *WatchdogChannel {
 		}
 	}()
 
-	return &WatchdogChannel{incoming, sync.Mutex{}, false}
+	return &Worker{incoming, sync.Mutex{}, false}
 }

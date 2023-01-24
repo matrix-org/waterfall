@@ -27,7 +27,7 @@ type VideoSubscription struct {
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
-	watchdog          *common.WatchdogChannel
+	watchdog          *common.Worker
 	logger            *logrus.Entry
 }
 
@@ -67,7 +67,7 @@ func NewVideoSubscription(
 	}
 
 	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
-	watchdogConfig := common.WatchdogConfig{
+	watchdogConfig := common.WorkerConfig{
 		Timeout: 2 * time.Second,
 		OnTimeout: func() {
 			layer := common.SimulcastLayer(subscription.currentLayer.Load())
@@ -77,7 +77,7 @@ func NewVideoSubscription(
 	}
 
 	// Start a watchdog for the subscription and create a subsription.
-	subscription.watchdog = common.StartWatchdog(watchdogConfig)
+	subscription.watchdog = common.StartWorker(watchdogConfig)
 
 	// Start reading and forwarding RTCP packets.
 	go subscription.readRTCP()
@@ -89,13 +89,13 @@ func NewVideoSubscription(
 }
 
 func (s *VideoSubscription) Unsubscribe() error {
-	s.watchdog.Close()
+	s.watchdog.Stop()
 	s.logger.Infof("Unsubscribing from %s (%s)", s.info.TrackID, common.SimulcastLayer(s.currentLayer.Load()))
 	return s.controller.RemoveTrack(s.rtpSender)
 }
 
 func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
-	if !s.watchdog.Notify() {
+	if !s.watchdog.Send() {
 		return fmt.Errorf("Ignoring RTP, subscription %s is dead", s.info.TrackID)
 	}
 
@@ -124,7 +124,7 @@ func (s *VideoSubscription) readRTCP() {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 				layer := common.SimulcastLayer(s.currentLayer.Load())
 				s.logger.Warnf("failed to read RTCP on track: %s (%s): %s", s.info.TrackID, layer, err)
-				s.watchdog.Close()
+				s.watchdog.Stop()
 				return
 			}
 		}

@@ -8,15 +8,15 @@ import (
 )
 
 func BenchmarkWatchdogChannel_Notify(b *testing.B) {
-	watchdogConfig := common.WatchdogConfig{
+	workerConfig := common.WorkerConfig{
 		Timeout:   2 * time.Second,
 		OnTimeout: func() {},
 	}
-	w := common.StartWatchdog(watchdogConfig)
+	w := common.StartWorker(workerConfig)
 
-	// run the Notify method b.N times
+	// Run the Send method b.N times.
 	for n := 0; n < b.N; n++ {
-		w.Notify()
+		w.Send()
 	}
-	w.Close()
+	w.Stop()
 }
