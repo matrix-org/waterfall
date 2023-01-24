@@ -1,8 +1,15 @@
 package common
 
 import (
+	"errors"
 	"sync"
 	"time"
+)
+
+// Errors that may occur when sending tasks to a worker.
+var (
+	ErrWorkerClosed  = errors.New("worker is closed")
+	ErrWorkerTooBusy = errors.New("worker is already overloaded")
 )
 
 // Configuration for the worker.
@@ -36,16 +43,24 @@ func (c *Worker[T]) Stop() {
 
 // Send a task to the worker. Returns `true` if the task
 // has been sent, `false` if the channel is already closed.
-func (c *Worker[T]) Send(task T) bool {
+func (c *Worker[T]) Send(task T) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	// If the channel is not closed, check if we can send the task.
 	if !c.closed {
-		c.channel <- task
-		return true
+		// We don't want to block here since it's the whole point of this
+		// component (that the CPU bound tasks are handled by the worker).
+		select {
+		case c.channel <- task:
+			return nil
+		default:
+			return ErrWorkerTooBusy
+		}
 	}
 
-	return false
+	// Otherwise, the channel is closed.
+	return ErrWorkerClosed
 }
 
 // Starts a worker that periodically (specified by the configuration) executes a `c.OnTimeout` closure if

@@ -96,8 +96,8 @@ func (s *VideoSubscription) Unsubscribe() error {
 }
 
 func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
-	if !s.watchdog.Send(struct{}{}) {
-		return fmt.Errorf("Ignoring RTP, subscription %s is dead", s.info.TrackID)
+	if err := s.watchdog.Send(struct{}{}); err != nil {
+		return fmt.Errorf("Ignoring RTP on subscription %s: %w", s.info.TrackID, err)
 	}
 
 	return s.rtpTrack.WriteRTP(s.packetRewriter.ProcessIncoming(packet))
