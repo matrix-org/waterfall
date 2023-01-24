@@ -19,15 +19,13 @@ type RequestKeyFrameFn = func(track common.TrackInfo, simulcast common.Simulcast
 
 type VideoSubscription struct {
 	rtpSender *webrtc.RTPSender
-	rtpTrack  *webrtc.TrackLocalStaticRTP
 
-	info           common.TrackInfo
-	currentLayer   atomic.Int32 // atomic common.SimulcastLayer
-	packetRewriter *rewriter.PacketRewriter
+	info         common.TrackInfo
+	currentLayer atomic.Int32 // atomic common.SimulcastLayer
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
-	watchdog          *common.WatchdogChannel
+	worker            *common.Worker[rtp.Packet]
 	logger            *logrus.Entry
 }
 
@@ -56,28 +54,34 @@ func NewVideoSubscription(
 	// Create a subscription.
 	subscription := &VideoSubscription{
 		rtpSender,
-		rtpTrack,
 		info,
 		currentLayer,
-		rewriter.NewPacketRewriter(),
 		controller,
 		requestKeyFrameFn,
 		nil,
 		logger,
 	}
 
-	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
-	watchdogConfig := common.WatchdogConfig{
-		Timeout: 2 * time.Second,
-		OnTimeout: func() {
-			layer := common.SimulcastLayer(subscription.currentLayer.Load())
-			logger.Warnf("No RTP on subscription for %s (%s)", subscription.info.TrackID, layer)
-			subscription.requestKeyFrame()
-		},
+	// Create a worker state.
+	workerState := workerState{
+		packetRewriter: rewriter.NewPacketRewriter(),
+		rtpTrack:       rtpTrack,
 	}
 
-	// Start a watchdog for the subscription and create a subsription.
-	subscription.watchdog = common.StartWatchdog(watchdogConfig)
+	// Configure the worker for the subscription.
+	workerConfig := common.WorkerConfig[rtp.Packet]{
+		ChannelSize: 100, // Approx. 500ms of buffer size, we don't need more
+		Timeout:     2 * time.Second,
+		OnTimeout: func() {
+			layer := common.SimulcastLayer(subscription.currentLayer.Load())
+			logger.Warnf("No RTP on subscription %s (%s)", subscription.info.TrackID, layer)
+			subscription.requestKeyFrame()
+		},
+		OnTask: workerState.handlePacket,
+	}
+
+	// Start a worker for the subscription and create a subsription.
+	subscription.worker = common.StartWorker(workerConfig)
 
 	// Start reading and forwarding RTCP packets.
 	go subscription.readRTCP()
@@ -89,17 +93,14 @@ func NewVideoSubscription(
 }
 
 func (s *VideoSubscription) Unsubscribe() error {
-	s.watchdog.Close()
+	s.worker.Stop()
 	s.logger.Infof("Unsubscribing from %s (%s)", s.info.TrackID, common.SimulcastLayer(s.currentLayer.Load()))
 	return s.controller.RemoveTrack(s.rtpSender)
 }
 
 func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
-	if !s.watchdog.Notify() {
-		return fmt.Errorf("Ignoring RTP, subscription %s is dead", s.info.TrackID)
-	}
-
-	return s.rtpTrack.WriteRTP(s.packetRewriter.ProcessIncoming(packet))
+	// Send the packet to the worker.
+	return s.worker.Send(packet)
 }
 
 func (s *VideoSubscription) SwitchLayer(simulcast common.SimulcastLayer) {
@@ -124,7 +125,7 @@ func (s *VideoSubscription) readRTCP() {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 				layer := common.SimulcastLayer(s.currentLayer.Load())
 				s.logger.Warnf("failed to read RTCP on track: %s (%s): %s", s.info.TrackID, layer, err)
-				s.watchdog.Close()
+				s.worker.Stop()
 				return
 			}
 		}
@@ -142,4 +143,16 @@ func (s *VideoSubscription) readRTCP() {
 
 func (s *VideoSubscription) requestKeyFrame() {
 	s.requestKeyFrameFn(s.info, common.SimulcastLayer(s.currentLayer.Load()))
+}
+
+// Internal state of a worker that runs in its own goroutine.
+type workerState struct {
+	// Rewriter of the packet IDs.
+	packetRewriter *rewriter.PacketRewriter
+	// Undelying output track.
+	rtpTrack *webrtc.TrackLocalStaticRTP
+}
+
+func (w *workerState) handlePacket(packet rtp.Packet) {
+	w.rtpTrack.WriteRTP(w.packetRewriter.ProcessIncoming(packet))
 }
