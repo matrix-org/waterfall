@@ -92,7 +92,7 @@ func main() {
 	matrixClient := signaling.NewMatrixClient(config.Matrix)
 
 	// Create a pre-configured factory for the peer connections.
-	connectionFactory, err := webrtc_ext.NewPeerConnectionFactory()
+	connectionFactory, err := webrtc_ext.NewPeerConnectionFactory(config.WebRTC)
 	if err != nil {
 		logrus.WithError(err).Fatal("could not create peer connection factory")
 		return

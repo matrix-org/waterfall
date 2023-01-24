@@ -7,6 +7,7 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/conference"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
@@ -19,6 +20,8 @@ type Config struct {
 	Conference conference.Config `yaml:"conference"`
 	// Starting from which level to log stuff.
 	LogLevel string `yaml:"log"`
+	// WebRTC configuration.
+	WebRTC webrtc_ext.Config `yaml:"webrtc"`
 }
 
 // Tries to load a config from the `CONFIG` environment variable.

@@ -11,8 +11,8 @@ type PeerConnectionFactory struct {
 	api *webrtc.API
 }
 
-func NewPeerConnectionFactory() (*PeerConnectionFactory, error) {
-	api, err := createWebRTCAPI()
+func NewPeerConnectionFactory(config Config) (*PeerConnectionFactory, error) {
+	api, err := createWebRTCAPI(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create WebRTC API: %w", err)
 	}

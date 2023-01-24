@@ -8,24 +8,32 @@ import (
 )
 
 // Creates Pion's WebRTC API that has all required extensions configured (such as simulcast).
-func createWebRTCAPI() (*webrtc.API, error) {
+func createWebRTCAPI(config Config) (*webrtc.API, error) {
 	mediaEngine := &webrtc.MediaEngine{}
 	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
 		return nil, fmt.Errorf("failed to register default codecs: %w", err)
 	}
 
-	// Enable extension headers needed for simulcast.
-	for _, extension := range []string{
-		"urn:ietf:params:rtp-hdrext:sdes:mid",
-		"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
-		"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
-	} {
-		if err := mediaEngine.RegisterHeaderExtension(
-			webrtc.RTPHeaderExtensionCapability{URI: extension},
-			webrtc.RTPCodecTypeVideo,
-		); err != nil {
-			return nil, fmt.Errorf("failed to register simulcast extension: %w", err)
+	// Enable extension headers needed for simulcast (if enabled).
+	if config.EnableSimulcast {
+		for _, extension := range []string{
+			"urn:ietf:params:rtp-hdrext:sdes:mid",
+			"urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+			"urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
+		} {
+			if err := mediaEngine.RegisterHeaderExtension(
+				webrtc.RTPHeaderExtensionCapability{URI: extension},
+				webrtc.RTPCodecTypeVideo,
+			); err != nil {
+				return nil, fmt.Errorf("failed to register simulcast extension: %w", err)
+			}
 		}
+	}
+
+	// Configure the custom IP address of the SFU (if set).
+	settingsEngine := webrtc.SettingEngine{}
+	if config.PublicIP != "" {
+		settingsEngine.SetNAT1To1IPs([]string{config.PublicIP}, webrtc.ICECandidateTypeHost)
 	}
 
 	// Create a InterceptorRegistry. This is the user configurable RTP/RTCP
@@ -38,5 +46,12 @@ func createWebRTCAPI() (*webrtc.API, error) {
 		return nil, fmt.Errorf("failed to set default interceptors: %w", err)
 	}
 
-	return webrtc.NewAPI(webrtc.WithMediaEngine(mediaEngine), webrtc.WithInterceptorRegistry(interceptor)), nil
+	// Finally, construct the API with the configured media and settings engines.
+	api := webrtc.NewAPI(
+		webrtc.WithMediaEngine(mediaEngine),
+		webrtc.WithSettingEngine(settingsEngine),
+		webrtc.WithInterceptorRegistry(interceptor),
+	)
+
+	return api, nil
 }
