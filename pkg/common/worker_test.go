@@ -9,9 +9,10 @@ import (
 
 func BenchmarkWorker(b *testing.B) {
 	workerConfig := common.WorkerConfig[struct{}]{
-		Timeout:   2 * time.Second,
-		OnTimeout: func() {},
-		OnTask:    func(struct{}) {},
+		ChannelSize: common.UnboundedChannelSize,
+		Timeout:     2 * time.Second,
+		OnTimeout:   func() {},
+		OnTask:      func(struct{}) {},
 	}
 	w := common.StartWorker(workerConfig)
 
