@@ -68,7 +68,8 @@ func NewVideoSubscription(
 
 	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
 	watchdogConfig := common.WorkerConfig[struct{}]{
-		Timeout: 2 * time.Second,
+		ChannelSize: common.UnboundedChannelSize,
+		Timeout:     2 * time.Second,
 		OnTimeout: func() {
 			layer := common.SimulcastLayer(subscription.currentLayer.Load())
 			logger.Warnf("No RTP on subscription for %s (%s)", subscription.info.TrackID, layer)
