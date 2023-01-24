@@ -34,6 +34,8 @@ func TestRewriter(t *testing.T) {
 		{5006, 2000500, 3333, 5576, 2980501},   // normal packet
 		{5006, 4294967295, 3333, 5576, 980000}, // global ts wrap around (roll over)
 		{5006, 0, 3333, 5576, 980001},          // and local ts wrap around as well (roll over)
+		{64965, 1, 3333, 65535, 980002},        // and local ts wrap around as well (after a roll over)
+		{1000, 2000, 4444, 1, 980003},          // rollover while SSRC changing
 	}
 
 	rewriter := rewriter.NewPacketRewriter()
