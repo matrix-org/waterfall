@@ -7,17 +7,6 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
-// Creates a peer connection with a specifically configured API (with simulcast etc).
-func CreatePeerConnection() (*webrtc.PeerConnection, error) {
-	// TODO: Could we actually reuse the same API configuration for all peer connections?
-	api, err := CreateWebRTCAPI()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create WebRTC API: %w", err)
-	}
-
-	return api.NewPeerConnection(webrtc.Configuration{})
-}
-
 // Creates Pion's WebRTC API that has all required extensions configured (such as simulcast).
 func CreateWebRTCAPI() (*webrtc.API, error) {
 	mediaEngine := &webrtc.MediaEngine{}

@@ -41,7 +41,13 @@ func NewPeer[ID comparable](
 	sink *common.MessageSink[ID, MessageContent],
 	logger *logrus.Entry,
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
-	peerConnection, err := webrtc_ext.CreatePeerConnection()
+	factory, err := webrtc_ext.NewPeerConnectionFactory()
+	if err != nil {
+		logger.WithError(err).Error("failed to create peer connection factory")
+		return nil, nil, ErrCantCreatePeerConnection
+	}
+
+	peerConnection, err := factory.CreatePeerConnection()
 	if err != nil {
 		logger.WithError(err).Error("failed to create peer connection")
 		return nil, nil, ErrCantCreatePeerConnection
