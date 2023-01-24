@@ -37,17 +37,12 @@ type Peer[ID comparable] struct {
 
 // Instantiates a new peer with a given SDP offer and returns a peer and the SDP answer if everything is ok.
 func NewPeer[ID comparable](
+	connectionFactory *webrtc_ext.PeerConnectionFactory,
 	sdpOffer string,
 	sink *common.MessageSink[ID, MessageContent],
 	logger *logrus.Entry,
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
-	factory, err := webrtc_ext.NewPeerConnectionFactory()
-	if err != nil {
-		logger.WithError(err).Error("failed to create peer connection factory")
-		return nil, nil, ErrCantCreatePeerConnection
-	}
-
-	peerConnection, err := factory.CreatePeerConnection()
+	peerConnection, err := connectionFactory.CreatePeerConnection()
 	if err != nil {
 		logger.WithError(err).Error("failed to create peer connection")
 		return nil, nil, ErrCantCreatePeerConnection

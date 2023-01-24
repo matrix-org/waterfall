@@ -5,6 +5,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )
@@ -15,6 +16,8 @@ type Conference struct {
 	config      Config
 	logger      *logrus.Entry
 	endNotifier ConferenceEndNotifier
+
+	connectionFactory *webrtc_ext.PeerConnectionFactory
 
 	signaling       signaling.MatrixSignaling
 	tracker         participant.Tracker

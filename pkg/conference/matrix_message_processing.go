@@ -53,7 +53,7 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 	} else {
 		messageSink := common.NewMessageSink(id, c.peerMessages)
 
-		peerConnection, answer, err := peer.NewPeer(inviteEvent.Offer.SDP, messageSink, logger)
+		peerConnection, answer, err := peer.NewPeer(c.connectionFactory, inviteEvent.Offer.SDP, messageSink, logger)
 		if err != nil {
 			logger.WithError(err).Errorf("Failed to process SDP offer")
 			return err

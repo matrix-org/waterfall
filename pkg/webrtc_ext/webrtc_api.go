@@ -8,7 +8,7 @@ import (
 )
 
 // Creates Pion's WebRTC API that has all required extensions configured (such as simulcast).
-func CreateWebRTCAPI() (*webrtc.API, error) {
+func createWebRTCAPI() (*webrtc.API, error) {
 	mediaEngine := &webrtc.MediaEngine{}
 	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
 		return nil, fmt.Errorf("failed to register default codecs: %w", err)
