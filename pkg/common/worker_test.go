@@ -7,7 +7,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 )
 
-func BenchmarkWatchdogChannel_Notify(b *testing.B) {
+func BenchmarkWorker(b *testing.B) {
 	workerConfig := common.WorkerConfig[struct{}]{
 		Timeout:   2 * time.Second,
 		OnTimeout: func() {},
@@ -15,7 +15,6 @@ func BenchmarkWatchdogChannel_Notify(b *testing.B) {
 	}
 	w := common.StartWorker(workerConfig)
 
-	// Run the Send method b.N times.
 	for n := 0; n < b.N; n++ {
 		w.Send(struct{}{})
 	}

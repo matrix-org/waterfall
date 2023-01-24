@@ -68,7 +68,7 @@ func NewVideoSubscription(
 		rtpTrack:       rtpTrack,
 	}
 
-	// Configure watchdog for the subscription so that we know when we don't receive any new frames.
+	// Configure the worker for the subscription.
 	workerConfig := common.WorkerConfig[rtp.Packet]{
 		ChannelSize: 100, // Approx. 500ms of buffer size, we don't need more
 		Timeout:     2 * time.Second,
@@ -80,7 +80,7 @@ func NewVideoSubscription(
 		OnTask: workerState.handlePacket,
 	}
 
-	// Start a watchdog for the subscription and create a subsription.
+	// Start a worker for the subscription and create a subsription.
 	subscription.worker = common.StartWorker(workerConfig)
 
 	// Start reading and forwarding RTCP packets.
