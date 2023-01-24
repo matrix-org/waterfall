@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/peer/subscription/rewriter"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -22,7 +23,7 @@ type VideoSubscription struct {
 
 	info           common.TrackInfo
 	currentLayer   atomic.Int32 // atomic common.SimulcastLayer
-	packetRewriter *PacketRewriter
+	packetRewriter *rewriter.PacketRewriter
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
@@ -48,9 +49,6 @@ func NewVideoSubscription(
 		return nil, fmt.Errorf("Failed to add track: %s", err)
 	}
 
-	// This is the SSRC that all outgoing (rewritten) packets will have.
-	outgoingSSRC := uint32(rtpSender.GetParameters().Encodings[0].SSRC)
-
 	// Atomic version of the common.SimulcastLayer.
 	var currentLayer atomic.Int32
 	currentLayer.Store(int32(simulcast))
@@ -61,7 +59,7 @@ func NewVideoSubscription(
 		rtpTrack,
 		info,
 		currentLayer,
-		NewPacketRewriter(outgoingSSRC),
+		rewriter.NewPacketRewriter(),
 		controller,
 		requestKeyFrameFn,
 		nil,
@@ -101,12 +99,7 @@ func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
 		return fmt.Errorf("Ignoring RTP, subscription %s is dead", s.info.TrackID)
 	}
 
-	rewrittenPacket, err := s.packetRewriter.ProcessIncoming(packet)
-	if err != nil {
-		return err
-	}
-
-	return s.rtpTrack.WriteRTP(rewrittenPacket)
+	return s.rtpTrack.WriteRTP(s.packetRewriter.ProcessIncoming(packet))
 }
 
 func (s *VideoSubscription) SwitchLayer(simulcast common.SimulcastLayer) {
