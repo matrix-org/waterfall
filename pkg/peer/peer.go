@@ -6,6 +6,7 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/state"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -40,7 +41,7 @@ func NewPeer[ID comparable](
 	sink *common.MessageSink[ID, MessageContent],
 	logger *logrus.Entry,
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
-	peerConnection, err := createPeerConnection()
+	peerConnection, err := webrtc_ext.CreatePeerConnection()
 	if err != nil {
 		logger.WithError(err).Error("failed to create peer connection")
 		return nil, nil, ErrCantCreatePeerConnection
