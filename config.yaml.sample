@@ -8,5 +8,6 @@ conference:
     interval: 30                         # How often will the server send ping commands to the connected clients (in seconds)
 webrtc:
   simulcast: true                        # Simulcast on/off
-  ip: 10.0.0.1                           # Your public IP address (if any)
+  ipAddresses:
+    - 10.0.0.1                           # Your public IP address(es) (if any)
 log: "debug"                             # Debug level
