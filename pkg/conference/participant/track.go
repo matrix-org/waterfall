@@ -65,18 +65,21 @@ type TrackMetadata struct {
 // the video (**but not half of the resolution**). I.e. medium quality is high quality divided by 4. And low
 // quality is medium quality divided by 4 (which is the same as the high quality dividied by 16).
 func calculateDesiredLayer(fullWidth, fullHeight int, desiredWidth, desiredHeight int) common.SimulcastLayer {
-	// Calculate combined length of width and height of the full resolution.
+	// Calculate combined length of width and height for the full and desired size videos.
 	fullSize := fullWidth + fullHeight
+	desiredSize := desiredWidth + desiredHeight
 
-	// Determine which simulcast desiredLayer to subscribe to based on the requested resolution.
-	if desiredWidth != 0 && desiredHeight != 0 {
-		desiredSize := desiredWidth + desiredHeight
-		if ratio := float32(fullSize) / float32(desiredSize); ratio <= 1 {
-			return common.SimulcastLayerHigh
-		} else if ratio <= 2 {
-			return common.SimulcastLayerMedium
-		}
+	if fullSize == 0 || desiredSize == 0 {
+		return common.SimulcastLayerLow
 	}
 
+	// Determine which simulcast desiredLayer to subscribe to based on the requested resolution.
+	if ratio := float32(fullSize) / float32(desiredSize); ratio <= 1 {
+		return common.SimulcastLayerHigh
+	} else if ratio <= 2 {
+		return common.SimulcastLayerMedium
+	}
+
+	// We can't get here actually.
 	return common.SimulcastLayerLow
 }
