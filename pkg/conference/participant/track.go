@@ -34,21 +34,9 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 	// Video track. Calculate the optimal layer closest to the requested resolution.
 	desiredLayer := calculateDesiredLayer(p.Metadata.MaxWidth, p.Metadata.MaxHeight, requestedWidth, requestedHeight)
 
-	// Check if the desired layer available at all.
-	// If the desired layer is not available, we'll find the closest one.
-	layerIndex := slices.IndexFunc(p.Layers, func(simulcast common.SimulcastLayer) bool {
-		return simulcast == desiredLayer
-	})
-
-	if layerIndex != -1 {
-		return p.Layers[layerIndex]
-	}
-
 	// Ideally, here we would need to send an error if the desired layer is not available, but we don't
-	// have a way to do it. So we just return the closest available layer. Handling the closest available
-	// layer is somewhat cumbersome, so instead, we just return the lowest layer. It's not ideal, but ok
-	// for a quick fix.
-	priority := []common.SimulcastLayer{common.SimulcastLayerLow, common.SimulcastLayerMedium, common.SimulcastLayerHigh}
+	// have a way to do it. So we just return the closest available layer.
+	priority := []common.SimulcastLayer{desiredLayer, common.SimulcastLayerMedium, common.SimulcastLayerLow}
 
 	// More Go boilerplate.
 	for _, desiredLayer := range priority {
@@ -61,7 +49,8 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 		}
 	}
 
-	// Actually this part will never be executed, because we always have at least one layer available.
+	// Actually this part will never be executed, because if we got to this point,
+	// we know that we at least have one layer available.
 	return common.SimulcastLayerLow
 }
 
