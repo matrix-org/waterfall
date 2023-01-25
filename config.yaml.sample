@@ -1,7 +1,7 @@
 matrix:
   homeserverUrl: "http://localhost:8008" # The URL of the home server
-  userId: "@sfu:shadowfax"               # The MXID
-  accessToken: "..."                     # Access token
+  userId: "@sfu:shadowfax"               # The MXID of the SFU user
+  accessToken: "..."                     # Access token of the SFU user
 conference:
   heartbeat:
     timeout: 30                          # After which time the server will treat the lack of pings from the peer as error (in seconds)
