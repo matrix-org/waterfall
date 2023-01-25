@@ -24,7 +24,7 @@ type PublishedTrack struct {
 }
 
 // Calculate the layer that we can use based on the requirements passed as parameters and available layers.
-func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) common.SimulcastLayer {
+func (p *PublishedTrack) GetOptimalLayer(requestedWidth, requestedHeight int) common.SimulcastLayer {
 	// Audio track. For them we don't have any simulcast. We also don't have any simulcast for video
 	// if there was no simulcast enabled at all.
 	if p.Info.Kind == webrtc.RTPCodecTypeAudio || len(p.Layers) == 0 {
