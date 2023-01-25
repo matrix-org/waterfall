@@ -31,21 +31,8 @@ func (p *PublishedTrack) GetDesiredLayer(requestedWidth, requestedHeight int) co
 		return common.SimulcastLayerNone
 	}
 
-	// Video track. Calculate it's full resolution based on a metadata.
-	fullResolution := p.Metadata.FullResolution()
-
-	// If no explicit resolution specified, subscribe to the lowest layer.
-	desiredLayer := common.SimulcastLayerLow
-
-	// Determine which simulcast desiredLayer to subscribe to based on the requested resolution.
-	if requestedWidth != 0 && requestedHeight != 0 {
-		desiredResolution := requestedWidth * requestedHeight
-		if ratio := float32(fullResolution) / float32(desiredResolution); ratio <= 1 {
-			desiredLayer = common.SimulcastLayerHigh
-		} else if ratio <= 2 {
-			desiredLayer = common.SimulcastLayerMedium
-		}
-	}
+	// Video track. Calculate the optimal layer closest to the requested resolution.
+	desiredLayer := calculateDesiredLayer(p.Metadata.MaxWidth, p.Metadata.MaxHeight, requestedWidth, requestedHeight)
 
 	// Check if the desired layer available at all.
 	// If the desired layer is not available, we'll find the closest one.
@@ -84,6 +71,23 @@ type TrackMetadata struct {
 	MaxWidth, MaxHeight int
 }
 
-func (t TrackMetadata) FullResolution() int {
-	return t.MaxWidth * t.MaxHeight
+// Calculates the optimal layer closest to the requested resolution. We assume that the full resolution is the
+// maximum resolution that we can get from the user. We assume that a medium quality layer is half the size of
+// the video (**but not half of the resolution**). I.e. medium quality is high quality divided by 4. And low
+// quality is medium quality divided by 4 (which is the same as the high quality dividied by 16).
+func calculateDesiredLayer(fullWidth, fullHeight int, desiredWidth, desiredHeight int) common.SimulcastLayer {
+	// Calculate combined length of width and height of the full resolution.
+	fullSize := fullWidth + fullHeight
+
+	// Determine which simulcast desiredLayer to subscribe to based on the requested resolution.
+	if desiredWidth != 0 && desiredHeight != 0 {
+		desiredSize := desiredWidth + desiredHeight
+		if ratio := float32(fullSize) / float32(desiredSize); ratio <= 1 {
+			return common.SimulcastLayerHigh
+		} else if ratio <= 2 {
+			return common.SimulcastLayerMedium
+		}
+	}
+
+	return common.SimulcastLayerLow
 }
