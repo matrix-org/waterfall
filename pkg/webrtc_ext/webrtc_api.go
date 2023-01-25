@@ -32,8 +32,8 @@ func createWebRTCAPI(config Config) (*webrtc.API, error) {
 
 	// Configure the custom IP address of the SFU (if set).
 	settingsEngine := webrtc.SettingEngine{}
-	if config.PublicIP != "" {
-		settingsEngine.SetNAT1To1IPs([]string{config.PublicIP}, webrtc.ICECandidateTypeHost)
+	if len(config.PublicIPs) != 0 {
+		settingsEngine.SetNAT1To1IPs(config.PublicIPs, webrtc.ICECandidateTypeHost)
 	}
 
 	// Create a InterceptorRegistry. This is the user configurable RTP/RTCP
