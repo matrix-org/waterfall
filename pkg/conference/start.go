@@ -21,6 +21,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -30,6 +31,7 @@ import (
 func StartConference(
 	confID string,
 	config Config,
+	peerConnectionFactory *webrtc_ext.PeerConnectionFactory,
 	signaling signaling.MatrixSignaling,
 	conferenceEndNotifier ConferenceEndNotifier,
 	userID id.UserID,
@@ -38,15 +40,16 @@ func StartConference(
 	sender, receiver := common.NewChannel[MatrixMessage]()
 
 	conference := &Conference{
-		id:              confID,
-		config:          config,
-		logger:          logrus.WithFields(logrus.Fields{"conf_id": confID}),
-		signaling:       signaling,
-		tracker:         *participant.NewParticipantTracker(),
-		streamsMetadata: make(event.CallSDPStreamMetadata),
-		endNotifier:     conferenceEndNotifier,
-		peerMessages:    make(chan common.Message[participant.ID, peer.MessageContent], common.UnboundedChannelSize),
-		matrixMessages:  receiver,
+		id:                confID,
+		config:            config,
+		connectionFactory: peerConnectionFactory,
+		logger:            logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		signaling:         signaling,
+		tracker:           *participant.NewParticipantTracker(),
+		streamsMetadata:   make(event.CallSDPStreamMetadata),
+		endNotifier:       conferenceEndNotifier,
+		peerMessages:      make(chan common.Message[participant.ID, peer.MessageContent], common.UnboundedChannelSize),
+		matrixMessages:    receiver,
 	}
 
 	participantID := participant.ID{UserID: userID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}

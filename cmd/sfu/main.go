@@ -26,6 +26,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/profiling"
 	"github.com/matrix-org/waterfall/pkg/routing"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 )
@@ -90,8 +91,15 @@ func main() {
 	// Create matrix client.
 	matrixClient := signaling.NewMatrixClient(config.Matrix)
 
+	// Create a pre-configured factory for the peer connections.
+	connectionFactory, err := webrtc_ext.NewPeerConnectionFactory(config.WebRTC)
+	if err != nil {
+		logrus.WithError(err).Fatal("could not create peer connection factory")
+		return
+	}
+
 	// Create a router to route incoming To-Device messages to the right conference.
-	routerChannel := routing.NewRouter(matrixClient, config.Conference)
+	routerChannel := routing.NewRouter(matrixClient, connectionFactory, config.Conference)
 
 	// Start matrix client sync. This function will block until the sync fails.
 	matrixClient.RunSyncing(func(e *event.Event) {

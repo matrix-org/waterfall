@@ -21,6 +21,7 @@ import (
 	conf "github.com/matrix-org/waterfall/pkg/conference"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -38,15 +39,22 @@ type Router struct {
 	config conf.Config
 	// A channel to serialize all incoming events to the Router.
 	channel chan RouterMessage
+	// Peer connection factory that can be used to create pre-configured peer connections.
+	connectionFactory *webrtc_ext.PeerConnectionFactory
 }
 
 // Creates a new instance of the SFU with the given configuration.
-func NewRouter(matrix *signaling.MatrixClient, config conf.Config) chan<- RouterMessage {
+func NewRouter(
+	matrix *signaling.MatrixClient,
+	connectionFactory *webrtc_ext.PeerConnectionFactory,
+	config conf.Config,
+) chan<- RouterMessage {
 	router := &Router{
-		matrix:          matrix,
-		conferenceSinks: make(map[string]*common.Sender[conf.MatrixMessage]),
-		config:          config,
-		channel:         make(chan RouterMessage, common.UnboundedChannelSize),
+		matrix:            matrix,
+		conferenceSinks:   make(map[string]*common.Sender[conf.MatrixMessage]),
+		config:            config,
+		channel:           make(chan RouterMessage, common.UnboundedChannelSize),
+		connectionFactory: connectionFactory,
 	}
 
 	// Start the main loop of the Router.
@@ -115,6 +123,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 		conferenceSink, err := conf.StartConference(
 			conferenceID,
 			r.config,
+			r.connectionFactory,
 			r.matrix.CreateForConference(conferenceID),
 			createConferenceEndNotifier(conferenceID, r.channel),
 			userID,
