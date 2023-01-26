@@ -3,7 +3,6 @@ package peer
 import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/pion/webrtc/v3"
-	"maunium.net/go/mautrix/event"
 )
 
 // A callback that is called once we receive first RTP packets from a track, i.e.
@@ -76,8 +75,6 @@ func (p *Peer[ID]) onConnectionStateChanged(state webrtc.PeerConnectionState) {
 	p.logger.Infof("Connection state changed: %v", state)
 
 	switch state {
-	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateClosed:
-		p.sink.Send(LeftTheCall{event.CallHangupUserHangup})
 	case webrtc.PeerConnectionStateConnected:
 		p.sink.Send(JoinedTheCall{})
 	}
