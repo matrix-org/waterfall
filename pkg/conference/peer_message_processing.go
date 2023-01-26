@@ -152,7 +152,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 
 		// Calculate the desired simulcast layer if any.
 		requirements := toSubscribeRequirements[id]
-		desiredLayer := track.GetDesiredLayer(requirements.MaxWidth, requirements.MaxHeight)
+		desiredLayer := track.GetOptimalLayer(requirements.MaxWidth, requirements.MaxHeight)
 
 		// If we're not subscribed to the track, let's subscribe to it respecting
 		// the desired track parameters that the user specified in a request.
