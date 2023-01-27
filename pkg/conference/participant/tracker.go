@@ -187,8 +187,8 @@ func (t *Tracker) Subscribe(participantID ID, requests []SubscribeRequest) {
 				request.TrackInfo,
 				request.Simulcast,
 				participant.Peer,
-				func(track common.TrackInfo, simulcast common.SimulcastLayer) {
-					participant.Peer.RequestKeyFrame(track, simulcast)
+				func(track common.TrackInfo, simulcast common.SimulcastLayer) error {
+					return participant.Peer.RequestKeyFrame(track, simulcast)
 				},
 				participant.Logger,
 			)

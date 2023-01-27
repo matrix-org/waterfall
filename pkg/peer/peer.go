@@ -172,6 +172,6 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 	return &answer, nil
 }
 
-func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo, simulcast common.SimulcastLayer) {
-	p.sink.Send(KeyFrameRequestReceived{info, simulcast})
+func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo, simulcast common.SimulcastLayer) error {
+	return p.sink.TrySend(KeyFrameRequestReceived{info, simulcast})
 }

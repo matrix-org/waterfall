@@ -31,18 +31,38 @@ func NewMessageSink[S comparable, M any](sender S, messageSink chan<- Message[S,
 	}
 }
 
-// Sends a message to the message sink.
+// Sends a message to the message sink. Blocks if the sink is full!
 func (s *MessageSink[S, M]) Send(message M) error {
+	return s.send(message, false)
+}
+
+// Sends a message to the message sink. Does **not** block if the sink is full, returns an error instead.
+func (s *MessageSink[S, M]) TrySend(message M) error {
+	return s.send(message, true)
+}
+
+// Sends a message to the message sink.
+func (s *MessageSink[S, M]) send(message M, nonBlocking bool) error {
 	if s.sealed.Load() {
 		return errors.New("The channel is sealed, you can't send any messages over it")
 	}
 
-	s.messageSink <- Message[S, M]{
+	messageWithSender := Message[S, M]{
 		Sender:  s.sender,
 		Content: message,
 	}
 
-	return nil
+	if nonBlocking {
+		select {
+		case s.messageSink <- messageWithSender:
+			return nil
+		default:
+			return errors.New("The channel is full, can't send without blocking")
+		}
+	} else {
+		s.messageSink <- messageWithSender
+		return nil
+	}
 }
 
 // Seals the channel, which means that no messages could be sent via this channel.
