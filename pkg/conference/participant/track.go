@@ -80,6 +80,5 @@ func calculateDesiredLayer(fullWidth, fullHeight int, desiredWidth, desiredHeigh
 		return common.SimulcastLayerMedium
 	}
 
-	// We can't get here actually.
 	return common.SimulcastLayerLow
 }
