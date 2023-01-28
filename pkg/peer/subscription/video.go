@@ -15,7 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type RequestKeyFrameFn = func(track common.TrackInfo, simulcast common.SimulcastLayer)
+type RequestKeyFrameFn = func(track common.TrackInfo, simulcast common.SimulcastLayer) error
 
 type VideoSubscription struct {
 	rtpSender *webrtc.RTPSender
@@ -142,7 +142,10 @@ func (s *VideoSubscription) readRTCP() {
 }
 
 func (s *VideoSubscription) requestKeyFrame() {
-	s.requestKeyFrameFn(s.info, common.SimulcastLayer(s.currentLayer.Load()))
+	layer := common.SimulcastLayer(s.currentLayer.Load())
+	if err := s.requestKeyFrameFn(s.info, layer); err != nil {
+		s.logger.Errorf("Failed to request key frame: %s", err)
+	}
 }
 
 // Internal state of a worker that runs in its own goroutine.

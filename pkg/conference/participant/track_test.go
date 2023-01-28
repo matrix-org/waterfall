@@ -39,6 +39,8 @@ func TestGetOptimalLayer(t *testing.T) {
 		{layers(high, mid, low), 0, 0, 1600, 1000, low},
 		{layers(high, mid, low), 0, 0, 0, 0, low},
 		{layers(high, mid, low), 600, 400, 0, 0, low},
+
+		{layers(high), 1280, 720, 200, 200, high},
 	}
 
 	mock := participant.PublishedTrack{

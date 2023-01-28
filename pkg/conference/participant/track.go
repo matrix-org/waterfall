@@ -36,7 +36,12 @@ func (p *PublishedTrack) GetOptimalLayer(requestedWidth, requestedHeight int) co
 
 	// Ideally, here we would need to send an error if the desired layer is not available, but we don't
 	// have a way to do it. So we just return the closest available layer.
-	priority := []common.SimulcastLayer{desiredLayer, common.SimulcastLayerMedium, common.SimulcastLayerLow}
+	priority := []common.SimulcastLayer{
+		desiredLayer,
+		common.SimulcastLayerMedium,
+		common.SimulcastLayerLow,
+		common.SimulcastLayerHigh,
+	}
 
 	// More Go boilerplate.
 	for _, desiredLayer := range priority {
@@ -80,6 +85,5 @@ func calculateDesiredLayer(fullWidth, fullHeight int, desiredWidth, desiredHeigh
 		return common.SimulcastLayerMedium
 	}
 
-	// We can't get here actually.
 	return common.SimulcastLayerLow
 }
