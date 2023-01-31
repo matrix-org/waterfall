@@ -88,7 +88,7 @@ func main() {
 	case "panic":
 		logrus.SetLevel(logrus.PanicLevel)
 	default:
-        logrus.Fatalf("unrecognised log level: %s", config.LogLevel)
+		logrus.Fatalf("unrecognised log level: %s", config.LogLevel)
 	}
 
 	// Create matrix client.
