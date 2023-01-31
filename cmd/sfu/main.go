@@ -76,6 +76,7 @@ func main() {
 		logrus.SetLevel(logrus.TraceLevel)
 	case "debug":
 		logrus.SetLevel(logrus.DebugLevel)
+	case "": // default to info level if unset
 	case "info":
 		logrus.SetLevel(logrus.InfoLevel)
 	case "warn":
