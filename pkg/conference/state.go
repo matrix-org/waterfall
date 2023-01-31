@@ -4,7 +4,6 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
-	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
@@ -18,8 +17,8 @@ type Conference struct {
 	endNotifier ConferenceEndNotifier
 
 	connectionFactory *webrtc_ext.PeerConnectionFactory
+	matrixWorker      *matrixWorker
 
-	signaling       signaling.MatrixSignaling
 	tracker         participant.Tracker
 	streamsMetadata event.CallSDPStreamMetadata
 

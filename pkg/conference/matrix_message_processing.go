@@ -6,6 +6,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
+	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
@@ -90,8 +91,14 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 
 	// Send the answer back to the remote peer.
 	p.Logger.WithField("sdpAnswer", sdpAnswer.SDP).Debug("Sending SDP answer")
-	recipient := p.AsMatrixRecipient()
-	c.signaling.SendSDPAnswer(recipient, c.getAvailableStreamsFor(id), sdpAnswer.SDP)
+	c.matrixWorker.sendSignalingMessage(
+		p.AsMatrixRecipient(),
+		signaling.SdpAnswer{
+			StreamMetadata: c.getAvailableStreamsFor(id),
+			SDP:            sdpAnswer.SDP,
+		},
+	)
+
 	return nil
 }
 
@@ -123,7 +130,7 @@ func (c *Conference) onSelectAnswer(id participant.ID, ev *event.CallSelectAnswe
 	if participant := c.getParticipant(id, nil); participant != nil {
 		participant.Logger.Info("Received remote answer selection")
 
-		if ev.SelectedPartyID != string(c.signaling.DeviceID()) {
+		if ev.SelectedPartyID != string(c.matrixWorker.deviceID) {
 			c.logger.WithFields(logrus.Fields{
 				"device_id": ev.SelectedPartyID,
 				"user_id":   id,

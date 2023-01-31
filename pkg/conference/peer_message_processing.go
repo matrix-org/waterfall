@@ -4,6 +4,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
+	"github.com/matrix-org/waterfall/pkg/signaling"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -14,7 +15,7 @@ func (c *Conference) processJoinedTheCallMessage(p *participant.Participant, mes
 func (c *Conference) processLeftTheCallMessage(p *participant.Participant, msg peer.LeftTheCall) {
 	p.Logger.Infof("Left the call: %s", msg.Reason)
 	c.removeParticipant(p.ID)
-	c.signaling.SendHangup(p.AsMatrixRecipient(), msg.Reason)
+	c.matrixWorker.sendSignalingMessage(p.AsMatrixRecipient(), signaling.Hangup{Reason: msg.Reason})
 }
 
 func (c *Conference) processNewTrackPublishedMessage(p *participant.Participant, msg peer.NewTrackPublished) {
@@ -48,14 +49,15 @@ func (c *Conference) processNewICECandidateMessage(p *participant.Participant, m
 		SDPMLineIndex: int(*jsonCandidate.SDPMLineIndex),
 		SDPMID:        *jsonCandidate.SDPMid,
 	}}
-	c.signaling.SendICECandidates(p.AsMatrixRecipient(), candidates)
+
+	c.matrixWorker.sendSignalingMessage(p.AsMatrixRecipient(), signaling.IceCandidates{Candidates: candidates})
 }
 
 func (c *Conference) processICEGatheringCompleteMessage(p *participant.Participant, msg peer.ICEGatheringComplete) {
 	p.Logger.Debug("Local ICE gathering completed")
 
 	// Send an empty array of candidates to indicate that ICE gathering is complete.
-	c.signaling.SendCandidatesGatheringFinished(p.AsMatrixRecipient())
+	c.matrixWorker.sendSignalingMessage(p.AsMatrixRecipient(), signaling.CandidatesGatheringFinished{})
 }
 
 func (c *Conference) processRenegotiationRequiredMessage(p *participant.Participant, msg peer.RenegotiationRequired) {

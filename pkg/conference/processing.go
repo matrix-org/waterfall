@@ -30,6 +30,10 @@ func (c *Conference) processMessages() {
 			// Send the information that we ended to the owner and pass the message
 			// that we did not process (so that we don't drop it silently).
 			c.endNotifier.Notify(unreadMessages)
+
+			// Stop the matrix worker.
+			c.matrixWorker.stop()
+
 			return
 		}
 	}
