@@ -181,7 +181,7 @@ Check out the main branch of the _SFU_ and then first create a `config.yml` in t
 ```
 git clone https://github.com/matrix-org/waterfall.git
 cd waterfall
-cp config.yaml.sample config.yaml
+cp config.sample.yaml config.yaml
 ```
 
 Find the following lines of config and change thm with your <<ACCESS_TOKEN>> and your local settings.

@@ -26,7 +26,7 @@ from the MSC.
 
 ### Configuration
 
-* `cp config.yaml.sample config.yaml`
+* `cp config.sample.yaml config.yaml`
 * Fill in `config.yaml`
 
 ### Running
