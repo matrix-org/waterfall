@@ -120,6 +120,7 @@ In case you'll develop on the _Matrix JS SDK_ you'll also want to yarn link the 
 ```bash
 git clone https://github.com/matrix-org/matrix-js-sdk.git
 cd matrix-js-sdk
+git checkout matthew/sfu
 yarn
 yarn link
 ```
