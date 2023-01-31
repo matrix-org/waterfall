@@ -78,3 +78,9 @@ docker run \
     -it --rm matrix/waterfall \
     sfu --config config.yaml
 ```
+
+## _Element Call_ with SFU locally
+
+You can find an example for a local VoIP setup with _Element Call_ and _SFU_ here: [local environment setup](doc/development.md)
+
+
