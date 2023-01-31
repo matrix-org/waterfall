@@ -115,6 +115,15 @@ For this checkout the project with the current feature branch:
 git clone https://github.com/vector-im/element-call.git
 git checkout feature-sfu
 ```
+
+In case you'll develop on the _Matrix JS SDK_ you'll also want to yarn link the js-sdk like
+```bash
+git clone https://github.com/matrix-org/matrix-js-sdk.git
+cd matrix-js-sdk
+yarn
+yarn link
+```
+
 Create a config file (`element-call/public/config.json`) in the public folder of the root of the project with the follow content:
 
 ```json
@@ -184,7 +193,7 @@ cd waterfall
 cp config.sample.yaml config.yaml
 ```
 
-Find the following lines of config and change thm with your <<ACCESS_TOKEN>> and your local settings.
+Find the following lines of config and change them with your <<ACCESS_TOKEN>> and your local settings.
 
 ```
 matrix:
