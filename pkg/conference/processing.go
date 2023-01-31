@@ -62,8 +62,6 @@ func (c *Conference) processPeerMessage(message common.Message[participant.ID, p
 		c.processDataChannelMessage(message.Sender, msg)
 	case peer.DataChannelAvailable:
 		c.processDataChannelAvailableMessage(message.Sender, msg)
-	case peer.KeyFrameRequestReceived:
-		c.processKeyFrameRequest(msg)
 	default:
 		c.logger.Errorf("Unknown message type: %T", msg)
 	}

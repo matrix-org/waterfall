@@ -54,8 +54,3 @@ type DataChannelMessage struct {
 }
 
 type DataChannelAvailable struct{}
-
-type KeyFrameRequestReceived struct {
-	common.TrackInfo
-	SimulcastLayer common.SimulcastLayer
-}

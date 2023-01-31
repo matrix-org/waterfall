@@ -147,12 +147,6 @@ func (c *Conference) processDataChannelAvailableMessage(sender participant.ID, m
 	})
 }
 
-func (c *Conference) processKeyFrameRequest(msg peer.KeyFrameRequestReceived) {
-	if err := c.tracker.ProcessKeyFrameRequest(msg.TrackInfo, msg.SimulcastLayer); err != nil {
-		c.logger.Errorf("Failed to process RTCP on %s (%s): %s", msg.TrackID, msg.SimulcastLayer, err)
-	}
-}
-
 // Handle the `FocusEvent` from the DataChannel message.
 func (c *Conference) processTrackSubscriptionMessage(
 	p *participant.Participant,

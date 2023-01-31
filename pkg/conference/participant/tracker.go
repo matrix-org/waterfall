@@ -1,8 +1,6 @@
 package participant
 
 import (
-	"fmt"
-
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription"
 	"github.com/pion/rtp"
@@ -181,26 +179,34 @@ func (t *Tracker) Subscribe(participantID ID, requests []SubscribeRequest) {
 			err error
 		)
 
+		published := t.FindPublishedTrack(request.TrackID)
+		if published == nil {
+			participant.Logger.Errorf("Can't subscribe to non-existent track %s", request.TrackID)
+			continue
+		}
+
 		switch request.Kind {
 		case webrtc.RTPCodecTypeVideo:
+			owner := t.GetParticipant(published.Owner)
+			if owner == nil {
+				participant.Logger.Errorf("Can't subscribe to non-existent owner %s", published.Owner)
+				continue
+			}
+
 			sub, err = subscription.NewVideoSubscription(
 				request.TrackInfo,
 				request.Simulcast,
 				participant.Peer,
 				func(track common.TrackInfo, simulcast common.SimulcastLayer) error {
-					return participant.Peer.RequestKeyFrame(track, simulcast)
+					return owner.Peer.RequestKeyFrame(track, simulcast)
 				},
 				participant.Logger,
 			)
 		case webrtc.RTPCodecTypeAudio:
-			if published := t.FindPublishedTrack(request.TrackID); published != nil {
-				sub, err = subscription.NewAudioSubscription(
-					published.OutputTrack,
-					participant.Peer,
-				)
-			} else {
-				err = fmt.Errorf("Can't subscribe to non-existent track %s", request.TrackID)
-			}
+			sub, err = subscription.NewAudioSubscription(
+				published.OutputTrack,
+				participant.Peer,
+			)
 		}
 
 		if err != nil {
@@ -260,20 +266,4 @@ func (t *Tracker) ProcessRTP(info common.TrackInfo, simulcast common.SimulcastLa
 			}
 		}
 	}
-}
-
-// Processes RTCP packets received on a given track.
-func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo, simulcast common.SimulcastLayer) error {
-	published, found := t.publishedTracks[info.TrackID]
-	if !found {
-		return fmt.Errorf("no such track: %s", info.TrackID)
-	}
-
-	participant := t.GetParticipant(published.Owner)
-	if participant == nil {
-		return fmt.Errorf("no such participant: %s", published.Owner)
-	}
-
-	// We don't want to send keyframes too often, so we'll send them only once in a while.
-	return participant.Peer.WritePLI(info, simulcast)
 }
