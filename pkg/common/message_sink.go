@@ -15,11 +15,10 @@ type MessageSink[SenderType comparable, MessageType any] struct {
 	sender SenderType
 	// The message sink to which the messages are sent.
 	messageSink chan<- Message[SenderType, MessageType]
-	// Atomic variable that indicates whether the message sink is sealed.
-	// Basically it means that **the current sender** (but not other senders)
-	// won't be able to send any more messages to the message sink. The difference
-	// between this and the channel being closed is that the closed channel is not
-	// available for writing for all senders.
+	// A variable that indicates whether the messages could be sent. It's akin
+	// to a close indication without really closing the channel. We don't want to close
+	// the channel here since we know that the sink is shared between multiple producers,
+	// so we only disallow sending to the sink at this point.
 	sealed atomic.Bool
 }
 
