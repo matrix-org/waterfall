@@ -176,7 +176,7 @@ Add the Device id in your `element-call/public/config.json` and restart the _Ele
 
 ### Start the SFU
 
-Check out the main branch of the _SFU_ and then first create a `config.yml` in the root directory of the _SFU_.
+Check out the main branch of the _SFU_ and then first create a `config.yaml` in the root directory of the _SFU_.
 
 ```
 git clone https://github.com/matrix-org/waterfall.git
@@ -201,8 +201,8 @@ Start the _SFU_ in your preferred way. For example:
 go run ./cmd/sfu
 ```
 
-Because the `config.yml` is in the root the app will find them by convention. 
-If you put the `config.yml` in another director add the config path on the run command with `go run ./cmd/sfu --config path/config.yml`
+Because the `config.yaml` is in the root the app will find them by convention. 
+If you put the `config.yaml` in another director add the config path on the run command with `go run ./cmd/sfu --config path/config.yaml`
 
 ---
 
