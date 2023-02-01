@@ -31,7 +31,7 @@ var (
 type Peer[ID comparable] struct {
 	logger         *logrus.Entry
 	peerConnection *webrtc.PeerConnection
-	sink           *common.MessageSink[ID, MessageContent]
+	sink           *common.SinkWithSender[ID, MessageContent]
 	state          *state.PeerState
 }
 
@@ -39,7 +39,7 @@ type Peer[ID comparable] struct {
 func NewPeer[ID comparable](
 	connectionFactory *webrtc_ext.PeerConnectionFactory,
 	sdpOffer string,
-	sink *common.MessageSink[ID, MessageContent],
+	sink *common.SinkWithSender[ID, MessageContent],
 	logger *logrus.Entry,
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
 	peerConnection, err := connectionFactory.CreatePeerConnection()

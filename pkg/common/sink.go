@@ -2,64 +2,47 @@ package common
 
 import (
 	"errors"
-	"sync/atomic"
 )
 
-// MessageSink is a helper struct that allows to send messages to a message sink.
-// The MessageSink abstracts the message sink which has a certain sender, so that
+var ErrSinkSealed = errors.New("The channel is sealed")
+
+// SinkWithSender is a helper struct that allows to send messages to a message sink.
+// The SinkWithSender abstracts the message sink which has a certain sender, so that
 // the sender does not have to be specified every time a message is sent.
 // At the same it guarantees that the caller can't alter the `sender`, which means that
 // the sender can't impersonate another sender (and we guarantee this on a compile-time).
-type MessageSink[SenderType comparable, MessageType any] struct {
+type SinkWithSender[SenderType comparable, MessageType any] struct {
 	// The sender of the messages. This is useful for multiple-producer-single-consumer scenarios.
 	sender SenderType
 	// The message sink to which the messages are sent.
 	messageSink chan<- Message[SenderType, MessageType]
-	// A variable that indicates whether the messages could be sent. It's akin
+	// A channel that is used to indicate that our channel is considered sealed. It's akin
 	// to a close indication without really closing the channel. We don't want to close
 	// the channel here since we know that the sink is shared between multiple producers,
 	// so we only disallow sending to the sink at this point.
-	sealed atomic.Bool
+	sealed chan struct{}
 }
 
 // Creates a new MessageSink. The function is generic allowing us to use it for multiple use cases.
-func NewMessageSink[S comparable, M any](sender S, messageSink chan<- Message[S, M]) *MessageSink[S, M] {
-	return &MessageSink[S, M]{
+func NewSink[S comparable, M any](sender S, messageSink chan<- Message[S, M]) *SinkWithSender[S, M] {
+	return &SinkWithSender[S, M]{
 		sender:      sender,
 		messageSink: messageSink,
+		sealed:      make(chan struct{}),
 	}
 }
 
 // Sends a message to the message sink. Blocks if the sink is full!
-func (s *MessageSink[S, M]) Send(message M) error {
-	return s.send(message, false)
-}
-
-// Sends a message to the message sink. Does **not** block if the sink is full, returns an error instead.
-func (s *MessageSink[S, M]) TrySend(message M) error {
-	return s.send(message, true)
-}
-
-// Sends a message to the message sink.
-func (s *MessageSink[S, M]) send(message M, nonBlocking bool) error {
-	if s.sealed.Load() {
-		return errors.New("The channel is sealed, you can't send any messages over it")
-	}
-
+func (s *SinkWithSender[S, M]) Send(message M) error {
 	messageWithSender := Message[S, M]{
 		Sender:  s.sender,
 		Content: message,
 	}
 
-	if nonBlocking {
-		select {
-		case s.messageSink <- messageWithSender:
-			return nil
-		default:
-			return errors.New("The channel is full, can't send without blocking")
-		}
-	} else {
-		s.messageSink <- messageWithSender
+	select {
+	case <-s.sealed:
+		return ErrSinkSealed
+	case s.messageSink <- messageWithSender:
 		return nil
 	}
 }
@@ -68,8 +51,13 @@ func (s *MessageSink[S, M]) send(message M, nonBlocking bool) error {
 // Any attempt to send a message would result in an error. This is similar to closing the
 // channel except that we don't close the underlying channel (since there might be other
 // senders that may want to use it).
-func (s *MessageSink[S, M]) Seal() {
-	s.sealed.Store(true)
+func (s *SinkWithSender[S, M]) Seal() {
+	select {
+	case <-s.sealed:
+		return
+	default:
+		close(s.sealed)
+	}
 }
 
 // Messages that are sent from the peer to the conference in order to communicate with other peers.

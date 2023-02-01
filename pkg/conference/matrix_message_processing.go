@@ -48,7 +48,7 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 		}
 		sdpAnswer = answer
 	} else {
-		messageSink := common.NewMessageSink(id, c.peerMessages)
+		messageSink := common.NewSink(id, c.peerMessages)
 
 		peerConnection, answer, err := peer.NewPeer(c.connectionFactory, inviteEvent.Offer.SDP, messageSink, logger)
 		if err != nil {
