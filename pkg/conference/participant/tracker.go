@@ -255,14 +255,10 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 
 // Processes an RTP packet received on a given track.
 func (t *Tracker) ProcessRTP(info common.TrackInfo, simulcast common.SimulcastLayer, packet *rtp.Packet) {
-	for participantID, subscription := range t.subscribers[info.TrackID] {
+	for _, subscription := range t.subscribers[info.TrackID] {
 		if subscription.Simulcast() == simulcast {
 			if err := subscription.WriteRTP(*packet); err != nil {
-				if participant := t.GetParticipant(participantID); participant != nil {
-					participant.Logger.Errorf("Error writing RTP to %s (%s): %s", info.TrackID, simulcast, err)
-					continue
-				}
-				logrus.Errorf("Bug: subscription without subscriber")
+				logrus.Errorf("Dropping an RTP packet on %s (%s): %s", info.TrackID, simulcast, err)
 			}
 		}
 	}

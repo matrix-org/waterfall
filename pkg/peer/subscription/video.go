@@ -70,7 +70,7 @@ func NewVideoSubscription(
 
 	// Configure the worker for the subscription.
 	workerConfig := common.WorkerConfig[rtp.Packet]{
-		ChannelSize: 100, // Approx. 500ms of buffer size, we don't need more
+		ChannelSize: 1, // We really don't want to buffer old packets.
 		Timeout:     2 * time.Second,
 		OnTimeout: func() {
 			layer := common.SimulcastLayer(subscription.currentLayer.Load())
