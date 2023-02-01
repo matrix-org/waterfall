@@ -53,7 +53,7 @@ func NewRouter(
 		matrix:            matrix,
 		conferenceSinks:   make(map[string]*common.Sender[conf.MatrixMessage]),
 		config:            config,
-		channel:           make(chan RouterMessage, common.UnboundedChannelSize),
+		channel:           make(chan RouterMessage),
 		connectionFactory: connectionFactory,
 	}
 
