@@ -72,9 +72,11 @@ func main() {
 	}
 
 	switch config.LogLevel {
+	case "trace":
+		logrus.SetLevel(logrus.TraceLevel)
 	case "debug":
 		logrus.SetLevel(logrus.DebugLevel)
-	case "info":
+	case "info", "": // default to info level if unset
 		logrus.SetLevel(logrus.InfoLevel)
 	case "warn":
 		logrus.SetLevel(logrus.WarnLevel)
@@ -85,7 +87,7 @@ func main() {
 	case "panic":
 		logrus.SetLevel(logrus.PanicLevel)
 	default:
-		logrus.SetLevel(logrus.InfoLevel)
+		logrus.Fatalf("unrecognised log level: %s", config.LogLevel)
 	}
 
 	// Create matrix client.
