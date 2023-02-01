@@ -1,7 +1,6 @@
 package conference
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
@@ -243,10 +242,10 @@ func (c *Conference) processNegotiateMessage(p *participant.Participant, msg eve
 }
 
 func (c *Conference) processPongMessage(p *participant.Participant) {
-	// New heartbeat received (keep-alive message that is periodically sent by the remote peer).
-	// We need to update the last heartbeat time. If the peer is not active for too long, we will
-	// consider peer's connection as stalled and will close it.
-	p.HeartbeatPong <- common.Pong{}
+	select {
+	case p.Pong <- participant.Pong{}:
+	default:
+	}
 }
 
 func (c *Conference) processMetadataMessage(

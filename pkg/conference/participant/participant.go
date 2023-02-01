@@ -3,7 +3,6 @@ package participant
 import (
 	"fmt"
 
-	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
@@ -25,7 +24,7 @@ type Participant struct {
 	Logger          *logrus.Entry
 	Peer            *peer.Peer[ID]
 	RemoteSessionID id.SessionID
-	HeartbeatPong   chan<- common.Pong
+	Pong            chan<- Pong
 }
 
 func (p *Participant) AsMatrixRecipient() signaling.MatrixRecipient {

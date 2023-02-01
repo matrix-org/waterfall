@@ -61,7 +61,7 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 
 	// Terminate the participant and remove it from the list.
 	participant.Peer.Terminate()
-	close(participant.HeartbeatPong)
+	close(participant.Pong)
 	delete(t.participants, participantID)
 
 	// Remove the participant's tracks from all participants who might have subscribed to them.

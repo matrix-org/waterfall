@@ -56,18 +56,16 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 			return err
 		}
 
-		heartbeat := common.Heartbeat{
-			Interval: time.Duration(c.config.HeartbeatConfig.Interval) * time.Second,
-			Timeout:  time.Duration(c.config.HeartbeatConfig.Timeout) * time.Second,
-			SendPing: func() bool {
-				return p.SendDataChannelMessage(event.Event{
-					Type:    event.FocusCallPing,
-					Content: event.Content{},
-				}) == nil
-			},
-			OnTimeout: func() {
-				messageSink.Send(peer.LeftTheCall{event.CallHangupKeepAliveTimeout})
-			},
+		pingEvent := event.Event{
+			Type:    event.FocusCallPing,
+			Content: event.Content{},
+		}
+
+		heartbeat := participant.HeartbeatConfig{
+			Interval:  time.Duration(c.config.HeartbeatConfig.Interval) * time.Second,
+			Timeout:   time.Duration(c.config.HeartbeatConfig.Timeout) * time.Second,
+			SendPing:  func() bool { return p.SendDataChannelMessage(pingEvent) == nil },
+			OnTimeout: func() { messageSink.Send(peer.LeftTheCall{event.CallHangupKeepAliveTimeout}) },
 		}
 
 		p = &participant.Participant{
@@ -75,7 +73,7 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 			Peer:            peerConnection,
 			Logger:          logger,
 			RemoteSessionID: inviteEvent.SenderSessionID,
-			HeartbeatPong:   heartbeat.Start(),
+			Pong:            heartbeat.Start(),
 		}
 
 		c.tracker.AddParticipant(p)
