@@ -17,7 +17,6 @@ limitations under the License.
 package routing
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
 	conf "github.com/matrix-org/waterfall/pkg/conference"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/signaling"
@@ -27,58 +26,43 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-type Conference = common.Sender[conf.MatrixMessage]
-
 // The top-level state of the Router.
 type Router struct {
 	// Matrix matrix.
 	matrix *signaling.MatrixClient
 	// Sinks of all conferences (all calls that are currently forwarded by this SFU).
-	conferenceSinks map[string]*Conference
+	conferenceSinks map[string]*conferenceStage
 	// Configuration for the calls.
 	config conf.Config
-	// A channel to serialize all incoming events to the Router.
-	channel chan RouterMessage
+	// Channel for reading incoming Matrix SDK To-Device events and distributing them to the conferences.
+	matrixEvents <-chan *event.Event
+	// Channel for handling conference ended events.
 	// Peer connection factory that can be used to create pre-configured peer connections.
 	connectionFactory *webrtc_ext.PeerConnectionFactory
 }
 
 // Creates a new instance of the SFU with the given configuration.
-func NewRouter(
+func RunRouter(
 	matrix *signaling.MatrixClient,
 	connectionFactory *webrtc_ext.PeerConnectionFactory,
+	matrixEvents <-chan *event.Event,
 	config conf.Config,
-) chan<- RouterMessage {
+) {
 	router := &Router{
 		matrix:            matrix,
-		conferenceSinks:   make(map[string]*common.Sender[conf.MatrixMessage]),
+		conferenceSinks:   make(map[string]*conferenceStage),
 		config:            config,
-		channel:           make(chan RouterMessage),
+		matrixEvents:      matrixEvents,
 		connectionFactory: connectionFactory,
 	}
 
 	// Start the main loop of the Router.
 	go func() {
-		for msg := range router.channel {
-			switch msg := msg.(type) {
+		for msg := range router.matrixEvents {
 			// To-Device message received from the remote peer.
-			case MatrixMessage:
-				router.handleMatrixEvent(msg)
-			// One of the conferences has ended.
-			case ConferenceEndedMessage:
-				// Remove the conference that ended from the list.
-				delete(router.conferenceSinks, msg.conferenceID)
-
-				// Process the message that was not read by the conference.
-				for _, msg := range msg.unread {
-					// TODO: We actually already know the type, so we can do this better.
-					router.handleMatrixEvent(msg.RawEvent)
-				}
-			}
+			router.handleMatrixEvent(msg)
 		}
 	}()
-
-	return router.channel
 }
 
 // Handles incoming To-Device events that the SFU receives from clients.
@@ -120,12 +104,15 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 	// are expected to operate on an existing conference that is running on the SFU.
 	if conference == nil && evt.Type.Type == event.ToDeviceCallInvite.Type {
 		logger.Infof("creating new conference %s", conferenceID)
-		conferenceSink, err := conf.StartConference(
+
+		matrixEvents := make(chan conf.MatrixMessage)
+
+		conferenceDone, err := conf.StartConference(
 			conferenceID,
 			r.config,
 			r.connectionFactory,
 			r.matrix.CreateForConference(conferenceID),
-			createConferenceEndNotifier(conferenceID, r.channel),
+			matrixEvents,
 			userID,
 			evt.Content.AsCallInvite(),
 		)
@@ -134,7 +121,7 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 			return
 		}
 
-		r.conferenceSinks[conferenceID] = conferenceSink
+		r.conferenceSinks[conferenceID] = &conferenceStage{matrixEvents, conferenceDone}
 		return
 	}
 
@@ -144,70 +131,45 @@ func (r *Router) handleMatrixEvent(evt *event.Event) {
 		return
 	}
 
-	// A helper function to deal with messages that can't be sent due to the conference closed.
-	// Not a function due to the need to capture local environment.
-	sendToConference := func(eventContent conf.MessageContent) {
-		sender := participant.ID{userID, id.DeviceID(deviceID), callID}
-		// At this point the conference is not nil.
-		// Let's check if the channel is still available.
-		if conference.Send(conf.MatrixMessage{Content: eventContent, RawEvent: evt, Sender: sender}) != nil {
-			// If sending failed, then the conference is over.
-			delete(r.conferenceSinks, conferenceID)
-			// Since we were not able to send the message, let's re-process it now.
-			// Note, we probably do not want to block here!
-			r.handleMatrixEvent(evt)
-		}
-	}
+	// Sender of the To-Device message.
+	sender := participant.ID{userID, id.DeviceID(deviceID), callID}
 
+	var content conf.MessageContent
 	switch evt.Type.Type {
 	// Someone tries to participate in a call (join a call).
 	case event.ToDeviceCallInvite.Type:
 		// If there is an invitation sent and the conference does not exist, create one.
-		sendToConference(evt.Content.AsCallInvite())
+		content = evt.Content.AsCallInvite()
 	case event.ToDeviceCallCandidates.Type:
 		// Someone tries to send ICE candidates to the existing call.
-		sendToConference(evt.Content.AsCallCandidates())
+		content = evt.Content.AsCallCandidates()
 	case event.ToDeviceCallSelectAnswer.Type:
 		// Someone informs us about them accepting our (SFU's) SDP answer for an existing call.
-		sendToConference(evt.Content.AsCallSelectAnswer())
+		content = evt.Content.AsCallSelectAnswer()
 	case event.ToDeviceCallHangup.Type:
 		// Someone tries to inform us about leaving an existing call.
-		sendToConference(evt.Content.AsCallHangup())
+		content = evt.Content.AsCallHangup()
 	default:
 		logger.Warnf("ignoring event that we must not receive: %s", evt.Type.Type)
+		return
+	}
+
+	// Send the message to the conference.
+	select {
+	case <-conference.done:
+		// Conference has just gotten closed, let's remove it from the list of conferences.
+		delete(r.conferenceSinks, conferenceID)
+		close(conference.sink)
+
+		// Since we were not able to send the message, let's re-process it now.
+		r.handleMatrixEvent(evt)
+	case conference.sink <- conf.MatrixMessage{Content: content, Sender: sender}:
+		// Ok,sent!
+		return
 	}
 }
 
-type RouterMessage = interface{}
-
-type MatrixMessage = *event.Event
-
-// Message that is sent from the conference when the conference is ended.
-type ConferenceEndedMessage struct {
-	// The ID of the conference that has ended.
-	conferenceID string
-	// A message (or messages in future) that has not been processed (if any).
-	unread []conf.MatrixMessage
-}
-
-// A simple wrapper around channel that contains the ID of the conference that sent the message.
-type ConferenceEndNotifier struct {
-	conferenceID string
-	channel      chan<- interface{}
-}
-
-// Crates a simple notifier with a conference with a given ID.
-func createConferenceEndNotifier(conferenceID string, channel chan<- RouterMessage) *ConferenceEndNotifier {
-	return &ConferenceEndNotifier{
-		conferenceID: conferenceID,
-		channel:      channel,
-	}
-}
-
-// A function that a conference calls when it is ended.
-func (c *ConferenceEndNotifier) Notify(unread []conf.MatrixMessage) {
-	c.channel <- ConferenceEndedMessage{
-		conferenceID: c.conferenceID,
-		unread:       unread,
-	}
+type conferenceStage struct {
+	sink chan<- conf.MatrixMessage
+	done <-chan struct{}
 }

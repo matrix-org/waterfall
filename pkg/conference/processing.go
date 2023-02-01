@@ -11,27 +11,21 @@ import (
 // This is essentially the main loop of the conference.
 // If this function returns, the conference is over.
 func (c *Conference) processMessages() {
+	// When the main loop of the conference ends, clean up the resources.
+	defer close(c.conferenceDone)
+	defer c.matrixWorker.stop()
+
 	for {
 		select {
 		case msg := <-c.peerMessages:
 			c.processPeerMessage(msg)
-		case msg := <-c.matrixMessages.Channel:
+		case msg := <-c.matrixEvents:
 			c.processMatrixMessage(msg)
 		}
 
 		// If there are no more participants, stop the conference.
 		if !c.tracker.HasParticipants() {
 			c.logger.Info("No more participants, stopping the conference")
-			// Close the channel so that the sender can't push any messages.
-			unreadMessages := c.matrixMessages.Close()
-
-			// Send the information that we ended to the owner and pass the message
-			// that we did not process (so that we don't drop it silently).
-			c.endNotifier.Notify(unreadMessages)
-
-			// Stop the matrix worker.
-			c.matrixWorker.stop()
-
 			return
 		}
 	}

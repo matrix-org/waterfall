@@ -28,17 +28,17 @@ import (
 )
 
 // Starts a new conference or fails and returns an error.
+// The conference ends when the last participant leaves.
 func StartConference(
 	confID string,
 	config Config,
 	peerConnectionFactory *webrtc_ext.PeerConnectionFactory,
 	signaling signaling.MatrixSignaler,
-	conferenceEndNotifier ConferenceEndNotifier,
+	matrixEvents <-chan MatrixMessage,
 	userID id.UserID,
 	inviteEvent *event.CallInviteEventContent,
-) (*common.Sender[MatrixMessage], error) {
-	sender, receiver := common.NewChannel[MatrixMessage](128)
-
+) (<-chan struct{}, error) {
+	done := make(chan struct{})
 	conference := &Conference{
 		id:                confID,
 		config:            config,
@@ -47,23 +47,18 @@ func StartConference(
 		matrixWorker:      newMatrixWorker(signaling),
 		tracker:           *participant.NewParticipantTracker(),
 		streamsMetadata:   make(event.CallSDPStreamMetadata),
-		endNotifier:       conferenceEndNotifier,
 		peerMessages:      make(chan common.Message[participant.ID, peer.MessageContent]),
-		matrixMessages:    receiver,
+		matrixEvents:      matrixEvents,
+		conferenceDone:    done,
 	}
 
 	participantID := participant.ID{UserID: userID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}
 	if err := conference.onNewParticipant(participantID, inviteEvent); err != nil {
-		return nil, err
+		return nil, nil
 	}
 
 	// Start conference "main loop".
 	go conference.processMessages()
 
-	return &sender, nil
-}
-
-type ConferenceEndNotifier interface {
-	// Called when the conference ends.
-	Notify(unread []MatrixMessage)
+	return done, nil
 }

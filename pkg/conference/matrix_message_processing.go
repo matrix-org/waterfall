@@ -15,9 +15,8 @@ import (
 type MessageContent interface{}
 
 type MatrixMessage struct {
-	Sender   participant.ID
-	Content  MessageContent
-	RawEvent *event.Event
+	Sender  participant.ID
+	Content MessageContent
 }
 
 // New participant tries to join the conference.

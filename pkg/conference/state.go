@@ -11,10 +11,10 @@ import (
 
 // A single conference. Call and conference mean the same in context of Matrix.
 type Conference struct {
-	id          string
-	config      Config
-	logger      *logrus.Entry
-	endNotifier ConferenceEndNotifier
+	id             string
+	config         Config
+	logger         *logrus.Entry
+	conferenceDone chan<- struct{}
 
 	connectionFactory *webrtc_ext.PeerConnectionFactory
 	matrixWorker      *matrixWorker
@@ -22,8 +22,8 @@ type Conference struct {
 	tracker         participant.Tracker
 	streamsMetadata event.CallSDPStreamMetadata
 
-	peerMessages   chan common.Message[participant.ID, peer.MessageContent]
-	matrixMessages common.Receiver[MatrixMessage]
+	peerMessages chan common.Message[participant.ID, peer.MessageContent]
+	matrixEvents <-chan MatrixMessage
 }
 
 func (c *Conference) getParticipant(id participant.ID) *participant.Participant {

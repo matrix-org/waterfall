@@ -100,11 +100,16 @@ func main() {
 		return
 	}
 
-	// Create a router to route incoming To-Device messages to the right conference.
-	routerChannel := routing.NewRouter(matrixClient, connectionFactory, config.Conference)
+	// Create a channel which we'll use to send events to the router.
+	matrixEvents := make(chan *event.Event)
+
+	// Start a router that will receive events from the matrix client and route them to the appropriate conference.
+	routing.RunRouter(matrixClient, connectionFactory, matrixEvents, config.Conference)
 
 	// Start matrix client sync. This function will block until the sync fails.
 	matrixClient.RunSyncing(func(e *event.Event) {
-		routerChannel <- e
+		matrixEvents <- e
 	})
+
+	close(matrixEvents)
 }
