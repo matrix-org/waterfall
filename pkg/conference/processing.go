@@ -1,8 +1,6 @@
 package conference
 
 import (
-	"errors"
-
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
@@ -41,36 +39,31 @@ func (c *Conference) processMessages() {
 
 // Process a message from a local peer.
 func (c *Conference) processPeerMessage(message common.Message[participant.ID, peer.MessageContent]) {
-	participant := c.getParticipant(message.Sender, errors.New("received a message from a deleted participant"))
-	if participant == nil {
-		return
-	}
-
 	// Since Go does not support ADTs, we have to use a switch statement to
 	// determine the actual type of the message.
 	switch msg := message.Content.(type) {
 	case peer.JoinedTheCall:
-		c.processJoinedTheCallMessage(participant, msg)
+		c.processJoinedTheCallMessage(message.Sender, msg)
 	case peer.LeftTheCall:
-		c.processLeftTheCallMessage(participant, msg)
+		c.processLeftTheCallMessage(message.Sender, msg)
 	case peer.NewTrackPublished:
-		c.processNewTrackPublishedMessage(participant, msg)
+		c.processNewTrackPublishedMessage(message.Sender, msg)
 	case peer.RTPPacketReceived:
-		c.processRTPPacketReceivedMessage(participant, msg)
+		c.processRTPPacketReceivedMessage(msg)
 	case peer.PublishedTrackFailed:
-		c.processPublishedTrackFailedMessage(participant, msg)
+		c.processPublishedTrackFailedMessage(message.Sender, msg)
 	case peer.NewICECandidate:
-		c.processNewICECandidateMessage(participant, msg)
+		c.processNewICECandidateMessage(message.Sender, msg)
 	case peer.ICEGatheringComplete:
-		c.processICEGatheringCompleteMessage(participant, msg)
+		c.processICEGatheringCompleteMessage(message.Sender, msg)
 	case peer.RenegotiationRequired:
-		c.processRenegotiationRequiredMessage(participant, msg)
+		c.processRenegotiationRequiredMessage(message.Sender, msg)
 	case peer.DataChannelMessage:
-		c.processDataChannelMessage(participant, msg)
+		c.processDataChannelMessage(message.Sender, msg)
 	case peer.DataChannelAvailable:
-		c.processDataChannelAvailableMessage(participant, msg)
+		c.processDataChannelAvailableMessage(message.Sender, msg)
 	case peer.KeyFrameRequestReceived:
-		c.processKeyFrameRequest(participant, msg)
+		c.processKeyFrameRequest(msg)
 	default:
 		c.logger.Errorf("Unknown message type: %T", msg)
 	}

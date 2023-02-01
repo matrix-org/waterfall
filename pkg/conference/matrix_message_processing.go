@@ -22,11 +22,7 @@ type MatrixMessage struct {
 
 // New participant tries to join the conference.
 func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.CallInviteEventContent) error {
-	logger := c.logger.WithFields(logrus.Fields{
-		"user_id":   id.UserID,
-		"device_id": id.DeviceID,
-	})
-
+	logger := c.newLogger(id)
 	logger.Info("Incoming participant")
 
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
@@ -105,7 +101,7 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 // Process new ICE candidates received from Matrix signaling (from the remote peer) and forward them to
 // our internal peer connection.
 func (c *Conference) onCandidates(id participant.ID, ev *event.CallCandidatesEventContent) {
-	if participant := c.getParticipant(id, nil); participant != nil {
+	if participant := c.getParticipant(id); participant != nil {
 		participant.Logger.Debug("Received remote ICE candidates")
 
 		// Convert the candidates to the WebRTC format.
@@ -127,7 +123,7 @@ func (c *Conference) onCandidates(id participant.ID, ev *event.CallCandidatesEve
 // Process an acknowledgement from the remote peer that the SDP answer has been received
 // and that the call can now proceed.
 func (c *Conference) onSelectAnswer(id participant.ID, ev *event.CallSelectAnswerEventContent) {
-	if participant := c.getParticipant(id, nil); participant != nil {
+	if participant := c.getParticipant(id); participant != nil {
 		participant.Logger.Info("Received remote answer selection")
 
 		if ev.SelectedPartyID != string(c.matrixWorker.deviceID) {
@@ -142,7 +138,7 @@ func (c *Conference) onSelectAnswer(id participant.ID, ev *event.CallSelectAnswe
 
 // Process a message from the remote peer telling that it wants to hang up the call.
 func (c *Conference) onHangup(id participant.ID, ev *event.CallHangupEventContent) {
-	if participant := c.getParticipant(id, nil); participant != nil {
+	if participant := c.getParticipant(id); participant != nil {
 		participant.Logger.Info("Received remote hangup")
 		c.removeParticipant(id)
 	}

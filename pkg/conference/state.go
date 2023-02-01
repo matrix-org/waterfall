@@ -26,18 +26,13 @@ type Conference struct {
 	matrixMessages common.Receiver[MatrixMessage]
 }
 
-func (c *Conference) getParticipant(id participant.ID, optionalErrorMessage error) *participant.Participant {
-	participant := c.tracker.GetParticipant(id)
-
-	if participant == nil {
-		if optionalErrorMessage != nil {
-			c.logger.WithError(optionalErrorMessage)
-		} else {
-			c.logger.Errorf("Participant not found: %s (%s)", id.UserID, id.DeviceID)
-		}
+func (c *Conference) getParticipant(id participant.ID) *participant.Participant {
+	if participant := c.tracker.GetParticipant(id); participant != nil {
+		return participant
 	}
 
-	return participant
+	c.logger.Errorf("Participant not found: %s (%s)", id.UserID, id.DeviceID)
+	return nil
 }
 
 // Helper to terminate and remove a participant from the conference.
@@ -146,4 +141,11 @@ func streamIntoTrackMetadata(
 	}
 
 	return tracksMetadata
+}
+
+func (c *Conference) newLogger(id participant.ID) *logrus.Entry {
+	return c.logger.WithFields(logrus.Fields{
+		"user_id":   id.UserID,
+		"device_id": id.DeviceID,
+	})
 }
