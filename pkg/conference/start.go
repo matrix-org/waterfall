@@ -37,7 +37,7 @@ func StartConference(
 	userID id.UserID,
 	inviteEvent *event.CallInviteEventContent,
 ) (*common.Sender[MatrixMessage], error) {
-	sender, receiver := common.NewChannel[MatrixMessage]()
+	sender, receiver := common.NewChannel[MatrixMessage](128)
 
 	conference := &Conference{
 		id:                confID,

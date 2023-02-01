@@ -2,18 +2,11 @@ package common
 
 import "sync/atomic"
 
-// In Go, unbounded channel means something different than what it means in Rust.
-// I.e. unlike Rust, "unbounded" in Go means that the channel has **no buffer**,
-// meaning that each attempt to send will block the channel until the receiver
-// reads it. Majority of primitives here in `waterfall` are designed under assumption
-// that sending is not blocking.
-const UnboundedChannelSize = 512
-
 // Creates a new channel, returns two counterparts of it where one can only send and another can only receive.
 // Unlike traditional Go channels, these allow the receiver to mark the channel as closed which would then fail
 // to send any messages to the channel over `Send“.
-func NewChannel[M any]() (Sender[M], Receiver[M]) {
-	channel := make(chan M, UnboundedChannelSize)
+func NewChannel[M any](channelSize int) (Sender[M], Receiver[M]) {
+	channel := make(chan M, channelSize)
 	closed := &atomic.Bool{}
 	sender := Sender[M]{channel, closed}
 	receiver := Receiver[M]{channel, closed}
