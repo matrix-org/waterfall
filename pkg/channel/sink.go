@@ -2,6 +2,7 @@ package channel
 
 import (
 	"errors"
+	"sync/atomic"
 )
 
 var ErrSinkSealed = errors.New("The channel is sealed")
@@ -21,9 +22,12 @@ type SinkWithSender[SenderType comparable, MessageType any] struct {
 	// the channel here since we know that the sink is shared between multiple producers,
 	// so we only disallow sending to the sink at this point.
 	sealed chan struct{}
+	// A "mutex" that is used to protect the act of closing `sealed`.
+	alreadySealed atomic.Bool
 }
 
 // Creates a new MessageSink. The function is generic allowing us to use it for multiple use cases.
+// Note that since the current implementation accepts a channel, it's **not responsible** for closing it.
 func NewSink[S comparable, M any](sender S, messageSink chan<- Message[S, M]) *SinkWithSender[S, M] {
 	return &SinkWithSender[S, M]{
 		sender:      sender,
@@ -34,6 +38,10 @@ func NewSink[S comparable, M any](sender S, messageSink chan<- Message[S, M]) *S
 
 // Sends a message to the message sink. Blocks if the sink is full!
 func (s *SinkWithSender[S, M]) Send(message M) error {
+	if s.alreadySealed.Load() {
+		return ErrSinkSealed
+	}
+
 	messageWithSender := Message[S, M]{
 		Sender:  s.sender,
 		Content: message,
@@ -48,10 +56,17 @@ func (s *SinkWithSender[S, M]) Send(message M) error {
 }
 
 // Seals the channel, which means that no messages could be sent via this channel.
-// Any attempt to send a message would result in an error. This is similar to closing the
-// channel except that we don't close the underlying channel (since there might be other
-// senders that may want to use it).
+// Any attempt to send a message after `Seal()` returns will result in an error.
+// Note that it does not mean (does not guarantee) that any existing senders that are
+// waiting on the send to unblock won't send the message to the recipient (this case
+// can happen if buffered channels are used). The existing senders will either unblock
+// at this point and get an error that the channel is sealed or will unblock by sending
+// the message to the recipient (should the recipient be ready to consume at this point).
 func (s *SinkWithSender[S, M]) Seal() {
+	if !s.alreadySealed.CompareAndSwap(false, true) {
+		return
+	}
+
 	select {
 	case <-s.sealed:
 		return
