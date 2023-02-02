@@ -14,6 +14,8 @@ func (p *Peer[ID]) handleNewVideoTrack(
 	remoteTrack *webrtc.TrackRemote,
 	receiver *webrtc.RTPReceiver,
 ) {
+	p.logger.Infof("ontrack got video track %s", trackInfo.TrackID)
+
 	simulcast := common.RIDToSimulcastLayer(remoteTrack.RID())
 
 	p.handleRemoteTrack(remoteTrack, trackInfo, simulcast, nil, func(packet *rtp.Packet) error {
