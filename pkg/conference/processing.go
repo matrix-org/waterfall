@@ -1,7 +1,7 @@
 package conference
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"maunium.net/go/mautrix/event"
@@ -32,7 +32,7 @@ func (c *Conference) processMessages() {
 }
 
 // Process a message from a local peer.
-func (c *Conference) processPeerMessage(message common.Message[participant.ID, peer.MessageContent]) {
+func (c *Conference) processPeerMessage(message channel.Message[participant.ID, peer.MessageContent]) {
 	// Since Go does not support ADTs, we have to use a switch statement to
 	// determine the actual type of the message.
 	switch msg := message.Content.(type) {

@@ -1,7 +1,7 @@
 package conference
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
@@ -22,7 +22,7 @@ type Conference struct {
 	tracker         participant.Tracker
 	streamsMetadata event.CallSDPStreamMetadata
 
-	peerMessages chan common.Message[participant.ID, peer.MessageContent]
+	peerMessages chan channel.Message[participant.ID, peer.MessageContent]
 	matrixEvents <-chan MatrixMessage
 }
 

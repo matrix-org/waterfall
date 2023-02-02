@@ -3,7 +3,7 @@ package conference
 import (
 	"time"
 
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
@@ -47,7 +47,7 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 		}
 		sdpAnswer = answer
 	} else {
-		messageSink := common.NewSink(id, c.peerMessages)
+		messageSink := channel.NewSink(id, c.peerMessages)
 
 		peerConnection, answer, err := peer.NewPeer(c.connectionFactory, inviteEvent.Offer.SDP, messageSink, logger)
 		if err != nil {

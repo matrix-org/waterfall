@@ -17,7 +17,7 @@ limitations under the License.
 package conference
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
@@ -47,7 +47,7 @@ func StartConference(
 		matrixWorker:      newMatrixWorker(signaling),
 		tracker:           *participant.NewParticipantTracker(),
 		streamsMetadata:   make(event.CallSDPStreamMetadata),
-		peerMessages:      make(chan common.Message[participant.ID, peer.MessageContent]),
+		peerMessages:      make(chan channel.Message[participant.ID, peer.MessageContent]),
 		matrixEvents:      matrixEvents,
 		conferenceDone:    done,
 	}
