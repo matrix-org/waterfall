@@ -32,7 +32,7 @@ func (p *Peer[ID]) onICECandidateGathered(candidate *webrtc.ICECandidate) {
 	p.sink.Send(NewICECandidate{Candidate: candidate})
 }
 
-// A callback that is called once we receive an ICE connection state change for this peer connection.
+// A callback that is called when a change has been made that requires renegotiation.
 func (p *Peer[ID]) onNegotiationNeeded() {
 	p.logger.Debug("negotiation needed")
 	offer, err := p.peerConnection.CreateOffer(nil)
