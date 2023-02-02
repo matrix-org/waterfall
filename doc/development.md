@@ -94,6 +94,24 @@ docker exec -it shadowfax-synapse register_new_matrix_user http://localhost:8008
 docker exec -it shadowfax-synapse register_new_matrix_user http://localhost:8008 -c /data/homeserver.yaml -u admin -p admin --admin
 ```
 
+### Create `SFU_DEVICE_ID` and `ACCESS_TOKEN`
+
+Start _Synapse_ and run the API login request:
+
+```shell
+curl -XPOST \
+  -d '{"type":"m.login.password", "user":"sfu", "password":"sfu"}' \
+  "http://localhost:8008/_matrix/client/r0/login"
+```
+```json
+{
+  "user_id": "@sfu:localhost",
+  "access_token": "<<ACCESS_TOKEN>>",
+  "home_server": "localhost",
+  "device_id": "<<SFU_DEVICE_ID>>"
+}
+```
+
 #### Run Admin Tool (optional)
 
 Sometimes it is nice to see what happen in the Homeserver. 
@@ -141,46 +159,6 @@ Create a config file (`element-call/public/config.json`) in the public folder of
   }
 }
 ```
-
-The `<<SFU_DEVICE_ID>>` is the device ID of the _SFU_ you not currently have.
-We will create them now.
-
-### Register the SFU user and get the `SFU_DEVICE_ID` and `ACCESS_TOKEN`
-We use the frontend to register the _SFU_ user. 
-That's a bit hacky but for now the easiest way.
-Later we provide the device id via a script. 
-But because every device ID also has device keys, we use the frontend to create both.
-At the same time, we receive the access token in this way and do not have to create them manually.
-
-For this, build and run the Frontend with the following commands in _Element Call_ project:
-
-```
-yarn install
-yarn dev
-```
-
-Open a browser and navigate to http://localhost:3000
-Open in the browser dev console the network tab.
-Now log in with your _SFU_ user and check the request in the network tab.
-You should find the login request response like this:
-```
-http://localhost:8008/_matrix/client/r0/login
-```
-
-```json
-{
-  "access_token": "<<ACCESS_TOKEN>>",
-  "device_id": "<<SFU_DEVICE_ID>>",
-  "home_server": "localhost",
-  "user_id": "@sfu:localhost"
-}
-```
-
-Take out the device id and the access token. 
-The device keys created doing the login.
-Don't forget to log out now.
-
-Add the Device id in your `element-call/public/config.json` and restart the _Element Call_ app.
 
 ---
 
