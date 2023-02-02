@@ -1,8 +1,8 @@
 package participant
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -91,16 +91,16 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 // that has been published and that we must take into account from now on.
 func (t *Tracker) AddPublishedTrack(
 	participantID ID,
-	info common.TrackInfo,
-	simulcast common.SimulcastLayer,
+	info webrtc_ext.TrackInfo,
+	simulcast webrtc_ext.SimulcastLayer,
 	metadata TrackMetadata,
 	outputTrack *webrtc.TrackLocalStaticRTP,
 ) {
 	// If this is a new track, let's add it to the list of published and inform participants.
 	track, found := t.publishedTracks[info.TrackID]
 	if !found {
-		layers := []common.SimulcastLayer{}
-		if simulcast != common.SimulcastLayerNone {
+		layers := []webrtc_ext.SimulcastLayer{}
+		if simulcast != webrtc_ext.SimulcastLayerNone {
 			layers = append(layers, simulcast)
 		}
 
@@ -116,8 +116,8 @@ func (t *Tracker) AddPublishedTrack(
 	}
 
 	// If it's just a new layer, let's add it to the list of layers of the existing published track.
-	fn := func(layer common.SimulcastLayer) bool { return layer == simulcast }
-	if simulcast != common.SimulcastLayerNone && slices.IndexFunc(track.Layers, fn) == -1 {
+	fn := func(layer webrtc_ext.SimulcastLayer) bool { return layer == simulcast }
+	if simulcast != webrtc_ext.SimulcastLayerNone && slices.IndexFunc(track.Layers, fn) == -1 {
 		track.Layers = append(track.Layers, simulcast)
 		t.publishedTracks[info.TrackID] = track
 	}
@@ -162,8 +162,8 @@ func (t *Tracker) RemovePublishedTrack(id TrackID) {
 }
 
 type SubscribeRequest struct {
-	common.TrackInfo
-	Simulcast common.SimulcastLayer
+	webrtc_ext.TrackInfo
+	Simulcast webrtc_ext.SimulcastLayer
 }
 
 // Subscribes a given participant to the tracks that are passed as a parameter.
@@ -197,7 +197,7 @@ func (t *Tracker) Subscribe(participantID ID, requests []SubscribeRequest) {
 				request.TrackInfo,
 				request.Simulcast,
 				participant.Peer,
-				func(track common.TrackInfo, simulcast common.SimulcastLayer) error {
+				func(track webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error {
 					return owner.Peer.RequestKeyFrame(track, simulcast)
 				},
 				participant.Logger,
@@ -254,7 +254,7 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 }
 
 // Processes an RTP packet received on a given track.
-func (t *Tracker) ProcessRTP(info common.TrackInfo, simulcast common.SimulcastLayer, packet *rtp.Packet) {
+func (t *Tracker) ProcessRTP(info webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer, packet *rtp.Packet) {
 	for _, subscription := range t.subscribers[info.TrackID] {
 		if subscription.Simulcast() == simulcast {
 			if err := subscription.WriteRTP(*packet); err != nil {

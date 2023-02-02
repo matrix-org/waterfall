@@ -84,7 +84,7 @@ func (p *Peer[ID]) Terminate() {
 }
 
 // Request a key frame from the peer connection.
-func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo, simulcast common.SimulcastLayer) error {
+func (p *Peer[ID]) RequestKeyFrame(info webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error {
 	// Find the right track.
 	track := p.state.GetRemoteTrack(info.TrackID, simulcast)
 	if track == nil {

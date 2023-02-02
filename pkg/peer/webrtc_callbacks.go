@@ -1,7 +1,7 @@
 package peer
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -10,7 +10,7 @@ import (
 // we call this function each time a new track is received.
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	// Construct a new track info assuming that there is no simulcast.
-	trackInfo := common.TrackInfoFromTrack(remoteTrack)
+	trackInfo := webrtc_ext.TrackInfoFromTrack(remoteTrack)
 
 	switch trackInfo.Kind {
 	case webrtc.RTPCodecTypeVideo:

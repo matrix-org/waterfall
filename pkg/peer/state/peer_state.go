@@ -3,13 +3,13 @@ package state
 import (
 	"sync"
 
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/webrtc/v3"
 )
 
 type RemoteTrackId struct {
 	id        string
-	simulcast common.SimulcastLayer
+	simulcast webrtc_ext.SimulcastLayer
 }
 
 type PeerState struct {
@@ -28,17 +28,17 @@ func (p *PeerState) AddRemoteTrack(track *webrtc.TrackRemote) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	p.remoteTracks[RemoteTrackId{track.ID(), common.RIDToSimulcastLayer(track.RID())}] = track
+	p.remoteTracks[RemoteTrackId{track.ID(), webrtc_ext.RIDToSimulcastLayer(track.RID())}] = track
 }
 
 func (p *PeerState) RemoveRemoteTrack(track *webrtc.TrackRemote) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	delete(p.remoteTracks, RemoteTrackId{track.ID(), common.RIDToSimulcastLayer(track.RID())})
+	delete(p.remoteTracks, RemoteTrackId{track.ID(), webrtc_ext.RIDToSimulcastLayer(track.RID())})
 }
 
-func (p *PeerState) GetRemoteTrack(id string, simulcast common.SimulcastLayer) *webrtc.TrackRemote {
+func (p *PeerState) GetRemoteTrack(id string, simulcast webrtc_ext.SimulcastLayer) *webrtc.TrackRemote {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 

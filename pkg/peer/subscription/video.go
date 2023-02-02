@@ -9,19 +9,20 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription/rewriter"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 )
 
-type RequestKeyFrameFn = func(track common.TrackInfo, simulcast common.SimulcastLayer) error
+type RequestKeyFrameFn = func(track webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error
 
 type VideoSubscription struct {
 	rtpSender *webrtc.RTPSender
 
-	info         common.TrackInfo
-	currentLayer atomic.Int32 // atomic common.SimulcastLayer
+	info         webrtc_ext.TrackInfo
+	currentLayer atomic.Int32 // atomic webrtc_ext.SimulcastLayer
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
@@ -30,8 +31,8 @@ type VideoSubscription struct {
 }
 
 func NewVideoSubscription(
-	info common.TrackInfo,
-	simulcast common.SimulcastLayer,
+	info webrtc_ext.TrackInfo,
+	simulcast webrtc_ext.SimulcastLayer,
 	controller SubscriptionController,
 	requestKeyFrameFn RequestKeyFrameFn,
 	logger *logrus.Entry,
@@ -47,7 +48,7 @@ func NewVideoSubscription(
 		return nil, fmt.Errorf("Failed to add track: %s", err)
 	}
 
-	// Atomic version of the common.SimulcastLayer.
+	// Atomic version of the webrtc_ext.SimulcastLayer.
 	var currentLayer atomic.Int32
 	currentLayer.Store(int32(simulcast))
 
@@ -73,7 +74,7 @@ func NewVideoSubscription(
 		ChannelSize: 1, // We really don't want to buffer old packets.
 		Timeout:     2 * time.Second,
 		OnTimeout: func() {
-			layer := common.SimulcastLayer(subscription.currentLayer.Load())
+			layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
 			logger.Warnf("No RTP on subscription %s (%s)", subscription.info.TrackID, layer)
 			subscription.requestKeyFrame()
 		},
@@ -94,7 +95,7 @@ func NewVideoSubscription(
 
 func (s *VideoSubscription) Unsubscribe() error {
 	s.worker.Stop()
-	s.logger.Infof("Unsubscribing from %s (%s)", s.info.TrackID, common.SimulcastLayer(s.currentLayer.Load()))
+	s.logger.Infof("Unsubscribing from %s (%s)", s.info.TrackID, webrtc_ext.SimulcastLayer(s.currentLayer.Load()))
 	return s.controller.RemoveTrack(s.rtpSender)
 }
 
@@ -103,18 +104,18 @@ func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
 	return s.worker.Send(packet)
 }
 
-func (s *VideoSubscription) SwitchLayer(simulcast common.SimulcastLayer) {
+func (s *VideoSubscription) SwitchLayer(simulcast webrtc_ext.SimulcastLayer) {
 	s.logger.Infof("Switching layer on %s to %s", s.info.TrackID, simulcast)
 	s.currentLayer.Store(int32(simulcast))
 	s.requestKeyFrame()
 }
 
-func (s *VideoSubscription) TrackInfo() common.TrackInfo {
+func (s *VideoSubscription) TrackInfo() webrtc_ext.TrackInfo {
 	return s.info
 }
 
-func (s *VideoSubscription) Simulcast() common.SimulcastLayer {
-	return common.SimulcastLayer(s.currentLayer.Load())
+func (s *VideoSubscription) Simulcast() webrtc_ext.SimulcastLayer {
+	return webrtc_ext.SimulcastLayer(s.currentLayer.Load())
 }
 
 // Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.
@@ -123,7 +124,7 @@ func (s *VideoSubscription) readRTCP() {
 		packets, _, err := s.rtpSender.ReadRTCP()
 		if err != nil {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-				layer := common.SimulcastLayer(s.currentLayer.Load())
+				layer := webrtc_ext.SimulcastLayer(s.currentLayer.Load())
 				s.logger.Warnf("failed to read RTCP on track: %s (%s): %s", s.info.TrackID, layer, err)
 				s.worker.Stop()
 				return
@@ -142,7 +143,7 @@ func (s *VideoSubscription) readRTCP() {
 }
 
 func (s *VideoSubscription) requestKeyFrame() {
-	layer := common.SimulcastLayer(s.currentLayer.Load())
+	layer := webrtc_ext.SimulcastLayer(s.currentLayer.Load())
 	if err := s.requestKeyFrameFn(s.info, layer); err != nil {
 		s.logger.Errorf("Failed to request key frame: %s", err)
 	}
