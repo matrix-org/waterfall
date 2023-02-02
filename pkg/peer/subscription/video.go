@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription/rewriter"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
+	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -26,7 +26,7 @@ type VideoSubscription struct {
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
-	worker            *common.Worker[rtp.Packet]
+	worker            *worker.Worker[rtp.Packet]
 	logger            *logrus.Entry
 }
 
@@ -70,7 +70,7 @@ func NewVideoSubscription(
 	}
 
 	// Configure the worker for the subscription.
-	workerConfig := common.WorkerConfig[rtp.Packet]{
+	workerConfig := worker.Config[rtp.Packet]{
 		ChannelSize: 1, // We really don't want to buffer old packets.
 		Timeout:     2 * time.Second,
 		OnTimeout: func() {
@@ -82,7 +82,7 @@ func NewVideoSubscription(
 	}
 
 	// Start a worker for the subscription and create a subsription.
-	subscription.worker = common.StartWorker(workerConfig)
+	subscription.worker = worker.StartWorker(workerConfig)
 
 	// Start reading and forwarding RTCP packets.
 	go subscription.readRTCP()

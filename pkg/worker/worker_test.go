@@ -1,20 +1,20 @@
-package common_test
+package worker_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/worker"
 )
 
 func BenchmarkWorker(b *testing.B) {
-	workerConfig := common.WorkerConfig[struct{}]{
+	workerConfig := worker.Config[struct{}]{
 		ChannelSize: 1,
 		Timeout:     2 * time.Second,
 		OnTimeout:   func() {},
 		OnTask:      func(struct{}) {},
 	}
-	w := common.StartWorker(workerConfig)
+	w := worker.StartWorker(workerConfig)
 
 	for n := 0; n < b.N; n++ {
 		w.Send(struct{}{})
