@@ -71,8 +71,8 @@ func NewVideoSubscription(
 
 	// Configure the worker for the subscription.
 	workerConfig := worker.Config[rtp.Packet]{
-		ChannelSize: 1, // We really don't want to buffer old packets.
-		Timeout:     2 * time.Second,
+		ChannelSize: 32,
+		Timeout:     3 * time.Second,
 		OnTimeout: func() {
 			layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
 			logger.Warnf("No RTP on subscription %s (%s)", subscription.info.TrackID, layer)

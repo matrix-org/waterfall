@@ -47,7 +47,7 @@ func StartConference(
 		matrixWorker:      newMatrixWorker(signaling),
 		tracker:           *participant.NewParticipantTracker(),
 		streamsMetadata:   make(event.CallSDPStreamMetadata),
-		peerMessages:      make(chan channel.Message[participant.ID, peer.MessageContent]),
+		peerMessages:      make(chan channel.Message[participant.ID, peer.MessageContent], 100),
 		matrixEvents:      matrixEvents,
 		conferenceDone:    done,
 	}
