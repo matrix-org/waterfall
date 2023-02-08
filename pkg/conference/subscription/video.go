@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/matrix-org/waterfall/pkg/peer/subscription/rewriter"
+	"github.com/matrix-org/waterfall/pkg/conference/subscription/rewriter"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/pion/rtcp"

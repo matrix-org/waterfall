@@ -1,7 +1,7 @@
 package participant
 
 import (
-	"github.com/matrix-org/waterfall/pkg/peer/subscription"
+	"github.com/matrix-org/waterfall/pkg/conference/subscription"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
