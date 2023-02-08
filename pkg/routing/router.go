@@ -42,7 +42,7 @@ type Router struct {
 }
 
 // Creates a new instance of the SFU with the given configuration.
-func RunRouter(
+func StartRouter(
 	matrix *signaling.MatrixClient,
 	connectionFactory *webrtc_ext.PeerConnectionFactory,
 	matrixEvents <-chan *event.Event,
