@@ -53,7 +53,7 @@ func (c *Conference) removeParticipant(id participant.ID) {
 func (c *Conference) getAvailableStreamsFor(forParticipant participant.ID) event.CallSDPStreamMetadata {
 	streamsMetadata := make(event.CallSDPStreamMetadata)
 
-	c.tracker.ForEachPublishedTrack(func(trackID participant.TrackID, track participant.PublishedTrack) {
+	c.tracker.ForEachPublishedTrack(func(trackID participant.TrackID, track *participant.PublishedTrack) {
 		// Skip us. As we know about our own tracks.
 		if track.Owner != forParticipant {
 			streamID := track.Info.StreamID
