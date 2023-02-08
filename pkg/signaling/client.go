@@ -1,6 +1,8 @@
 package signaling
 
 import (
+	"fmt"
+
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -34,11 +36,11 @@ func NewMatrixClient(config Config) *MatrixClient {
 }
 
 // Starts the Matrix client and connects to the homeserver,
-// Returns only when the sync with Matrix fails.
-func (m *MatrixClient) RunSyncing(callback func(*event.Event)) {
+// Returns only when the sync with Matrix stops or fails.
+func (m *MatrixClient) RunSync(callback func(*event.Event)) error {
 	syncer, ok := m.client.Syncer.(*mautrix.DefaultSyncer)
 	if !ok {
-		logrus.Panic("Syncer is not DefaultSyncer")
+		return fmt.Errorf("syncer is not a DefaultSyncer")
 	}
 
 	syncer.ParseEventContent = true
@@ -61,7 +63,5 @@ func (m *MatrixClient) RunSyncing(callback func(*event.Event)) {
 	// TODO: We may want to reconnect if `Sync()` fails instead of ending the SFU
 	//       as ending here will essentially drop all conferences which may not necessarily
 	// 	     be what we want for the existing running conferences.
-	if err := m.client.Sync(); err != nil {
-		logrus.WithError(err).Panic("Sync failed")
-	}
+	return m.client.Sync()
 }
