@@ -38,7 +38,6 @@ func StartConference(
 	userID id.UserID,
 	inviteEvent *event.CallInviteEventContent,
 ) (<-chan struct{}, error) {
-	done := make(chan struct{})
 	conference := &Conference{
 		id:                confID,
 		config:            config,
@@ -49,7 +48,6 @@ func StartConference(
 		streamsMetadata:   make(event.CallSDPStreamMetadata),
 		peerMessages:      make(chan channel.Message[participant.ID, peer.MessageContent], 100),
 		matrixEvents:      matrixEvents,
-		conferenceDone:    done,
 	}
 
 	participantID := participant.ID{UserID: userID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}
@@ -58,7 +56,8 @@ func StartConference(
 	}
 
 	// Start conference "main loop".
-	go conference.processMessages()
+	signalDone := make(chan struct{})
+	go conference.processMessages(signalDone)
 
-	return done, nil
+	return signalDone, nil
 }

@@ -10,9 +10,9 @@ import (
 // Listen on messages from incoming channels and process them.
 // This is essentially the main loop of the conference.
 // If this function returns, the conference is over.
-func (c *Conference) processMessages() {
+func (c *Conference) processMessages(signalDone chan struct{}) {
 	// When the main loop of the conference ends, clean up the resources.
-	defer close(c.conferenceDone)
+	defer close(signalDone)
 	defer c.matrixWorker.stop()
 
 	for {
