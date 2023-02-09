@@ -3,25 +3,25 @@ package participant_test
 import (
 	"testing"
 
-	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/webrtc/v3"
 )
 
 func TestGetOptimalLayer(t *testing.T) {
 	// Helper function for a quick an descriptive test case definition.
-	layers := func(layers ...common.SimulcastLayer) []common.SimulcastLayer {
+	layers := func(layers ...webrtc_ext.SimulcastLayer) []webrtc_ext.SimulcastLayer {
 		return layers
 	}
 
 	// Shortcuts for easy and descriptive test case definition.
-	low, mid, high := common.SimulcastLayerLow, common.SimulcastLayerMedium, common.SimulcastLayerHigh
+	low, mid, high := webrtc_ext.SimulcastLayerLow, webrtc_ext.SimulcastLayerMedium, webrtc_ext.SimulcastLayerHigh
 
 	cases := []struct {
-		availableLayers             []common.SimulcastLayer
+		availableLayers             []webrtc_ext.SimulcastLayer
 		fullWidth, fullHeight       int
 		desiredWidth, desiredHeight int
-		expectedOptimalLayer        common.SimulcastLayer
+		expectedOptimalLayer        webrtc_ext.SimulcastLayer
 	}{
 		{layers(low, mid, high), 1728, 1056, 878, 799, mid},   // Screen sharing (Dave's case).
 		{layers(low, mid, high), 1920, 1080, 320, 240, low},   // max=1080p, desired=240p, result=low.
@@ -44,7 +44,7 @@ func TestGetOptimalLayer(t *testing.T) {
 	}
 
 	mock := participant.PublishedTrack{
-		Info: common.TrackInfo{
+		Info: webrtc_ext.TrackInfo{
 			Kind: webrtc.RTPCodecTypeVideo,
 		},
 	}
@@ -63,13 +63,13 @@ func TestGetOptimalLayer(t *testing.T) {
 
 func TestGetOptimalLayerAudio(t *testing.T) {
 	mock := participant.PublishedTrack{
-		Info: common.TrackInfo{
+		Info: webrtc_ext.TrackInfo{
 			Kind: webrtc.RTPCodecTypeAudio,
 		},
 	}
 
-	mock.Layers = []common.SimulcastLayer{common.SimulcastLayerLow}
-	if mock.GetOptimalLayer(100, 100) != common.SimulcastLayerNone {
+	mock.Layers = []webrtc_ext.SimulcastLayer{webrtc_ext.SimulcastLayerLow}
+	if mock.GetOptimalLayer(100, 100) != webrtc_ext.SimulcastLayerNone {
 		t.Fatal("Expected no simulcast layer for audio")
 	}
 }

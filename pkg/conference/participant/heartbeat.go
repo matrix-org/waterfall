@@ -1,4 +1,4 @@
-package common
+package participant
 
 import (
 	"time"
@@ -6,8 +6,8 @@ import (
 
 type Pong struct{}
 
-// Heartbeat defines the configuration for a heartbeat.
-type Heartbeat struct {
+// HeartbeatConfig defines the configuration for a heartbeat.
+type HeartbeatConfig struct {
 	// How often to send pings.
 	Interval time.Duration
 	// After which time to consider the communication stalled.
@@ -23,8 +23,8 @@ type Heartbeat struct {
 // on `PongChannel` for `Timeout`. If no response is received within `Timeout`, `OnTimeout` is called.
 // The goroutine stops once the channel is closed or upon handling the `OnTimeout`. The returned channel
 // is what the caller should use to inform about the reception of a pong.
-func (h *Heartbeat) Start() chan<- Pong {
-	pong := make(chan Pong, UnboundedChannelSize)
+func (h *HeartbeatConfig) Start() chan<- Pong {
+	pong := make(chan Pong, 1)
 
 	go func() {
 		ticker := time.NewTicker(h.Interval)
@@ -52,7 +52,7 @@ func (h *Heartbeat) Start() chan<- Pong {
 
 // Tries to send a ping message using `SendPing` and retry it if it fails.
 // Returns `true` if the ping was sent successfully.
-func (h *Heartbeat) sendWithRetry() bool {
+func (h *HeartbeatConfig) sendWithRetry() bool {
 	const retries = 3
 	retryInterval := h.Timeout / retries
 

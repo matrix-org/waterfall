@@ -1,7 +1,7 @@
 package conference
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"maunium.net/go/mautrix/event"
@@ -10,35 +10,29 @@ import (
 // Listen on messages from incoming channels and process them.
 // This is essentially the main loop of the conference.
 // If this function returns, the conference is over.
-func (c *Conference) processMessages() {
+func (c *Conference) processMessages(signalDone chan struct{}) {
+	// When the main loop of the conference ends, clean up the resources.
+	defer close(signalDone)
+	defer c.matrixWorker.stop()
+
 	for {
 		select {
 		case msg := <-c.peerMessages:
 			c.processPeerMessage(msg)
-		case msg := <-c.matrixMessages.Channel:
+		case msg := <-c.matrixEvents:
 			c.processMatrixMessage(msg)
 		}
 
 		// If there are no more participants, stop the conference.
 		if !c.tracker.HasParticipants() {
 			c.logger.Info("No more participants, stopping the conference")
-			// Close the channel so that the sender can't push any messages.
-			unreadMessages := c.matrixMessages.Close()
-
-			// Send the information that we ended to the owner and pass the message
-			// that we did not process (so that we don't drop it silently).
-			c.endNotifier.Notify(unreadMessages)
-
-			// Stop the matrix worker.
-			c.matrixWorker.stop()
-
 			return
 		}
 	}
 }
 
 // Process a message from a local peer.
-func (c *Conference) processPeerMessage(message common.Message[participant.ID, peer.MessageContent]) {
+func (c *Conference) processPeerMessage(message channel.Message[participant.ID, peer.MessageContent]) {
 	// Since Go does not support ADTs, we have to use a switch statement to
 	// determine the actual type of the message.
 	switch msg := message.Content.(type) {
@@ -62,8 +56,6 @@ func (c *Conference) processPeerMessage(message common.Message[participant.ID, p
 		c.processDataChannelMessage(message.Sender, msg)
 	case peer.DataChannelAvailable:
 		c.processDataChannelAvailableMessage(message.Sender, msg)
-	case peer.KeyFrameRequestReceived:
-		c.processKeyFrameRequest(msg)
 	default:
 		c.logger.Errorf("Unknown message type: %T", msg)
 	}

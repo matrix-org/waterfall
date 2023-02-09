@@ -3,19 +3,19 @@ package conference
 import (
 	"time"
 
-	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/id"
 )
 
 type matrixWorker struct {
-	worker   *common.Worker[signaling.MatrixMessage]
+	worker   *worker.Worker[signaling.MatrixMessage]
 	deviceID id.DeviceID
 }
 
 func newMatrixWorker(handler signaling.MatrixSignaler) *matrixWorker {
-	workerConfig := common.WorkerConfig[signaling.MatrixMessage]{
+	workerConfig := worker.Config[signaling.MatrixMessage]{
 		ChannelSize: 128,
 		Timeout:     time.Hour,
 		OnTimeout:   func() {},
@@ -23,7 +23,7 @@ func newMatrixWorker(handler signaling.MatrixSignaler) *matrixWorker {
 	}
 
 	matrixWorker := &matrixWorker{
-		worker:   common.StartWorker(workerConfig),
+		worker:   worker.StartWorker(workerConfig),
 		deviceID: handler.DeviceID(),
 	}
 

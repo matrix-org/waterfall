@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/peer/state"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtcp"
@@ -31,7 +31,7 @@ var (
 type Peer[ID comparable] struct {
 	logger         *logrus.Entry
 	peerConnection *webrtc.PeerConnection
-	sink           *common.MessageSink[ID, MessageContent]
+	sink           *channel.SinkWithSender[ID, MessageContent]
 	state          *state.PeerState
 }
 
@@ -39,7 +39,7 @@ type Peer[ID comparable] struct {
 func NewPeer[ID comparable](
 	connectionFactory *webrtc_ext.PeerConnectionFactory,
 	sdpOffer string,
-	sink *common.MessageSink[ID, MessageContent],
+	sink *channel.SinkWithSender[ID, MessageContent],
 	logger *logrus.Entry,
 ) (*Peer[ID], *webrtc.SessionDescription, error) {
 	peerConnection, err := connectionFactory.CreatePeerConnection()
@@ -83,8 +83,8 @@ func (p *Peer[ID]) Terminate() {
 	p.sink.Seal()
 }
 
-// Writes the specified packets to the `trackID`.
-func (p *Peer[ID]) WritePLI(info common.TrackInfo, simulcast common.SimulcastLayer) error {
+// Request a key frame from the peer connection.
+func (p *Peer[ID]) RequestKeyFrame(info webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error {
 	// Find the right track.
 	track := p.state.GetRemoteTrack(info.TrackID, simulcast)
 	if track == nil {
@@ -170,8 +170,4 @@ func (p *Peer[ID]) ProcessSDPOffer(sdpOffer string) (*webrtc.SessionDescription,
 	}
 
 	return &answer, nil
-}
-
-func (p *Peer[ID]) RequestKeyFrame(info common.TrackInfo, simulcast common.SimulcastLayer) error {
-	return p.sink.TrySend(KeyFrameRequestReceived{info, simulcast})
 }

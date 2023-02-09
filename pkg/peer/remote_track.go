@@ -4,19 +4,17 @@ import (
 	"errors"
 	"io"
 
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
 
 func (p *Peer[ID]) handleNewVideoTrack(
-	trackInfo common.TrackInfo,
+	trackInfo webrtc_ext.TrackInfo,
 	remoteTrack *webrtc.TrackRemote,
 	receiver *webrtc.RTPReceiver,
 ) {
-	p.logger.Infof("ontrack got video track %s", trackInfo.TrackID)
-
-	simulcast := common.RIDToSimulcastLayer(remoteTrack.RID())
+	simulcast := webrtc_ext.RIDToSimulcastLayer(remoteTrack.RID())
 
 	p.handleRemoteTrack(remoteTrack, trackInfo, simulcast, nil, func(packet *rtp.Packet) error {
 		p.sink.Send(RTPPacketReceived{trackInfo, simulcast, packet})
@@ -25,7 +23,7 @@ func (p *Peer[ID]) handleNewVideoTrack(
 }
 
 func (p *Peer[ID]) handleNewAudioTrack(
-	trackInfo common.TrackInfo,
+	trackInfo webrtc_ext.TrackInfo,
 	remoteTrack *webrtc.TrackRemote,
 	receiver *webrtc.RTPReceiver,
 ) {
@@ -41,7 +39,7 @@ func (p *Peer[ID]) handleNewAudioTrack(
 		return
 	}
 
-	p.handleRemoteTrack(remoteTrack, trackInfo, common.SimulcastLayerNone, localTrack, func(packet *rtp.Packet) error {
+	p.handleRemoteTrack(remoteTrack, trackInfo, webrtc_ext.SimulcastLayerNone, localTrack, func(packet *rtp.Packet) error {
 		if err = localTrack.WriteRTP(packet); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 			return err
 		}
@@ -51,8 +49,8 @@ func (p *Peer[ID]) handleNewAudioTrack(
 
 func (p *Peer[ID]) handleRemoteTrack(
 	remoteTrack *webrtc.TrackRemote,
-	trackInfo common.TrackInfo,
-	simulcast common.SimulcastLayer,
+	trackInfo webrtc_ext.TrackInfo,
+	simulcast webrtc_ext.SimulcastLayer,
 	outputTrack *webrtc.TrackLocalStaticRTP,
 	handleRtpFn func(*rtp.Packet) error,
 ) {

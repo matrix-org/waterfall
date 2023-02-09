@@ -1,4 +1,4 @@
-package common
+package worker
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ var (
 )
 
 // Configuration for the worker.
-type WorkerConfig[T any] struct {
+type Config[T any] struct {
 	// The size of the bounded channel.
 	ChannelSize int
 	// Timeout after which `OnTimeout` is called.
@@ -68,7 +68,7 @@ func (c *Worker[T]) Send(task T) error {
 // Starts a worker that periodically (specified by the configuration) executes a `c.OnTimeout` closure if
 // no tasks have been received on a channel for a `c.Timeout`. The worker will stop once the channel is closed,
 // i.e. once the user calls `Stop` explicitly.
-func StartWorker[T any](c WorkerConfig[T]) *Worker[T] {
+func StartWorker[T any](c Config[T]) *Worker[T] {
 	// The channel that will be used to inform the worker about the reception of a task.
 	// The worker will be stopped once the channel is closed.
 	incoming := make(chan T, c.ChannelSize)

@@ -1,7 +1,7 @@
 package participant
 
 import (
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/webrtc/v3"
 	"golang.org/x/exp/slices"
 )
@@ -13,9 +13,9 @@ type PublishedTrack struct {
 	// Owner of a published track.
 	Owner ID
 	// Info about the track.
-	Info common.TrackInfo
+	Info webrtc_ext.TrackInfo
 	// Available simulcast Layers.
-	Layers []common.SimulcastLayer
+	Layers []webrtc_ext.SimulcastLayer
 	// Track metadata.
 	Metadata TrackMetadata
 	// Output track (if any). I.e. a track that would contain all RTP packets
@@ -24,11 +24,11 @@ type PublishedTrack struct {
 }
 
 // Calculate the layer that we can use based on the requirements passed as parameters and available layers.
-func (p *PublishedTrack) GetOptimalLayer(requestedWidth, requestedHeight int) common.SimulcastLayer {
+func (p *PublishedTrack) GetOptimalLayer(requestedWidth, requestedHeight int) webrtc_ext.SimulcastLayer {
 	// Audio track. For them we don't have any simulcast. We also don't have any simulcast for video
 	// if there was no simulcast enabled at all.
 	if p.Info.Kind == webrtc.RTPCodecTypeAudio || len(p.Layers) == 0 {
-		return common.SimulcastLayerNone
+		return webrtc_ext.SimulcastLayerNone
 	}
 
 	// Video track. Calculate the optimal layer closest to the requested resolution.
@@ -36,16 +36,16 @@ func (p *PublishedTrack) GetOptimalLayer(requestedWidth, requestedHeight int) co
 
 	// Ideally, here we would need to send an error if the desired layer is not available, but we don't
 	// have a way to do it. So we just return the closest available layer.
-	priority := []common.SimulcastLayer{
+	priority := []webrtc_ext.SimulcastLayer{
 		desiredLayer,
-		common.SimulcastLayerMedium,
-		common.SimulcastLayerLow,
-		common.SimulcastLayerHigh,
+		webrtc_ext.SimulcastLayerMedium,
+		webrtc_ext.SimulcastLayerLow,
+		webrtc_ext.SimulcastLayerHigh,
 	}
 
 	// More Go boilerplate.
 	for _, desiredLayer := range priority {
-		layerIndex := slices.IndexFunc(p.Layers, func(simulcast common.SimulcastLayer) bool {
+		layerIndex := slices.IndexFunc(p.Layers, func(simulcast webrtc_ext.SimulcastLayer) bool {
 			return simulcast == desiredLayer
 		})
 
@@ -56,7 +56,7 @@ func (p *PublishedTrack) GetOptimalLayer(requestedWidth, requestedHeight int) co
 
 	// Actually this part will never be executed, because if we got to this point,
 	// we know that we at least have one layer available.
-	return common.SimulcastLayerLow
+	return webrtc_ext.SimulcastLayerLow
 }
 
 // Metadata that we have received about this track from a user.
@@ -69,21 +69,21 @@ type TrackMetadata struct {
 // maximum resolution that we can get from the user. We assume that a medium quality layer is half the size of
 // the video (**but not half of the resolution**). I.e. medium quality is high quality divided by 4. And low
 // quality is medium quality divided by 4 (which is the same as the high quality dividied by 16).
-func calculateDesiredLayer(fullWidth, fullHeight int, desiredWidth, desiredHeight int) common.SimulcastLayer {
+func calculateDesiredLayer(fullWidth, fullHeight int, desiredWidth, desiredHeight int) webrtc_ext.SimulcastLayer {
 	// Calculate combined length of width and height for the full and desired size videos.
 	fullSize := fullWidth + fullHeight
 	desiredSize := desiredWidth + desiredHeight
 
 	if fullSize == 0 || desiredSize == 0 {
-		return common.SimulcastLayerLow
+		return webrtc_ext.SimulcastLayerLow
 	}
 
 	// Determine which simulcast desiredLayer to subscribe to based on the requested resolution.
 	if ratio := float32(fullSize) / float32(desiredSize); ratio <= 1 {
-		return common.SimulcastLayerHigh
+		return webrtc_ext.SimulcastLayerHigh
 	} else if ratio <= 2 {
-		return common.SimulcastLayerMedium
+		return webrtc_ext.SimulcastLayerMedium
 	}
 
-	return common.SimulcastLayerLow
+	return webrtc_ext.SimulcastLayerLow
 }

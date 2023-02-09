@@ -1,4 +1,4 @@
-package common
+package webrtc_ext
 
 import (
 	"github.com/pion/webrtc/v3"

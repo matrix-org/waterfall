@@ -1,10 +1,8 @@
 package participant
 
 import (
-	"fmt"
-
-	"github.com/matrix-org/waterfall/pkg/common"
 	"github.com/matrix-org/waterfall/pkg/peer/subscription"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -63,7 +61,7 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 
 	// Terminate the participant and remove it from the list.
 	participant.Peer.Terminate()
-	close(participant.HeartbeatPong)
+	close(participant.Pong)
 	delete(t.participants, participantID)
 
 	// Remove the participant's tracks from all participants who might have subscribed to them.
@@ -93,16 +91,16 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 // that has been published and that we must take into account from now on.
 func (t *Tracker) AddPublishedTrack(
 	participantID ID,
-	info common.TrackInfo,
-	simulcast common.SimulcastLayer,
+	info webrtc_ext.TrackInfo,
+	simulcast webrtc_ext.SimulcastLayer,
 	metadata TrackMetadata,
 	outputTrack *webrtc.TrackLocalStaticRTP,
 ) {
 	// If this is a new track, let's add it to the list of published and inform participants.
 	track, found := t.publishedTracks[info.TrackID]
 	if !found {
-		layers := []common.SimulcastLayer{}
-		if simulcast != common.SimulcastLayerNone {
+		layers := []webrtc_ext.SimulcastLayer{}
+		if simulcast != webrtc_ext.SimulcastLayerNone {
 			layers = append(layers, simulcast)
 		}
 
@@ -118,8 +116,8 @@ func (t *Tracker) AddPublishedTrack(
 	}
 
 	// If it's just a new layer, let's add it to the list of layers of the existing published track.
-	fn := func(layer common.SimulcastLayer) bool { return layer == simulcast }
-	if simulcast != common.SimulcastLayerNone && slices.IndexFunc(track.Layers, fn) == -1 {
+	fn := func(layer webrtc_ext.SimulcastLayer) bool { return layer == simulcast }
+	if simulcast != webrtc_ext.SimulcastLayerNone && slices.IndexFunc(track.Layers, fn) == -1 {
 		track.Layers = append(track.Layers, simulcast)
 		t.publishedTracks[info.TrackID] = track
 	}
@@ -164,8 +162,8 @@ func (t *Tracker) RemovePublishedTrack(id TrackID) {
 }
 
 type SubscribeRequest struct {
-	common.TrackInfo
-	Simulcast common.SimulcastLayer
+	webrtc_ext.TrackInfo
+	Simulcast webrtc_ext.SimulcastLayer
 }
 
 // Subscribes a given participant to the tracks that are passed as a parameter.
@@ -181,26 +179,34 @@ func (t *Tracker) Subscribe(participantID ID, requests []SubscribeRequest) {
 			err error
 		)
 
+		published := t.FindPublishedTrack(request.TrackID)
+		if published == nil {
+			participant.Logger.Errorf("Can't subscribe to non-existent track %s", request.TrackID)
+			continue
+		}
+
 		switch request.Kind {
 		case webrtc.RTPCodecTypeVideo:
+			owner := t.GetParticipant(published.Owner)
+			if owner == nil {
+				participant.Logger.Errorf("Can't subscribe to non-existent owner %s", published.Owner)
+				continue
+			}
+
 			sub, err = subscription.NewVideoSubscription(
 				request.TrackInfo,
 				request.Simulcast,
 				participant.Peer,
-				func(track common.TrackInfo, simulcast common.SimulcastLayer) error {
-					return participant.Peer.RequestKeyFrame(track, simulcast)
+				func(track webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error {
+					return owner.Peer.RequestKeyFrame(track, simulcast)
 				},
 				participant.Logger,
 			)
 		case webrtc.RTPCodecTypeAudio:
-			if published := t.FindPublishedTrack(request.TrackID); published != nil {
-				sub, err = subscription.NewAudioSubscription(
-					published.OutputTrack,
-					participant.Peer,
-				)
-			} else {
-				err = fmt.Errorf("Can't subscribe to non-existent track %s", request.TrackID)
-			}
+			sub, err = subscription.NewAudioSubscription(
+				published.OutputTrack,
+				participant.Peer,
+			)
 		}
 
 		if err != nil {
@@ -248,32 +254,12 @@ func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
 }
 
 // Processes an RTP packet received on a given track.
-func (t *Tracker) ProcessRTP(info common.TrackInfo, simulcast common.SimulcastLayer, packet *rtp.Packet) {
-	for participantID, subscription := range t.subscribers[info.TrackID] {
+func (t *Tracker) ProcessRTP(info webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer, packet *rtp.Packet) {
+	for _, subscription := range t.subscribers[info.TrackID] {
 		if subscription.Simulcast() == simulcast {
 			if err := subscription.WriteRTP(*packet); err != nil {
-				if participant := t.GetParticipant(participantID); participant != nil {
-					participant.Logger.Errorf("Error writing RTP to %s (%s): %s", info.TrackID, simulcast, err)
-					continue
-				}
-				logrus.Errorf("Bug: subscription without subscriber")
+				logrus.Errorf("Dropping an RTP packet on %s (%s): %s", info.TrackID, simulcast, err)
 			}
 		}
 	}
-}
-
-// Processes RTCP packets received on a given track.
-func (t *Tracker) ProcessKeyFrameRequest(info common.TrackInfo, simulcast common.SimulcastLayer) error {
-	published, found := t.publishedTracks[info.TrackID]
-	if !found {
-		return fmt.Errorf("no such track: %s", info.TrackID)
-	}
-
-	participant := t.GetParticipant(published.Owner)
-	if participant == nil {
-		return fmt.Errorf("no such participant: %s", published.Owner)
-	}
-
-	// We don't want to send keyframes too often, so we'll send them only once in a while.
-	return participant.Peer.WritePLI(info, simulcast)
 }

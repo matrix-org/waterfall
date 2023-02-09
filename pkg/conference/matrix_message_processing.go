@@ -3,7 +3,7 @@ package conference
 import (
 	"time"
 
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
@@ -15,9 +15,8 @@ import (
 type MessageContent interface{}
 
 type MatrixMessage struct {
-	Sender   participant.ID
-	Content  MessageContent
-	RawEvent *event.Event
+	Sender  participant.ID
+	Content MessageContent
 }
 
 // New participant tries to join the conference.
@@ -48,7 +47,7 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 		}
 		sdpAnswer = answer
 	} else {
-		messageSink := common.NewMessageSink(id, c.peerMessages)
+		messageSink := channel.NewSink(id, c.peerMessages)
 
 		peerConnection, answer, err := peer.NewPeer(c.connectionFactory, inviteEvent.Offer.SDP, messageSink, logger)
 		if err != nil {
@@ -56,18 +55,16 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 			return err
 		}
 
-		heartbeat := common.Heartbeat{
-			Interval: time.Duration(c.config.HeartbeatConfig.Interval) * time.Second,
-			Timeout:  time.Duration(c.config.HeartbeatConfig.Timeout) * time.Second,
-			SendPing: func() bool {
-				return p.SendDataChannelMessage(event.Event{
-					Type:    event.FocusCallPing,
-					Content: event.Content{},
-				}) == nil
-			},
-			OnTimeout: func() {
-				messageSink.Send(peer.LeftTheCall{event.CallHangupKeepAliveTimeout})
-			},
+		pingEvent := event.Event{
+			Type:    event.FocusCallPing,
+			Content: event.Content{},
+		}
+
+		heartbeat := participant.HeartbeatConfig{
+			Interval:  time.Duration(c.config.HeartbeatConfig.Interval) * time.Second,
+			Timeout:   time.Duration(c.config.HeartbeatConfig.Timeout) * time.Second,
+			SendPing:  func() bool { return p.SendDataChannelMessage(pingEvent) == nil },
+			OnTimeout: func() { messageSink.Send(peer.LeftTheCall{event.CallHangupKeepAliveTimeout}) },
 		}
 
 		p = &participant.Participant{
@@ -75,7 +72,7 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 			Peer:            peerConnection,
 			Logger:          logger,
 			RemoteSessionID: inviteEvent.SenderSessionID,
-			HeartbeatPong:   heartbeat.Start(),
+			Pong:            heartbeat.Start(),
 		}
 
 		c.tracker.AddParticipant(p)

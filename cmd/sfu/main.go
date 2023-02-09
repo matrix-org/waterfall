@@ -100,11 +100,18 @@ func main() {
 		return
 	}
 
-	// Create a router to route incoming To-Device messages to the right conference.
-	routerChannel := routing.NewRouter(matrixClient, connectionFactory, config.Conference)
+	// Create a channel which we'll use to send events to the router.
+	matrixEvents := make(chan *event.Event)
+	defer close(matrixEvents)
+
+	// Start a router that will receive events from the matrix client and route them to the appropriate conference.
+	routing.StartRouter(matrixClient, connectionFactory, matrixEvents, config.Conference)
 
 	// Start matrix client sync. This function will block until the sync fails.
-	matrixClient.RunSyncing(func(e *event.Event) {
-		routerChannel <- e
-	})
+	if err := matrixClient.RunSync(func(e *event.Event) { matrixEvents <- e }); err != nil {
+		logrus.WithError(err).Fatal("matrix client sync failed")
+		return
+	}
+
+	logrus.Info("SFU stopped")
 }

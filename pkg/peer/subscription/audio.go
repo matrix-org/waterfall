@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/matrix-org/waterfall/pkg/common"
+	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
@@ -42,11 +42,11 @@ func (s *AudioSubscription) WriteRTP(packet rtp.Packet) error {
 	return fmt.Errorf("Bug: no write RTP logic for an audio subscription!")
 }
 
-func (s *AudioSubscription) SwitchLayer(simulcast common.SimulcastLayer) {
+func (s *AudioSubscription) SwitchLayer(simulcast webrtc_ext.SimulcastLayer) {
 }
 
-func (s *AudioSubscription) Simulcast() common.SimulcastLayer {
-	return common.SimulcastLayerNone
+func (s *AudioSubscription) Simulcast() webrtc_ext.SimulcastLayer {
+	return webrtc_ext.SimulcastLayerNone
 }
 
 func (s *AudioSubscription) readRTCP() {
