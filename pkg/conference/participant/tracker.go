@@ -5,9 +5,7 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/conference/subscription"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
-	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/exp/slices"
 )
 
@@ -217,19 +215,6 @@ func (t *Tracker) Unsubscribe(participantID ID, trackID TrackID) {
 		if sub := published.Subscriptions[participantID]; sub != nil {
 			sub.Unsubscribe()
 			delete(published.Subscriptions, participantID)
-		}
-	}
-}
-
-// Processes an RTP packet received on a given track.
-func (t *Tracker) ProcessRTP(info webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer, packet *rtp.Packet) {
-	if published := t.publishedTracks[info.TrackID]; published != nil {
-		for _, sub := range published.Subscriptions {
-			if sub.Simulcast() == simulcast {
-				if err := sub.WriteRTP(*packet); err != nil {
-					logrus.Errorf("Dropping an RTP packet on %s (%s): %s", info.TrackID, simulcast, err)
-				}
-			}
 		}
 	}
 }

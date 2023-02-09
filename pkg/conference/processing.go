@@ -42,8 +42,6 @@ func (c *Conference) processPeerMessage(message channel.Message[participant.ID, 
 		c.processLeftTheCallMessage(message.Sender, msg)
 	case peer.NewTrackPublished:
 		c.processNewTrackPublishedMessage(message.Sender, msg)
-	case peer.RTPPacketReceived:
-		c.processRTPPacketReceivedMessage(msg)
 	case peer.PublishedTrackFailed:
 		c.processPublishedTrackFailedMessage(message.Sender, msg)
 	case peer.NewICECandidate:

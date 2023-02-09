@@ -16,10 +16,7 @@ func (p *Peer[ID]) handleNewVideoTrack(
 ) {
 	simulcast := webrtc_ext.RIDToSimulcastLayer(remoteTrack.RID())
 
-	p.handleRemoteTrack(remoteTrack, trackInfo, simulcast, nil, func(packet *rtp.Packet) error {
-		p.sink.Send(RTPPacketReceived{trackInfo, simulcast, packet})
-		return nil
-	})
+	p.handleRemoteTrack(remoteTrack, trackInfo, simulcast, nil, nil)
 }
 
 func (p *Peer[ID]) handleNewAudioTrack(
@@ -65,6 +62,10 @@ func (p *Peer[ID]) handleRemoteTrack(
 			p.state.RemoveRemoteTrack(remoteTrack)
 			p.sink.Send(PublishedTrackFailed{trackInfo, simulcast})
 		}()
+
+		if handleRtpFn == nil {
+			return
+		}
 
 		for {
 			// Read the data from the remote track.

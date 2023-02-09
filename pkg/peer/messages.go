@@ -2,7 +2,6 @@ package peer
 
 import (
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
-	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -31,12 +30,6 @@ type NewTrackPublished struct {
 type PublishedTrackFailed struct {
 	webrtc_ext.TrackInfo
 	SimulcastLayer webrtc_ext.SimulcastLayer
-}
-
-type RTPPacketReceived struct {
-	webrtc_ext.TrackInfo
-	SimulcastLayer webrtc_ext.SimulcastLayer
-	Packet         *rtp.Packet
 }
 
 type NewICECandidate struct {

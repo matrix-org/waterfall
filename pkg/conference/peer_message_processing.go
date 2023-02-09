@@ -33,10 +33,6 @@ func (c *Conference) processNewTrackPublishedMessage(sender participant.ID, msg 
 	c.resendMetadataToAllExcept(sender)
 }
 
-func (c *Conference) processRTPPacketReceivedMessage(msg peer.RTPPacketReceived) {
-	c.tracker.ProcessRTP(msg.TrackInfo, msg.SimulcastLayer, msg.Packet)
-}
-
 func (c *Conference) processPublishedTrackFailedMessage(sender participant.ID, msg peer.PublishedTrackFailed) {
 	c.newLogger(sender).Infof("Failed published track: %s", msg.TrackID)
 	c.tracker.RemovePublishedTrack(msg.TrackID)
