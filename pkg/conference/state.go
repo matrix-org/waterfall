@@ -53,46 +53,31 @@ func (c *Conference) removeParticipant(id participant.ID) {
 func (c *Conference) getAvailableStreamsFor(forParticipant participant.ID) event.CallSDPStreamMetadata {
 	streamsMetadata := make(event.CallSDPStreamMetadata)
 
-	c.tracker.ForEachPublishedTrack(func(trackID participant.TrackID, track participant.PublishedTrack) {
+	c.tracker.ForEachPublishedTrackInfo(func(owner participant.ID, info webrtc_ext.TrackInfo) {
 		// Skip us. As we know about our own tracks.
-		if track.Owner != forParticipant {
-			streamID := track.Info.StreamID
-			kind := track.Info.Kind.String()
+		if owner != forParticipant {
+			streamID := info.StreamID
+			kind := info.Kind.String()
 
 			if metadata, ok := streamsMetadata[streamID]; ok {
-				metadata.Tracks[trackID] = event.CallSDPStreamMetadataTrack{
+				metadata.Tracks[info.TrackID] = event.CallSDPStreamMetadataTrack{
 					Kind: kind,
 				}
 				streamsMetadata[streamID] = metadata
 			} else if metadata, ok := c.streamsMetadata[streamID]; ok {
 				metadata.Tracks = event.CallSDPStreamMetadataTracks{
-					trackID: event.CallSDPStreamMetadataTrack{
+					info.TrackID: event.CallSDPStreamMetadataTrack{
 						Kind: kind,
 					},
 				}
 				streamsMetadata[streamID] = metadata
 			} else {
-				c.logger.Warnf("Don't have metadata for %s", trackID)
+				c.logger.Warnf("Don't have metadata for %s", info.TrackID)
 			}
 		}
 	})
 
 	return streamsMetadata
-}
-
-// Helper that returns the list of published tracks inside this conference that match the given track IDs.
-func (c *Conference) findPublishedTracks(trackIDs []string) map[string]participant.PublishedTrack {
-	tracks := make(map[string]participant.PublishedTrack)
-	for _, identifier := range trackIDs {
-		// Check if this participant has any of the tracks that we're looking for.
-		if track := c.tracker.FindPublishedTrack(identifier); track != nil {
-			tracks[identifier] = *track
-		} else {
-			c.logger.Warnf("track not found: %s", identifier)
-		}
-	}
-
-	return tracks
 }
 
 // Helper that sends current metadata about all available tracks to all participants except a given one.

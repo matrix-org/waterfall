@@ -1,7 +1,9 @@
 package participant
 
 import (
-	"github.com/matrix-org/waterfall/pkg/peer/subscription"
+	"fmt"
+
+	"github.com/matrix-org/waterfall/pkg/conference/subscription"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
@@ -9,24 +11,17 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-type (
-	Subscriptions    map[ID]subscription.Subscription
-	TrackSubscribers map[TrackID]Subscriptions
-)
-
 // Tracks participants and their corresponding tracks.
 // These are grouped together as the field in this structure must be kept synchronized.
 type Tracker struct {
 	participants    map[ID]*Participant
-	subscribers     TrackSubscribers
-	publishedTracks map[TrackID]PublishedTrack
+	publishedTracks map[TrackID]*PublishedTrack
 }
 
 func NewParticipantTracker() *Tracker {
 	return &Tracker{
 		participants:    make(map[ID]*Participant),
-		subscribers:     make(TrackSubscribers),
-		publishedTracks: make(map[TrackID]PublishedTrack),
+		publishedTracks: make(map[TrackID]*PublishedTrack),
 	}
 }
 
@@ -74,13 +69,12 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 		}
 	}
 
-	// Remove this participant's subscriptions.
-	for _, subscribers := range t.subscribers {
-		for subscriberID, subscription := range subscribers {
-			if subscriberID == participantID {
-				subscription.Unsubscribe()
-				delete(subscribers, subscriberID)
-			}
+	// Go over all subscriptions and remove the participant from them.
+	// TODO: Perhaps we could simply react to the subscrpitions dying and remove them from the list.
+	for _, publishedTrack := range t.publishedTracks {
+		if subscription, found := publishedTrack.Subscriptions[participantID]; found {
+			subscription.Unsubscribe()
+			delete(publishedTrack.Subscriptions, participantID)
 		}
 	}
 
@@ -104,12 +98,13 @@ func (t *Tracker) AddPublishedTrack(
 			layers = append(layers, simulcast)
 		}
 
-		t.publishedTracks[info.TrackID] = PublishedTrack{
-			Owner:       participantID,
-			Info:        info,
-			Layers:      layers,
-			Metadata:    metadata,
-			OutputTrack: outputTrack,
+		t.publishedTracks[info.TrackID] = &PublishedTrack{
+			Owner:         participantID,
+			Info:          info,
+			Layers:        layers,
+			Metadata:      metadata,
+			OutputTrack:   outputTrack,
+			Subscriptions: make(map[ID]subscription.Subscription),
 		}
 
 		return
@@ -123,19 +118,10 @@ func (t *Tracker) AddPublishedTrack(
 	}
 }
 
-// Finds a track by the track ID.
-func (t *Tracker) FindPublishedTrack(id TrackID) *PublishedTrack {
-	if track, found := t.publishedTracks[id]; found {
-		return &track
-	}
-
-	return nil
-}
-
-// Iterates over published tracks and calls a closure upon each track.
-func (t *Tracker) ForEachPublishedTrack(fn func(TrackID, PublishedTrack)) {
-	for id, track := range t.publishedTracks {
-		fn(id, track)
+// Iterates over published tracks and calls a closure upon each track info.
+func (t *Tracker) ForEachPublishedTrackInfo(fn func(ID, webrtc_ext.TrackInfo)) {
+	for _, track := range t.publishedTracks {
+		fn(track.Owner, track.Info)
 	}
 }
 
@@ -149,116 +135,100 @@ func (t *Tracker) UpdatePublishedTrackMetadata(id TrackID, metadata TrackMetadat
 
 // Informs the tracker that one of the previously published tracks is gone.
 func (t *Tracker) RemovePublishedTrack(id TrackID) {
-	subscribers := t.subscribers[id]
+	if publishedTrack, found := t.publishedTracks[id]; found {
+		// Iterate over all subscriptions and end them.
+		for subscriberID, subscription := range publishedTrack.Subscriptions {
+			subscription.Unsubscribe()
+			delete(publishedTrack.Subscriptions, subscriberID)
+		}
 
-	// Iterate over all subscriptions and end them.
-	for subscriberID, subscription := range subscribers {
-		subscription.Unsubscribe()
-		delete(subscribers, subscriberID)
+		delete(t.publishedTracks, id)
 	}
-
-	delete(t.subscribers, id)
-	delete(t.publishedTracks, id)
 }
 
-type SubscribeRequest struct {
-	webrtc_ext.TrackInfo
-	Simulcast webrtc_ext.SimulcastLayer
-}
-
-// Subscribes a given participant to the tracks that are passed as a parameter.
-func (t *Tracker) Subscribe(participantID ID, requests []SubscribeRequest) {
-	participant := t.GetParticipant(participantID)
+// Subscribes a given participant to the track.
+func (t *Tracker) Subscribe(participantID ID, trackID TrackID, requirements TrackMetadata) error {
+	// Check if the participant exists that wants to subscribe exists.
+	participant := t.participants[participantID]
 	if participant == nil {
-		return
+		return fmt.Errorf("participant %s does not exist", participantID)
 	}
 
-	for _, request := range requests {
-		var (
-			sub subscription.Subscription
-			err error
+	// Check if the track that we want to subscribe to exists.
+	published := t.publishedTracks[trackID]
+	if published == nil {
+		return fmt.Errorf("track %s does not exist", trackID)
+	}
+
+	// Calculate the desired simulcast layer.
+	desiredLayer := published.GetOptimalLayer(requirements.MaxWidth, requirements.MaxHeight)
+
+	// If the subscription exists, let's see if we need to update it.
+	if sub := published.Subscriptions[participantID]; sub != nil {
+		if sub.Simulcast() != desiredLayer {
+			sub.SwitchLayer(desiredLayer)
+			return nil
+		}
+
+		return fmt.Errorf("subscription already exists and up-to-date")
+	}
+
+	// Find the owner of the track that we're trying to subscribe to.
+	owner := t.participants[published.Owner]
+	if owner == nil {
+		return fmt.Errorf("owner of the track %s does not exist", published.Info.TrackID)
+	}
+
+	var (
+		sub subscription.Subscription
+		err error
+	)
+
+	// Subscription does not exist, so let's create it.
+	switch published.Info.Kind {
+	case webrtc.RTPCodecTypeVideo:
+		sub, err = subscription.NewVideoSubscription(
+			published.Info,
+			desiredLayer,
+			participant.Peer,
+			func(track webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error {
+				return owner.Peer.RequestKeyFrame(track, simulcast)
+			},
+			participant.Logger,
 		)
-
-		published := t.FindPublishedTrack(request.TrackID)
-		if published == nil {
-			participant.Logger.Errorf("Can't subscribe to non-existent track %s", request.TrackID)
-			continue
-		}
-
-		switch request.Kind {
-		case webrtc.RTPCodecTypeVideo:
-			owner := t.GetParticipant(published.Owner)
-			if owner == nil {
-				participant.Logger.Errorf("Can't subscribe to non-existent owner %s", published.Owner)
-				continue
-			}
-
-			sub, err = subscription.NewVideoSubscription(
-				request.TrackInfo,
-				request.Simulcast,
-				participant.Peer,
-				func(track webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error {
-					return owner.Peer.RequestKeyFrame(track, simulcast)
-				},
-				participant.Logger,
-			)
-		case webrtc.RTPCodecTypeAudio:
-			sub, err = subscription.NewAudioSubscription(
-				published.OutputTrack,
-				participant.Peer,
-			)
-		}
-
-		if err != nil {
-			participant.Logger.Errorf("failed to create subscription: %s", err)
-			continue
-		}
-
-		// If we're a first subscriber, we need to initialize the list of subscribers.
-		// Otherwise it will panic (Go specifics when working with maps).
-		if _, found := t.subscribers[request.TrackID]; !found {
-			t.subscribers[request.TrackID] = make(Subscriptions)
-		}
-
-		// Sanity check.
-		subscribers := t.subscribers[request.TrackID]
-		if _, ok := subscribers[participantID]; ok {
-			participant.Logger.Errorf("Bug: already subsribed to %s!", request.TrackID)
-		}
-
-		subscribers[participantID] = sub
-		participant.Logger.Infof("Subscribed to %s (%s)", request.TrackID, request.Simulcast)
+	case webrtc.RTPCodecTypeAudio:
+		sub, err = subscription.NewAudioSubscription(published.OutputTrack, participant.Peer)
 	}
-}
 
-// Returns a subscription that corresponds to the `participantID` subscriber for the `trackID`. If no such participant
-// is subscribed to a track or no such track exists, `nil` would be returned.
-func (t *Tracker) GetSubscription(trackID TrackID, participantID ID) subscription.Subscription {
-	if subscribers, found := t.subscribers[trackID]; found {
-		return subscribers[participantID]
+	// If there was an error, let's return it.
+	if err != nil {
+		return err
 	}
+
+	// Add the subscription to the list of subscriptions.
+	published.Subscriptions[participantID] = sub
 
 	return nil
 }
 
-// Unsubscribes a given `participantID` from the given tracks.
-func (t *Tracker) Unsubscribe(participantID ID, tracks []TrackID) {
-	for _, trackID := range tracks {
-		if subscribers, ok := t.subscribers[trackID]; ok {
-			if subscription := subscribers[participantID]; subscription != nil {
-				subscription.Unsubscribe()
-				delete(subscribers, participantID)
-			}
+// Unsubscribes a given `participantID` from the track.
+func (t *Tracker) Unsubscribe(participantID ID, trackID TrackID) {
+	if published := t.publishedTracks[trackID]; published != nil {
+		if sub := published.Subscriptions[participantID]; sub != nil {
+			sub.Unsubscribe()
+			delete(published.Subscriptions, participantID)
 		}
 	}
 }
 
 // Processes an RTP packet received on a given track.
 func (t *Tracker) ProcessRTP(info webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer, packet *rtp.Packet) {
-	for _, subscription := range t.subscribers[info.TrackID] {
-		if subscription.Simulcast() == simulcast {
-			if err := subscription.WriteRTP(*packet); err != nil {
-				logrus.Errorf("Dropping an RTP packet on %s (%s): %s", info.TrackID, simulcast, err)
+	if published := t.publishedTracks[info.TrackID]; published != nil {
+		for _, sub := range published.Subscriptions {
+			if sub.Simulcast() == simulcast {
+				if err := sub.WriteRTP(*packet); err != nil {
+					logrus.Errorf("Dropping an RTP packet on %s (%s): %s", info.TrackID, simulcast, err)
+				}
 			}
 		}
 	}

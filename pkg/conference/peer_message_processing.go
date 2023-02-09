@@ -153,53 +153,24 @@ func (c *Conference) processTrackSubscriptionMessage(
 ) {
 	p.Logger.Debug("Received track subscription request over DC")
 
-	// Extract IDs of the tracks we wish to unsubscribe from.
-	toUnsubscribeTrackIDs := make([]string, 0, len(msg.Unsubscribe))
+	// Let's first handle the unsubscribe commands.
 	for _, track := range msg.Unsubscribe {
-		toUnsubscribeTrackIDs = append(toUnsubscribeTrackIDs, track.TrackID)
+		p.Logger.Debugf("Unsubscribing from track %s", track.TrackID)
+		c.tracker.Unsubscribe(p.ID, track.TrackID)
 	}
 
-	// Extract IDs and desired resolution of tracks we want to subscribe to.
-	toSubscribeTrackIDs := make([]string, 0, len(msg.Subscribe))
-	toSubscribeRequirements := make(map[string]participant.TrackMetadata)
+	// Now let's handle the subscribe commands.
 	for _, track := range msg.Subscribe {
-		toSubscribeTrackIDs = append(toSubscribeTrackIDs, track.TrackID)
-		toSubscribeRequirements[track.TrackID] = participant.TrackMetadata{track.Width, track.Height}
-	}
+		p.Logger.Debugf("Subscribing to track %s", track.TrackID)
 
-	// Calculate the list of tracks we need to subscribe and unsubscribe from based on the requirements.
-	subscribeTo := []participant.SubscribeRequest{}
-
-	// Iterate over all published tracks that correspond to the track IDs we want to subscribe to.
-	for id, track := range c.findPublishedTracks(toSubscribeTrackIDs) {
-		// Check if we have a subscription for this track already.
-		subscription := c.tracker.GetSubscription(id, p.ID)
-
-		// Calculate the desired simulcast layer if any.
-		requirements := toSubscribeRequirements[id]
-		desiredLayer := track.GetOptimalLayer(requirements.MaxWidth, requirements.MaxHeight)
-
-		// If we're not subscribed to the track, let's subscribe to it respecting
-		// the desired track parameters that the user specified in a request.
-		if subscription == nil {
-			subscribeTo = append(subscribeTo, participant.SubscribeRequest{track.Info, desiredLayer})
+		requirements := participant.TrackMetadata{track.Width, track.Height}
+		if err := c.tracker.Subscribe(p.ID, track.TrackID, requirements); err != nil {
+			p.Logger.Errorf("Failed to subscribe to track %s: %v", track.TrackID, err)
 			continue
 		}
 
-		// If we're already subscribed to a given track ID, then we can ignore the request, unless
-		// we're subscribed to a different simulcast layer of the track, in which case we know that
-		// the user wants to switch to a different simulcast layer: then we check if the given simulcast
-		// layer is available at all and only if it's available, we switch, otherwise we ignore the request.
-		if subscription.Simulcast() != desiredLayer {
-			subscription.SwitchLayer(desiredLayer)
-			continue
-		}
-
-		p.Logger.Debugf("Ignoring track subscription request for %s: already subscribed", id)
+		p.Logger.Debugf("Subscribed to track %s", track.TrackID)
 	}
-
-	c.tracker.Unsubscribe(p.ID, toUnsubscribeTrackIDs)
-	c.tracker.Subscribe(p.ID, subscribeTo)
 }
 
 func (c *Conference) processNegotiateMessage(p *participant.Participant, msg event.FocusCallNegotiateEventContent) {

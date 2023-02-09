@@ -3,7 +3,7 @@ package rewriter_test
 import (
 	"testing"
 
-	"github.com/matrix-org/waterfall/pkg/peer/subscription/rewriter"
+	"github.com/matrix-org/waterfall/pkg/conference/subscription/rewriter"
 	"github.com/pion/rtp"
 )
 
