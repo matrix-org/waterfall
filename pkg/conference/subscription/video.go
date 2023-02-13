@@ -16,7 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type RequestKeyFrameFn = func(track webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error
+type RequestKeyFrameFn = func(simulcast webrtc_ext.SimulcastLayer) error
 
 type VideoSubscription struct {
 	rtpSender *webrtc.RTPSender
@@ -71,12 +71,14 @@ func NewVideoSubscription(
 
 	// Configure the worker for the subscription.
 	workerConfig := worker.Config[rtp.Packet]{
-		ChannelSize: 32,
-		Timeout:     3 * time.Second,
+		ChannelSize: 16,              // We really don't need a large buffer here, just to account for spikes.
+		Timeout:     3 * time.Second, // When do we assume the subscription is stalled.
 		OnTimeout: func() {
 			layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
+			// TODO: At this point we probably need to send some message back
+			// to the conference and switch the quality of remove the
+			// subscription. This must not happen under normal circumstances.
 			logger.Warnf("No RTP on subscription %s (%s)", subscription.info.TrackID, layer)
-			subscription.requestKeyFrame()
 		},
 		OnTask: workerState.handlePacket,
 	}
@@ -107,7 +109,7 @@ func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
 func (s *VideoSubscription) SwitchLayer(simulcast webrtc_ext.SimulcastLayer) {
 	s.logger.Infof("Switching layer on %s to %s", s.info.TrackID, simulcast)
 	s.currentLayer.Store(int32(simulcast))
-	s.requestKeyFrame()
+	s.requestKeyFrameFn(simulcast)
 }
 
 func (s *VideoSubscription) TrackInfo() webrtc_ext.TrackInfo {
@@ -143,10 +145,7 @@ func (s *VideoSubscription) readRTCP() {
 }
 
 func (s *VideoSubscription) requestKeyFrame() {
-	layer := webrtc_ext.SimulcastLayer(s.currentLayer.Load())
-	if err := s.requestKeyFrameFn(s.info, layer); err != nil {
-		s.logger.Errorf("Failed to request key frame: %s", err)
-	}
+	s.requestKeyFrameFn(webrtc_ext.SimulcastLayer(s.currentLayer.Load()))
 }
 
 // Internal state of a worker that runs in its own goroutine.

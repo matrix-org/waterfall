@@ -3,6 +3,7 @@ package conference
 import (
 	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
+	published "github.com/matrix-org/waterfall/pkg/conference/track"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/sirupsen/logrus"
@@ -11,19 +12,19 @@ import (
 
 // A single conference. Call and conference mean the same in context of Matrix.
 type Conference struct {
-	id             string
-	config         Config
-	logger         *logrus.Entry
-	conferenceDone chan<- struct{}
+	id     string
+	config Config
+	logger *logrus.Entry
 
 	connectionFactory *webrtc_ext.PeerConnectionFactory
 	matrixWorker      *matrixWorker
 
-	tracker         participant.Tracker
+	tracker         *participant.Tracker
 	streamsMetadata event.CallSDPStreamMetadata
 
-	peerMessages chan channel.Message[participant.ID, peer.MessageContent]
-	matrixEvents <-chan MatrixMessage
+	peerMessages          chan channel.Message[participant.ID, peer.MessageContent]
+	matrixEvents          <-chan MatrixMessage
+	publishedTrackStopped <-chan participant.TrackStoppedMessage
 }
 
 func (c *Conference) getParticipant(id participant.ID) *participant.Participant {
@@ -114,11 +115,11 @@ func (c *Conference) updateMetadata(metadata event.CallSDPStreamMetadata) {
 
 func streamIntoTrackMetadata(
 	streamMetadata event.CallSDPStreamMetadata,
-) map[participant.TrackID]participant.TrackMetadata {
-	tracksMetadata := make(map[participant.TrackID]participant.TrackMetadata)
+) map[published.TrackID]published.TrackMetadata {
+	tracksMetadata := make(map[published.TrackID]published.TrackMetadata)
 	for _, metadata := range streamMetadata {
 		for id, track := range metadata.Tracks {
-			tracksMetadata[id] = participant.TrackMetadata{
+			tracksMetadata[id] = published.TrackMetadata{
 				MaxWidth:  track.Width,
 				MaxHeight: track.Height,
 			}

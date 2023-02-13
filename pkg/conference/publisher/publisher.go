@@ -2,10 +2,10 @@ package publisher
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/pion/rtp"
+	"github.com/sirupsen/logrus"
 )
 
 var ErrSubscriptionExists = errors.New("subscription already exists")
@@ -22,6 +22,8 @@ type Track interface {
 
 // An abstract publisher that reads the packets from the track and forwards them to all subscribers.
 type Publisher struct {
+	logger *logrus.Entry
+
 	mu            sync.Mutex
 	track         Track
 	subscriptions map[Subscription]struct{}
@@ -30,11 +32,13 @@ type Publisher struct {
 func NewPublisher(
 	track Track,
 	stop <-chan struct{},
+	log *logrus.Entry,
 ) (*Publisher, <-chan struct{}) {
 	// Create a done channel, so that we can signal the caller when we're done.
 	done := make(chan struct{})
 
 	publisher := &Publisher{
+		logger:        log,
 		track:         track,
 		subscriptions: make(map[Subscription]struct{}),
 	}
@@ -50,7 +54,7 @@ func NewPublisher(
 				return
 			default:
 				if err := publisher.forwardPacket(); err != nil {
-					fmt.Println("failed to write to subscribers: ", err)
+					log.Errorf("failed to read the frame from the track %s", err)
 					return
 				}
 			}
@@ -104,8 +108,7 @@ func (p *Publisher) forwardPacket() error {
 	// Write the packet to all subscribers.
 	for subscription := range p.subscriptions {
 		if err := subscription.WriteRTP(*packet); err != nil {
-			fmt.Println("failed to write to subscriber: ", err)
-			delete(p.subscriptions, subscription)
+			p.logger.Warnf("packet dropped on the subscription: %s", err)
 		}
 	}
 

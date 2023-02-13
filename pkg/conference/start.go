@@ -38,16 +38,20 @@ func StartConference(
 	userID id.UserID,
 	inviteEvent *event.CallInviteEventContent,
 ) (<-chan struct{}, error) {
+	signalDone := make(chan struct{})
+
+	tracker, publishedTrackStopped := participant.NewParticipantTracker(signalDone)
 	conference := &Conference{
-		id:                confID,
-		config:            config,
-		connectionFactory: peerConnectionFactory,
-		logger:            logrus.WithFields(logrus.Fields{"conf_id": confID}),
-		matrixWorker:      newMatrixWorker(signaling),
-		tracker:           *participant.NewParticipantTracker(),
-		streamsMetadata:   make(event.CallSDPStreamMetadata),
-		peerMessages:      make(chan channel.Message[participant.ID, peer.MessageContent], 100),
-		matrixEvents:      matrixEvents,
+		id:                    confID,
+		config:                config,
+		connectionFactory:     peerConnectionFactory,
+		logger:                logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		matrixWorker:          newMatrixWorker(signaling),
+		tracker:               tracker,
+		streamsMetadata:       make(event.CallSDPStreamMetadata),
+		peerMessages:          make(chan channel.Message[participant.ID, peer.MessageContent], 100),
+		matrixEvents:          matrixEvents,
+		publishedTrackStopped: publishedTrackStopped,
 	}
 
 	participantID := participant.ID{UserID: userID, DeviceID: inviteEvent.DeviceID, CallID: inviteEvent.CallID}
@@ -56,7 +60,6 @@ func StartConference(
 	}
 
 	// Start conference "main loop".
-	signalDone := make(chan struct{})
 	go conference.processMessages(signalDone)
 
 	return signalDone, nil
