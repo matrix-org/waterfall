@@ -21,7 +21,6 @@ var (
 	ErrDataChannelNotAvailable    = errors.New("data channel is not available")
 	ErrDataChannelNotReady        = errors.New("data channel is not ready")
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
-	ErrTrackNotFound              = errors.New("track not found")
 )
 
 // A wrapped representation of the peer connection (single peer in the call).
@@ -84,14 +83,7 @@ func (p *Peer[ID]) Terminate() {
 }
 
 // Request a key frame from the peer connection.
-func (p *Peer[ID]) RequestKeyFrame(info webrtc_ext.TrackInfo, simulcast webrtc_ext.SimulcastLayer) error {
-	// Find the right track.
-	track := p.state.GetRemoteTrack(info.TrackID, simulcast)
-	if track == nil {
-		return ErrTrackNotFound
-	}
-
-	p.logger.Debugf("Keyframe request: %s (%s)", info.TrackID, simulcast)
+func (p *Peer[ID]) RequestKeyFrame(track *webrtc.TrackRemote) error {
 	rtcps := []rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}}
 	return p.peerConnection.WriteRTCP(rtcps)
 }

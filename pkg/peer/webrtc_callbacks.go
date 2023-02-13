@@ -1,7 +1,6 @@
 package peer
 
 import (
-	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -9,15 +8,8 @@ import (
 // A callback that is called once we receive first RTP packets from a track, i.e.
 // we call this function each time a new track is received.
 func (p *Peer[ID]) onRtpTrackReceived(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-	// Construct a new track info assuming that there is no simulcast.
-	trackInfo := webrtc_ext.TrackInfoFromTrack(remoteTrack)
-
-	switch trackInfo.Kind {
-	case webrtc.RTPCodecTypeVideo:
-		p.handleNewVideoTrack(trackInfo, remoteTrack, receiver)
-	case webrtc.RTPCodecTypeAudio:
-		p.handleNewAudioTrack(trackInfo, remoteTrack, receiver)
-	}
+	p.logger.WithField("track", remoteTrack).Debug("RTP track received")
+	p.sink.Send(NewTrackPublished{remoteTrack})
 }
 
 // A callback that is called once we receive an ICE candidate for this peer connection.
