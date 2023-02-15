@@ -18,7 +18,7 @@ type audioTrack struct {
 }
 
 type videoTrack struct {
-	// Publisher's of each video layer.
+	// Publishers of each video layer.
 	publishers map[webrtc_ext.SimulcastLayer]*publisher.Publisher
 	// Key frame request handler.
 	keyframeHandler *worker.Worker[webrtc_ext.SimulcastLayer]
