@@ -3,13 +3,13 @@ package participant
 import (
 	"fmt"
 
-	pub "github.com/matrix-org/waterfall/pkg/conference/track"
+	"github.com/matrix-org/waterfall/pkg/conference/track"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/webrtc/v3"
 )
 
 type TrackStoppedMessage struct {
-	TrackID pub.TrackID
+	TrackID track.TrackID
 	OwnerID ID
 }
 
@@ -17,7 +17,7 @@ type TrackStoppedMessage struct {
 // These are grouped together as the field in this structure must be kept synchronized.
 type Tracker struct {
 	participants    map[ID]*Participant
-	publishedTracks map[pub.TrackID]*pub.PublishedTrack[ID]
+	publishedTracks map[track.TrackID]*track.PublishedTrack[ID]
 
 	publishedTrackStopped chan<- TrackStoppedMessage
 	conferenceEnded       <-chan struct{}
@@ -27,7 +27,7 @@ func NewParticipantTracker(conferenceEnded <-chan struct{}) (*Tracker, <-chan Tr
 	publishedTrackStopped := make(chan TrackStoppedMessage)
 	return &Tracker{
 		participants:          make(map[ID]*Participant),
-		publishedTracks:       make(map[pub.TrackID]*pub.PublishedTrack[ID]),
+		publishedTracks:       make(map[track.TrackID]*track.PublishedTrack[ID]),
 		publishedTrackStopped: publishedTrackStopped,
 		conferenceEnded:       conferenceEnded,
 	}, publishedTrackStopped
@@ -90,8 +90,8 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 // that has been published and that we must take into account from now on.
 func (t *Tracker) AddPublishedTrack(
 	participantID ID,
-	track *webrtc.TrackRemote,
-	metadata pub.TrackMetadata,
+	remoteTrack *webrtc.TrackRemote,
+	metadata track.TrackMetadata,
 ) error {
 	participant := t.participants[participantID]
 	if participant == nil {
@@ -99,18 +99,18 @@ func (t *Tracker) AddPublishedTrack(
 	}
 
 	// If this is a new track, let's add it to the list of published and inform participants.
-	if published, found := t.publishedTracks[track.ID()]; found {
-		if err := published.AddPublisher(track); err != nil {
+	if published, found := t.publishedTracks[remoteTrack.ID()]; found {
+		if err := published.AddPublisher(remoteTrack); err != nil {
 			return err
 		}
 
 		return nil
 	}
 
-	published, err := pub.NewPublishedTrack(
+	published, err := track.NewPublishedTrack(
 		participantID,
 		participant.Peer.RequestKeyFrame,
-		track,
+		remoteTrack,
 		metadata,
 		participant.Logger,
 	)
@@ -125,12 +125,12 @@ func (t *Tracker) AddPublishedTrack(
 
 		// Inform the conference that the track is gone. Or stop the go-routine if the conference stopped.
 		select {
-		case t.publishedTrackStopped <- TrackStoppedMessage{track.ID(), participantID}:
+		case t.publishedTrackStopped <- TrackStoppedMessage{remoteTrack.ID(), participantID}:
 		case <-t.conferenceEnded:
 		}
 	}()
 
-	t.publishedTracks[track.ID()] = published
+	t.publishedTracks[remoteTrack.ID()] = published
 	return nil
 }
 
@@ -142,7 +142,7 @@ func (t *Tracker) ForEachPublishedTrackInfo(fn func(ID, webrtc_ext.TrackInfo)) {
 }
 
 // Updates metadata associated with a given track.
-func (t *Tracker) UpdatePublishedTrackMetadata(id pub.TrackID, metadata pub.TrackMetadata) {
+func (t *Tracker) UpdatePublishedTrackMetadata(id track.TrackID, metadata track.TrackMetadata) {
 	if track, found := t.publishedTracks[id]; found {
 		track.SetMetadata(metadata)
 		t.publishedTracks[id] = track
@@ -150,7 +150,7 @@ func (t *Tracker) UpdatePublishedTrackMetadata(id pub.TrackID, metadata pub.Trac
 }
 
 // Informs the tracker that one of the previously published tracks is gone.
-func (t *Tracker) RemovePublishedTrack(id pub.TrackID) {
+func (t *Tracker) RemovePublishedTrack(id track.TrackID) {
 	if publishedTrack, found := t.publishedTracks[id]; found {
 		publishedTrack.Stop()
 		delete(t.publishedTracks, id)
@@ -158,7 +158,7 @@ func (t *Tracker) RemovePublishedTrack(id pub.TrackID) {
 }
 
 // Subscribes a given participant to the track.
-func (t *Tracker) Subscribe(participantID ID, trackID pub.TrackID, requirements pub.TrackMetadata) error {
+func (t *Tracker) Subscribe(participantID ID, trackID track.TrackID, requirements track.TrackMetadata) error {
 	// Check if the participant exists that wants to subscribe exists.
 	participant := t.participants[participantID]
 	if participant == nil {
@@ -180,7 +180,7 @@ func (t *Tracker) Subscribe(participantID ID, trackID pub.TrackID, requirements 
 }
 
 // Unsubscribes a given `participantID` from the track.
-func (t *Tracker) Unsubscribe(participantID ID, trackID pub.TrackID) {
+func (t *Tracker) Unsubscribe(participantID ID, trackID track.TrackID) {
 	if published := t.publishedTracks[trackID]; published != nil {
 		published.Unsubscribe(participantID)
 	}
