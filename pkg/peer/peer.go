@@ -2,11 +2,11 @@ package peer
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/peer/state"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
+	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -18,7 +18,6 @@ var (
 	ErrCantCreateAnswer           = errors.New("can't create answer")
 	ErrCantSetLocalDescription    = errors.New("can't set local description")
 	ErrCantCreateLocalDescription = errors.New("can't create local description")
-	ErrDataChannelNotAvailable    = errors.New("data channel is not available")
 	ErrDataChannelNotReady        = errors.New("data channel is not ready")
 	ErrCantSubscribeToTrack       = errors.New("can't subscribe to track")
 )
@@ -28,10 +27,11 @@ var (
 // and informs the outside world about the things happening inside the peer by posting
 // the messages to the channel.
 type Peer[ID comparable] struct {
-	logger         *logrus.Entry
-	peerConnection *webrtc.PeerConnection
-	sink           *channel.SinkWithSender[ID, MessageContent]
-	state          *state.PeerState
+	logger            *logrus.Entry
+	peerConnection    *webrtc.PeerConnection
+	sink              *channel.SinkWithSender[ID, MessageContent]
+	state             *state.PeerState
+	dataChannelWorker *worker.Worker[string]
 }
 
 // Instantiates a new peer with a given SDP offer and returns a peer and the SDP answer if everything is ok.
@@ -47,11 +47,18 @@ func NewPeer[ID comparable](
 		return nil, nil, ErrCantCreatePeerConnection
 	}
 
+	// The thread-safe peer state.
+	peerState := state.NewPeerState()
+
+	// The worker that is responsible for writing data channel messages.
+	dataChannelWorker := newDataChannelWorker(peerState, logger)
+
 	peer := &Peer[ID]{
-		logger:         logger,
-		peerConnection: peerConnection,
-		sink:           sink,
-		state:          state.NewPeerState(),
+		logger:            logger,
+		peerConnection:    peerConnection,
+		sink:              sink,
+		state:             peerState,
+		dataChannelWorker: dataChannelWorker,
 	}
 
 	peerConnection.OnTrack(peer.onRtpTrackReceived)
@@ -80,6 +87,9 @@ func (p *Peer[ID]) Terminate() {
 	// We may want to remove this logic if/once we want to receive messages (confirmation of close or whatever)
 	// from the peer that is considered closed.
 	p.sink.Seal()
+
+	// Stop the worker for the data channel messages.
+	p.dataChannelWorker.Stop()
 }
 
 // Request a key frame from the peer connection.
@@ -99,21 +109,18 @@ func (p *Peer[ID]) RemoveTrack(sender *webrtc.RTPSender) error {
 }
 
 // Tries to send the given message to the remote counterpart of our peer.
+// The error returned from this function means that the message has not been sent.
+// Note that if no error is returned, it doesn't mean that the message has been
+// successfully sent. It only means that the message has been "scheduled" (enqueued).
 func (p *Peer[ID]) SendOverDataChannel(json string) error {
-	dataChannel := p.state.GetDataChannel()
-	if dataChannel == nil {
-		return ErrDataChannelNotAvailable
+	// Preliminary quick check, so that we can fail early if the channel is closed.
+	if ch := p.state.GetDataChannel(); ch != nil && ch.ReadyState() == webrtc.DataChannelStateOpen {
+		// Note that by this moment the channel could have closed, so the fact that
+		// we successfully enqueue the message doesn't mean that it will be sent or delivered.
+		return p.dataChannelWorker.Send(json)
 	}
 
-	if dataChannel.ReadyState() != webrtc.DataChannelStateOpen {
-		return ErrDataChannelNotReady
-	}
-
-	if err := dataChannel.SendText(json); err != nil {
-		return fmt.Errorf("failed to send data over data channel: %w", err)
-	}
-
-	return nil
+	return ErrDataChannelNotReady
 }
 
 // Processes the remote ICE candidates.
