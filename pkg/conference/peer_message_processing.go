@@ -167,7 +167,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 			continue
 		}
 
-		p.Logger.Debugf("Subscribed to track %s", track.TrackID)
+		p.Logger.Infof("Subscribed to track %s", track.TrackID)
 	}
 }
 
