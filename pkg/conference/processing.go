@@ -21,6 +21,8 @@ func (c *Conference) processMessages(signalDone chan struct{}) {
 			c.processPeerMessage(msg)
 		case msg := <-c.matrixEvents:
 			c.processMatrixMessage(msg)
+		case msg := <-c.publishedTrackStopped:
+			c.processPublishedTrackFailedMessage(msg.OwnerID, msg.TrackID)
 		}
 
 		// If there are no more participants, stop the conference.
@@ -42,10 +44,6 @@ func (c *Conference) processPeerMessage(message channel.Message[participant.ID, 
 		c.processLeftTheCallMessage(message.Sender, msg)
 	case peer.NewTrackPublished:
 		c.processNewTrackPublishedMessage(message.Sender, msg)
-	case peer.RTPPacketReceived:
-		c.processRTPPacketReceivedMessage(msg)
-	case peer.PublishedTrackFailed:
-		c.processPublishedTrackFailedMessage(message.Sender, msg)
 	case peer.NewICECandidate:
 		c.processNewICECandidateMessage(message.Sender, msg)
 	case peer.ICEGatheringComplete:

@@ -2,6 +2,7 @@ package conference
 
 import (
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
+	published "github.com/matrix-org/waterfall/pkg/conference/track"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"maunium.net/go/mautrix/event"
@@ -23,23 +24,20 @@ func (c *Conference) processLeftTheCallMessage(sender participant.ID, msg peer.L
 }
 
 func (c *Conference) processNewTrackPublishedMessage(sender participant.ID, msg peer.NewTrackPublished) {
-	c.newLogger(sender).Infof("Published new track: %s (%v)", msg.TrackID, msg.SimulcastLayer)
+	id := msg.RemoteTrack.ID()
+	c.newLogger(sender).Infof("Published new track: %s (%v)", id, msg.RemoteTrack.RID())
 
 	// Find metadata for a given track.
-	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[msg.TrackID]
+	trackMetadata := streamIntoTrackMetadata(c.streamsMetadata)[id]
 
 	// If a new track has been published, we inform everyone about new track available.
-	c.tracker.AddPublishedTrack(sender, msg.TrackInfo, msg.SimulcastLayer, trackMetadata, msg.OutputTrack)
+	c.tracker.AddPublishedTrack(sender, msg.RemoteTrack, trackMetadata)
 	c.resendMetadataToAllExcept(sender)
 }
 
-func (c *Conference) processRTPPacketReceivedMessage(msg peer.RTPPacketReceived) {
-	c.tracker.ProcessRTP(msg.TrackInfo, msg.SimulcastLayer, msg.Packet)
-}
-
-func (c *Conference) processPublishedTrackFailedMessage(sender participant.ID, msg peer.PublishedTrackFailed) {
-	c.newLogger(sender).Infof("Failed published track: %s", msg.TrackID)
-	c.tracker.RemovePublishedTrack(msg.TrackID)
+func (c *Conference) processPublishedTrackFailedMessage(sender participant.ID, trackID published.TrackID) {
+	c.newLogger(sender).Infof("Failed published track: %s", trackID)
+	c.tracker.RemovePublishedTrack(trackID)
 	c.resendMetadataToAllExcept(sender)
 }
 
@@ -163,13 +161,13 @@ func (c *Conference) processTrackSubscriptionMessage(
 	for _, track := range msg.Subscribe {
 		p.Logger.Debugf("Subscribing to track %s", track.TrackID)
 
-		requirements := participant.TrackMetadata{track.Width, track.Height}
+		requirements := published.TrackMetadata{track.Width, track.Height}
 		if err := c.tracker.Subscribe(p.ID, track.TrackID, requirements); err != nil {
 			p.Logger.Errorf("Failed to subscribe to track %s: %v", track.TrackID, err)
 			continue
 		}
 
-		p.Logger.Debugf("Subscribed to track %s", track.TrackID)
+		p.Logger.Infof("Subscribed to track %s", track.TrackID)
 	}
 }
 

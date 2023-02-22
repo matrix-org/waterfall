@@ -1,11 +1,9 @@
-package participant_test
+package track //nolint:testpackage
 
 import (
 	"testing"
 
-	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
-	"github.com/pion/webrtc/v3"
 )
 
 func TestGetOptimalLayer(t *testing.T) {
@@ -43,33 +41,29 @@ func TestGetOptimalLayer(t *testing.T) {
 		{layers(high), 1280, 720, 200, 200, high},
 	}
 
-	mock := participant.PublishedTrack{
-		Info: webrtc_ext.TrackInfo{
-			Kind: webrtc.RTPCodecTypeVideo,
-		},
-	}
-
 	for _, c := range cases {
-		mock.Layers = c.availableLayers
-		mock.Metadata.MaxWidth = c.fullWidth
-		mock.Metadata.MaxHeight = c.fullHeight
+		metadata := TrackMetadata{
+			MaxWidth:  c.fullWidth,
+			MaxHeight: c.fullHeight,
+		}
 
-		optimalLayer := mock.GetOptimalLayer(c.desiredWidth, c.desiredHeight)
+		layers := make(map[webrtc_ext.SimulcastLayer]struct{}, len(c.availableLayers))
+		for _, layer := range c.availableLayers {
+			layers[layer] = struct{}{}
+		}
+
+		optimalLayer := getOptimalLayer(layers, metadata, c.desiredWidth, c.desiredHeight)
 		if optimalLayer != c.expectedOptimalLayer {
 			t.Errorf("Expected optimal layer %s, got %s", c.expectedOptimalLayer, optimalLayer)
 		}
 	}
 }
 
-func TestGetOptimalLayerAudio(t *testing.T) {
-	mock := participant.PublishedTrack{
-		Info: webrtc_ext.TrackInfo{
-			Kind: webrtc.RTPCodecTypeAudio,
-		},
-	}
+func TestGetOptimalLayerNone(t *testing.T) {
+	layers := make(map[webrtc_ext.SimulcastLayer]struct{})
+	metadata := TrackMetadata{}
 
-	mock.Layers = []webrtc_ext.SimulcastLayer{webrtc_ext.SimulcastLayerLow}
-	if mock.GetOptimalLayer(100, 100) != webrtc_ext.SimulcastLayerNone {
+	if getOptimalLayer(layers, metadata, 100, 100) != webrtc_ext.SimulcastLayerNone {
 		t.Fatal("Expected no simulcast layer for audio")
 	}
 }

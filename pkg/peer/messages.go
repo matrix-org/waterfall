@@ -1,8 +1,6 @@
 package peer
 
 import (
-	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
-	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"maunium.net/go/mautrix/event"
 )
@@ -18,25 +16,8 @@ type LeftTheCall struct {
 }
 
 type NewTrackPublished struct {
-	// Information about the track (ID etc).
-	webrtc_ext.TrackInfo
-	// SimulcastLayer configuration (can be `None` for non-simulcast tracks and for audio tracks).
-	SimulcastLayer webrtc_ext.SimulcastLayer
-	// Output track (if any) that could be used to send data to the peer. Will be `nil` if such
-	// track does not exist, in which case the caller is expected to listen to `RtpPacketReceived`
-	// messages.
-	OutputTrack *webrtc.TrackLocalStaticRTP
-}
-
-type PublishedTrackFailed struct {
-	webrtc_ext.TrackInfo
-	SimulcastLayer webrtc_ext.SimulcastLayer
-}
-
-type RTPPacketReceived struct {
-	webrtc_ext.TrackInfo
-	SimulcastLayer webrtc_ext.SimulcastLayer
-	Packet         *rtp.Packet
+	// Remote track that has been published.
+	RemoteTrack *webrtc.TrackRemote
 }
 
 type NewICECandidate struct {
