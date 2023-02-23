@@ -71,14 +71,13 @@ func NewVideoSubscription(
 
 	// Configure the worker for the subscription.
 	workerConfig := worker.Config[rtp.Packet]{
-		ChannelSize: 16,              // We really don't need a large buffer here, just to account for spikes.
-		Timeout:     3 * time.Second, // When do we assume the subscription is stalled.
+		ChannelSize: 16,               // We really don't need a large buffer here, just to account for spikes.
+		Timeout:     10 * time.Second, // When do we assume the subscription is stalled.
 		OnTimeout: func() {
+			// Not receiving RTP packets for 10 seconds can happen either if the video is muted.
+			// Or if something is wrong with the subscription (i.e. this quality is not being sent anymore).
 			layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
-			// TODO: At this point we probably need to send some message back
-			// to the conference and switch the quality of remove the
-			// subscription. This must not happen under normal circumstances.
-			logger.Warnf("No RTP on subscription %s (%s)", subscription.info.TrackID, layer)
+			logger.Infof("No RTP on subscription to %s (%s) for 10 seconds", subscription.info.TrackID, layer)
 		},
 		OnTask: workerState.handlePacket,
 	}
