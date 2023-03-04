@@ -1,8 +1,6 @@
 package participant
 
 import (
-	"fmt"
-
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
@@ -39,12 +37,13 @@ func (p *Participant) AsMatrixRecipient() signaling.MatrixRecipient {
 func (p *Participant) SendDataChannelMessage(toSend event.Event) error {
 	jsonToSend, err := toSend.MarshalJSON()
 	if err != nil {
-		return fmt.Errorf("Failed to marshal data channel message: %w", err)
+		p.Logger.Errorf("Failed to marshal data channel message: %w", err)
+		return err
 	}
 
 	if err := p.Peer.SendOverDataChannel(string(jsonToSend)); err != nil {
-		// TODO: We must buffer the message in this case and re-send it once the data channel is recovered!
-		return fmt.Errorf("Failed to send data channel message: %w", err)
+		p.Logger.Errorf("Failed to send data channel message: %w", err)
+		return err
 	}
 
 	return nil

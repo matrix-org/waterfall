@@ -78,7 +78,9 @@ func (c *Conference) processRenegotiationRequiredMessage(sender participant.ID, 
 		return
 	}
 
-	p.Logger.Info("Renegotiation started, sending SDP offer")
+	streamsMetadata := c.getAvailableStreamsFor(p.ID)
+	p.Logger.Infof("Renegotiating, sending SDP offer (%d streams)", len(streamsMetadata))
+
 	p.SendDataChannelMessage(event.Event{
 		Type: event.FocusCallNegotiate,
 		Content: event.Content{
@@ -87,7 +89,7 @@ func (c *Conference) processRenegotiationRequiredMessage(sender participant.ID, 
 					Type: event.CallDataType(msg.Offer.Type.String()),
 					SDP:  msg.Offer.SDP,
 				},
-				SDPStreamMetadata: c.getAvailableStreamsFor(p.ID),
+				SDPStreamMetadata: streamsMetadata,
 			},
 		},
 	})
