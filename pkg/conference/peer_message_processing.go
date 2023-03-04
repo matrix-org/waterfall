@@ -153,21 +153,16 @@ func (c *Conference) processTrackSubscriptionMessage(
 
 	// Let's first handle the unsubscribe commands.
 	for _, track := range msg.Unsubscribe {
-		p.Logger.Debugf("Unsubscribing from track %s", track.TrackID)
 		c.tracker.Unsubscribe(p.ID, track.TrackID)
 	}
 
 	// Now let's handle the subscribe commands.
 	for _, track := range msg.Subscribe {
-		p.Logger.Debugf("Subscribing to track %s", track.TrackID)
-
 		requirements := published.TrackMetadata{track.Width, track.Height}
 		if err := c.tracker.Subscribe(p.ID, track.TrackID, requirements); err != nil {
 			p.Logger.Errorf("Failed to subscribe to track %s: %v", track.TrackID, err)
 			continue
 		}
-
-		p.Logger.Infof("Subscribed to track %s", track.TrackID)
 	}
 }
 

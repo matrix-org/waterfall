@@ -51,7 +51,7 @@ func NewPublishedTrack[SubscriberID comparable](
 	logger *logrus.Entry,
 ) (*PublishedTrack[SubscriberID], error) {
 	published := &PublishedTrack[SubscriberID]{
-		logger:           logger,
+		logger:           logger.WithField("track", track.ID()),
 		info:             webrtc_ext.TrackInfoFromTrack(track),
 		owner:            trackOwner[SubscriberID]{ownerID, requestKeyFrame},
 		subscriptions:    make(map[SubscriberID]subscription.Subscription),
@@ -223,6 +223,8 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	if p.info.Kind == webrtc.RTPCodecTypeVideo {
 		p.video.publishers[layer].AddSubscription(sub)
 	}
+
+	p.logger.Infof("New subscriber %s", subscriberID)
 
 	return nil
 }
