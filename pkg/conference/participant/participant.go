@@ -37,12 +37,12 @@ func (p *Participant) AsMatrixRecipient() signaling.MatrixRecipient {
 func (p *Participant) SendDataChannelMessage(toSend event.Event) error {
 	jsonToSend, err := toSend.MarshalJSON()
 	if err != nil {
-		p.Logger.Errorf("Failed to marshal data channel message: %w", err)
+		p.Logger.Errorf("Failed to marshal data channel message: %s", err)
 		return err
 	}
 
 	if err := p.Peer.SendOverDataChannel(string(jsonToSend)); err != nil {
-		p.Logger.Errorf("Failed to send data channel message: %w", err)
+		p.Logger.Errorf("Failed to send data channel message: %s", err)
 		return err
 	}
 
