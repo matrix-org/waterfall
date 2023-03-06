@@ -54,7 +54,7 @@ func NewPublisher(
 				return
 			default:
 				if err := publisher.forwardPacket(); err != nil {
-					log.Errorf("failed to read the frame from the track %s", err)
+					log.Errorf("track ended: %s", err)
 					return
 				}
 			}

@@ -78,7 +78,9 @@ func (c *Conference) processRenegotiationRequiredMessage(sender participant.ID, 
 		return
 	}
 
-	p.Logger.Info("Renegotiation started, sending SDP offer")
+	streamsMetadata := c.getAvailableStreamsFor(p.ID)
+	p.Logger.Infof("Renegotiating, sending SDP offer (%d streams)", len(streamsMetadata))
+
 	p.SendDataChannelMessage(event.Event{
 		Type: event.FocusCallNegotiate,
 		Content: event.Content{
@@ -87,7 +89,7 @@ func (c *Conference) processRenegotiationRequiredMessage(sender participant.ID, 
 					Type: event.CallDataType(msg.Offer.Type.String()),
 					SDP:  msg.Offer.SDP,
 				},
-				SDPStreamMetadata: c.getAvailableStreamsFor(p.ID),
+				SDPStreamMetadata: streamsMetadata,
 			},
 		},
 	})
@@ -153,21 +155,16 @@ func (c *Conference) processTrackSubscriptionMessage(
 
 	// Let's first handle the unsubscribe commands.
 	for _, track := range msg.Unsubscribe {
-		p.Logger.Debugf("Unsubscribing from track %s", track.TrackID)
 		c.tracker.Unsubscribe(p.ID, track.TrackID)
 	}
 
 	// Now let's handle the subscribe commands.
 	for _, track := range msg.Subscribe {
-		p.Logger.Debugf("Subscribing to track %s", track.TrackID)
-
 		requirements := published.TrackMetadata{track.Width, track.Height}
 		if err := c.tracker.Subscribe(p.ID, track.TrackID, requirements); err != nil {
 			p.Logger.Errorf("Failed to subscribe to track %s: %v", track.TrackID, err)
 			continue
 		}
-
-		p.Logger.Infof("Subscribed to track %s", track.TrackID)
 	}
 }
 
