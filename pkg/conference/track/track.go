@@ -1,24 +1,36 @@
 package track
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/conference/publisher"
 	"github.com/matrix-org/waterfall/pkg/conference/subscription"
+	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
+
+type SubscriberIdentifier interface {
+	comparable
+	fmt.Stringer
+}
 
 type TrackID = string
 
 // Represents a track that a peer has published (has already started sending to the SFU).
-type PublishedTrack[SubscriberID comparable] struct {
+type PublishedTrack[SubscriberID SubscriberIdentifier] struct {
 	// Logger.
 	logger *logrus.Entry
+	// Telemetry context.
+	telemetryContext context.Context
 	// Info about the track.
 	info webrtc_ext.TrackInfo
 	// Owner of a published track.
@@ -43,16 +55,22 @@ type PublishedTrack[SubscriberID comparable] struct {
 	done chan struct{}
 }
 
-func NewPublishedTrack[SubscriberID comparable](
+func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 	ownerID SubscriberID,
 	requestKeyFrame func(track *webrtc.TrackRemote) error,
 	track *webrtc.TrackRemote,
 	metadata TrackMetadata,
 	logger *logrus.Entry,
+	parentTelemetryContext context.Context,
 ) (*PublishedTrack[SubscriberID], error) {
+	telemetryContext, telemetrySpan := telemetry.TRACER.Start(parentTelemetryContext, "PublishedTrack")
+	telemetrySpan.SetAttributes(attribute.String("track_id", track.ID()))
+	telemetrySpan.SetAttributes(attribute.String("type", track.Kind().String()))
+
 	published := &PublishedTrack[SubscriberID]{
 		logger:           logger.WithField("track", track.ID()),
 		info:             webrtc_ext.TrackInfoFromTrack(track),
+		telemetryContext: telemetryContext,
 		owner:            trackOwner[SubscriberID]{ownerID, requestKeyFrame},
 		subscriptions:    make(map[SubscriberID]subscription.Subscription),
 		audio:            &audioTrack{outputTrack: nil},
@@ -73,6 +91,9 @@ func NewPublishedTrack[SubscriberID comparable](
 			track.StreamID(),
 		)
 		if err != nil {
+			telemetrySpan.SetStatus(codes.Error, err.Error())
+			telemetrySpan.RecordError(err)
+			telemetrySpan.End()
 			return nil, err
 		}
 
@@ -98,7 +119,7 @@ func NewPublishedTrack[SubscriberID comparable](
 			},
 		}
 
-		worker := worker.StartWorker[webrtc_ext.SimulcastLayer](workerConfig)
+		worker := worker.StartWorker(workerConfig)
 		published.video.keyframeHandler = worker
 
 		// Start video publisher.
@@ -108,6 +129,7 @@ func NewPublishedTrack[SubscriberID comparable](
 	// Wait for all publishers to stop.
 	go func() {
 		defer close(published.done)
+		defer telemetrySpan.End()
 		published.activePublishers.Wait()
 	}()
 
@@ -180,12 +202,22 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 		layer = getOptimalLayer(layers, p.metadata, requirements.MaxWidth, requirements.MaxHeight)
 	}
 
+	telemetrySpan := trace.SpanFromContext(p.telemetryContext)
+	telemetryAttributes := trace.WithAttributes(
+		attribute.String("id", subscriberID.String()),
+		attribute.String("layer", layer.String()),
+	)
+
+	defer telemetrySpan.AddEvent("new subscriber", telemetryAttributes)
+
 	// If the subscription exists, let's see if we need to update it.
 	if sub := p.subscriptions[subscriberID]; sub != nil {
 		currentLayer := sub.Simulcast()
 
 		// If we do, let's switch the layer.
 		if currentLayer != layer {
+			defer telemetrySpan.AddEvent("switched layer", telemetryAttributes)
+
 			p.video.publishers[currentLayer].RemoveSubscription(sub)
 			sub.SwitchLayer(layer)
 			p.video.publishers[layer].AddSubscription(sub)
@@ -213,6 +245,8 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 
 	// If there was an error, let's return it.
 	if err != nil {
+		telemetrySpan.AddEvent("could not create subscription", telemetryAttributes)
+		telemetrySpan.RecordError(err)
 		return err
 	}
 
@@ -233,6 +267,12 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 func (p *PublishedTrack[SubscriberID]) Unsubscribe(subscriberID SubscriberID) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+
+	telemetrySpan := trace.SpanFromContext(p.telemetryContext)
+	defer telemetrySpan.AddEvent(
+		"unsubscribed",
+		trace.WithAttributes(attribute.String("id", subscriberID.String())),
+	)
 
 	if sub := p.subscriptions[subscriberID]; sub != nil {
 		sub.Unsubscribe()

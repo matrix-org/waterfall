@@ -4,16 +4,18 @@ import (
 	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
+	"go.opentelemetry.io/otel/trace"
 	"maunium.net/go/mautrix/event"
 )
 
 // Listen on messages from incoming channels and process them.
 // This is essentially the main loop of the conference.
 // If this function returns, the conference is over.
-func (c *Conference) processMessages(signalDone chan struct{}) {
+func (c *Conference) processMessages(signalDone chan struct{}, telemetrySpan trace.Span) {
 	// When the main loop of the conference ends, clean up the resources.
 	defer close(signalDone)
 	defer c.matrixWorker.stop()
+	defer telemetrySpan.End()
 
 	for {
 		select {

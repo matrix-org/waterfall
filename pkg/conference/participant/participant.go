@@ -1,6 +1,8 @@
 package participant
 
 import (
+	"context"
+
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
 	"github.com/sirupsen/logrus"
@@ -16,13 +18,19 @@ type ID struct {
 	CallID   string
 }
 
+func (id ID) String() string {
+	return string(id.UserID) + "/" + string(id.DeviceID)
+}
+
 // Participant represents a participant in the conference.
 type Participant struct {
 	ID              ID
-	Logger          *logrus.Entry
 	Peer            *peer.Peer[ID]
 	RemoteSessionID id.SessionID
 	Pong            chan<- Pong
+
+	Logger           *logrus.Entry
+	TelemetryContext context.Context
 }
 
 func (p *Participant) AsMatrixRecipient() signaling.MatrixRecipient {

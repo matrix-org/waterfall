@@ -6,6 +6,7 @@ import (
 	"github.com/matrix-org/waterfall/pkg/conference/track"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/webrtc/v3"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type TrackStoppedMessage struct {
@@ -62,6 +63,9 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 		return make(map[string]bool)
 	}
 
+	telemetrySpan := trace.SpanFromContext(participant.TelemetryContext)
+	defer telemetrySpan.End()
+
 	// Terminate the participant and remove it from the list.
 	participant.Peer.Terminate()
 	close(participant.Pong)
@@ -113,6 +117,7 @@ func (t *Tracker) AddPublishedTrack(
 		remoteTrack,
 		metadata,
 		participant.Logger,
+		participant.TelemetryContext,
 	)
 	if err != nil {
 		return err

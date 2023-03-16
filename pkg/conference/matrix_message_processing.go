@@ -7,8 +7,11 @@ import (
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -52,6 +55,8 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 		peerConnection, answer, err := peer.NewPeer(c.connectionFactory, inviteEvent.Offer.SDP, messageSink, logger)
 		if err != nil {
 			logger.WithError(err).Errorf("Failed to process SDP offer")
+			telemetrySpan := trace.SpanFromContext(c.telemetryContext)
+			telemetrySpan.RecordError(err)
 			return err
 		}
 
@@ -67,12 +72,17 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 			OnTimeout: func() { messageSink.Send(peer.LeftTheCall{event.CallHangupKeepAliveTimeout}) },
 		}
 
+		participantContext, participantSpan := telemetry.TRACER.Start(c.telemetryContext, "Participant")
+		participantSpan.SetAttributes(attribute.String("user_id", id.UserID.String()))
+		participantSpan.SetAttributes(attribute.String("device_id", id.DeviceID.String()))
+
 		p = &participant.Participant{
-			ID:              id,
-			Peer:            peerConnection,
-			Logger:          logger,
-			RemoteSessionID: inviteEvent.SenderSessionID,
-			Pong:            heartbeat.Start(),
+			ID:               id,
+			Peer:             peerConnection,
+			Logger:           logger,
+			RemoteSessionID:  inviteEvent.SenderSessionID,
+			Pong:             heartbeat.Start(),
+			TelemetryContext: participantContext,
 		}
 
 		c.tracker.AddParticipant(p)
@@ -100,6 +110,8 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 func (c *Conference) onCandidates(id participant.ID, ev *event.CallCandidatesEventContent) {
 	if participant := c.getParticipant(id); participant != nil {
 		participant.Logger.Debug("Received remote ICE candidates")
+		telemetryContext := trace.SpanFromContext(participant.TelemetryContext)
+		telemetryContext.AddEvent("Received remote ICE candidates")
 
 		// Convert the candidates to the WebRTC format.
 		candidates := make([]webrtc.ICECandidateInit, len(ev.Candidates))
@@ -122,6 +134,8 @@ func (c *Conference) onCandidates(id participant.ID, ev *event.CallCandidatesEve
 func (c *Conference) onSelectAnswer(id participant.ID, ev *event.CallSelectAnswerEventContent) {
 	if participant := c.getParticipant(id); participant != nil {
 		participant.Logger.Info("Received remote answer selection")
+		telemetryContext := trace.SpanFromContext(participant.TelemetryContext)
+		telemetryContext.AddEvent("Received remote answer selection")
 
 		if ev.SelectedPartyID != string(c.matrixWorker.deviceID) {
 			c.logger.WithFields(logrus.Fields{
@@ -137,6 +151,8 @@ func (c *Conference) onSelectAnswer(id participant.ID, ev *event.CallSelectAnswe
 func (c *Conference) onHangup(id participant.ID, ev *event.CallHangupEventContent) {
 	if participant := c.getParticipant(id); participant != nil {
 		participant.Logger.Info("Received remote hangup")
+		telemetryContext := trace.SpanFromContext(participant.TelemetryContext)
+		telemetryContext.AddEvent("Received remote hangup")
 		c.removeParticipant(id)
 	}
 }

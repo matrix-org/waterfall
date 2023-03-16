@@ -1,6 +1,8 @@
 package conference
 
 import (
+	"context"
+
 	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	published "github.com/matrix-org/waterfall/pkg/conference/track"
@@ -14,7 +16,9 @@ import (
 type Conference struct {
 	id     string
 	config Config
-	logger *logrus.Entry
+
+	logger           *logrus.Entry
+	telemetryContext context.Context
 
 	connectionFactory *webrtc_ext.PeerConnectionFactory
 	matrixWorker      *matrixWorker
