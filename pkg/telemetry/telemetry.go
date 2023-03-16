@@ -48,3 +48,19 @@ func (t *Telemetry) Fail(err error) {
 func (t *Telemetry) End() {
 	t.span.End()
 }
+
+type ChildBuilder struct {
+	parent     *Telemetry
+	attributes []attribute.KeyValue
+}
+
+func (t *Telemetry) ChildBuilder(attributes ...attribute.KeyValue) *ChildBuilder {
+	return &ChildBuilder{
+		parent:     t,
+		attributes: attributes,
+	}
+}
+
+func (cb *ChildBuilder) Create(name string, attributes ...attribute.KeyValue) *Telemetry {
+	return cb.parent.CreateChild(name, append(cb.attributes, attributes...)...)
+}

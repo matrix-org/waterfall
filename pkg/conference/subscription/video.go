@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/matrix-org/waterfall/pkg/conference/subscription/rewriter"
+	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type RequestKeyFrameFn = func(simulcast webrtc_ext.SimulcastLayer) error
@@ -27,7 +29,9 @@ type VideoSubscription struct {
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
 	worker            *worker.Worker[rtp.Packet]
-	logger            *logrus.Entry
+
+	logger    *logrus.Entry
+	telemetry *telemetry.Telemetry
 }
 
 func NewVideoSubscription(
@@ -36,6 +40,7 @@ func NewVideoSubscription(
 	controller SubscriptionController,
 	requestKeyFrameFn RequestKeyFrameFn,
 	logger *logrus.Entry,
+	telemetryBuilder *telemetry.ChildBuilder,
 ) (*VideoSubscription, error) {
 	// Create a new track.
 	rtpTrack, err := webrtc.NewTrackLocalStaticRTP(info.Codec, info.TrackID, info.StreamID)
@@ -61,6 +66,7 @@ func NewVideoSubscription(
 		requestKeyFrameFn,
 		nil,
 		logger,
+		telemetryBuilder.Create("VideoSubscription"),
 	}
 
 	// Create a worker state.
@@ -78,6 +84,9 @@ func NewVideoSubscription(
 			// Or if something is wrong with the subscription (i.e. this quality is not being sent anymore).
 			layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
 			logger.Infof("No RTP on subscription to %s (%s) for 10 seconds", subscription.info.TrackID, layer)
+
+			// This is susceptible to false-positives for muted videos!
+			subscription.telemetry.Fail(fmt.Errorf("No incoming RTP packets for 10 seconds"))
 		},
 		OnTask: workerState.handlePacket,
 	}
@@ -97,6 +106,7 @@ func NewVideoSubscription(
 func (s *VideoSubscription) Unsubscribe() error {
 	s.worker.Stop()
 	s.logger.Infof("Unsubscribing from %s (%s)", s.info.TrackID, webrtc_ext.SimulcastLayer(s.currentLayer.Load()))
+	s.telemetry.End()
 	return s.controller.RemoveTrack(s.rtpSender)
 }
 
@@ -107,6 +117,7 @@ func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
 
 func (s *VideoSubscription) SwitchLayer(simulcast webrtc_ext.SimulcastLayer) {
 	s.logger.Infof("Switching layer on %s to %s", s.info.TrackID, simulcast)
+	s.telemetry.AddEvent("switching simulcast layer", attribute.String("layer", simulcast.String()))
 	s.currentLayer.Store(int32(simulcast))
 	s.requestKeyFrameFn(simulcast)
 }
@@ -127,6 +138,7 @@ func (s *VideoSubscription) readRTCP() {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 				layer := webrtc_ext.SimulcastLayer(s.currentLayer.Load())
 				s.logger.Debugf("failed to read RTCP on track: %s (%s): %s", s.info.TrackID, layer, err)
+				s.telemetry.Fail(err)
 				s.worker.Stop()
 				return
 			}

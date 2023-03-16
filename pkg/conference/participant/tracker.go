@@ -115,7 +115,7 @@ func (t *Tracker) AddPublishedTrack(
 		remoteTrack,
 		metadata,
 		participant.Logger,
-		participant.Telemetry,
+		participant.Telemetry.ChildBuilder(),
 	)
 	if err != nil {
 		return err

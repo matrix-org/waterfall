@@ -53,12 +53,13 @@ func (p *PublishedTrack[SubscriberID]) addVideoPublisher(track *webrtc.TrackRemo
 	simulcast := webrtc_ext.RIDToSimulcastLayer(track.RID())
 	p.video.publishers[simulcast] = pub
 
-	p.telemetry.AddEvent("video publisher added", attribute.String("simulcast", simulcast.String()))
+	defer p.telemetry.AddEvent("video publisher started", attribute.String("simulcast", simulcast.String()))
 
 	// Listen on `done` and remove the track once it's done.
 	p.activePublishers.Add(1)
 	go func() {
 		defer p.activePublishers.Done()
+		defer p.telemetry.AddEvent("video publisher stopped", attribute.String("simulcast", simulcast.String()))
 		<-done
 
 		p.mutex.Lock()

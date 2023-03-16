@@ -59,9 +59,9 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 	track *webrtc.TrackRemote,
 	metadata TrackMetadata,
 	logger *logrus.Entry,
-	parentTelemetry *telemetry.Telemetry,
+	telemetryBuilder *telemetry.ChildBuilder,
 ) (*PublishedTrack[SubscriberID], error) {
-	telemetry := parentTelemetry.CreateChild(
+	telemetry := telemetryBuilder.Create(
 		"PublishedTrack",
 		attribute.String("track_id", track.ID()),
 		attribute.String("type", track.Kind().String()),
@@ -158,6 +158,7 @@ func (p *PublishedTrack[SubscriberID]) AddPublisher(track *webrtc.TrackRemote) e
 	// the negotiation when the SSRC changes and Pion fires a new track for the track that has already
 	// been published.
 	if pub := p.video.publishers[simulcast]; pub != nil {
+		p.telemetry.AddEvent("replacing publisher", attribute.String("simulcast", simulcast.String()))
 		pub.ReplaceTrack(&publisher.RemoteTrack{track})
 		return nil
 	}
@@ -172,6 +173,7 @@ func (p *PublishedTrack[SubscriberID]) AddPublisher(track *webrtc.TrackRemote) e
 func (p *PublishedTrack[SubscriberID]) Stop() {
 	// Command all publishers to stop, unless already stopped.
 	if !p.isClosed() {
+		p.telemetry.AddEvent("stopping")
 		close(p.stopPublishers)
 	}
 }
@@ -207,12 +209,6 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 
 		// If we do, let's switch the layer.
 		if currentLayer != layer {
-			defer p.telemetry.AddEvent(
-				"switched layer",
-				attribute.String("id", subscriberID.String()),
-				attribute.String("layer", layer.String()),
-			)
-
 			p.video.publishers[currentLayer].RemoveSubscription(sub)
 			sub.SwitchLayer(layer)
 			p.video.publishers[layer].AddSubscription(sub)
@@ -233,7 +229,14 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 		handler := func(simulcast webrtc_ext.SimulcastLayer) error {
 			return p.video.keyframeHandler.Send(simulcast)
 		}
-		sub, err = subscription.NewVideoSubscription(p.info, layer, controller, handler, logger)
+		sub, err = subscription.NewVideoSubscription(
+			p.info,
+			layer,
+			controller,
+			handler,
+			logger,
+			p.telemetry.ChildBuilder(attribute.String("id", subscriberID.String())),
+		)
 	case webrtc.RTPCodecTypeAudio:
 		sub, err = subscription.NewAudioSubscription(p.audio.outputTrack, controller)
 	}
@@ -253,11 +256,6 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	}
 
 	p.logger.Info("New subscriber:", subscriberID)
-	p.telemetry.AddEvent(
-		"new subscriber",
-		attribute.String("id", subscriberID.String()),
-		attribute.String("layer", layer.String()),
-	)
 
 	return nil
 }
@@ -275,8 +273,6 @@ func (p *PublishedTrack[SubscriberID]) Unsubscribe(subscriberID SubscriberID) {
 			p.video.publishers[sub.Simulcast()].RemoveSubscription(sub)
 		}
 	}
-
-	p.telemetry.AddEvent("unsubscribed", attribute.String("id", subscriberID.String()))
 }
 
 func (p *PublishedTrack[SubscriberID]) Owner() SubscriberID {
