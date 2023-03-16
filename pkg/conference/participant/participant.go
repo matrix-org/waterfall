@@ -1,10 +1,9 @@
 package participant
 
 import (
-	"context"
-
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -29,8 +28,8 @@ type Participant struct {
 	RemoteSessionID id.SessionID
 	Pong            chan<- Pong
 
-	Logger           *logrus.Entry
-	TelemetryContext context.Context
+	Logger    *logrus.Entry
+	Telemetry *telemetry.Telemetry
 }
 
 func (p *Participant) AsMatrixRecipient() signaling.MatrixRecipient {

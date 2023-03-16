@@ -45,15 +45,18 @@ func StartConference(
 	signalDone := make(chan struct{})
 	tracker, publishedTrackStopped := participant.NewParticipantTracker(signalDone)
 
-	telemetryCtx, telemetrySpan := telemetry.TRACER.Start(context.Background(), "Conference")
-	telemetrySpan.SetAttributes(attribute.String("conference_id", confID))
+	telemetry := telemetry.NewTelemetry(
+		context.Background(),
+		"Conference",
+		attribute.String("conference_id", confID),
+	)
 
 	conference := &Conference{
 		id:                    confID,
 		config:                config,
 		connectionFactory:     peerConnectionFactory,
 		logger:                logrus.WithFields(logrus.Fields{"conf_id": confID}),
-		telemetryContext:      telemetryCtx,
+		telemetry:             telemetry,
 		matrixWorker:          newMatrixWorker(signaling),
 		tracker:               tracker,
 		streamsMetadata:       make(event.CallSDPStreamMetadata),
@@ -68,7 +71,7 @@ func StartConference(
 	}
 
 	// Start conference "main loop".
-	go conference.processMessages(signalDone, telemetrySpan)
+	go conference.processMessages(signalDone)
 
 	return signalDone, nil
 }

@@ -1,7 +1,6 @@
 package track
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -14,10 +13,9 @@ import (
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 )
 
+// A subscruber identifier is something that is comparable and convertable to a String.
 type SubscriberIdentifier interface {
 	comparable
 	fmt.Stringer
@@ -29,8 +27,8 @@ type TrackID = string
 type PublishedTrack[SubscriberID SubscriberIdentifier] struct {
 	// Logger.
 	logger *logrus.Entry
-	// Telemetry context.
-	telemetryContext context.Context
+	// Telemetry.
+	telemetry *telemetry.Telemetry
 	// Info about the track.
 	info webrtc_ext.TrackInfo
 	// Owner of a published track.
@@ -61,16 +59,18 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 	track *webrtc.TrackRemote,
 	metadata TrackMetadata,
 	logger *logrus.Entry,
-	parentTelemetryContext context.Context,
+	parentTelemetry *telemetry.Telemetry,
 ) (*PublishedTrack[SubscriberID], error) {
-	telemetryContext, telemetrySpan := telemetry.TRACER.Start(parentTelemetryContext, "PublishedTrack")
-	telemetrySpan.SetAttributes(attribute.String("track_id", track.ID()))
-	telemetrySpan.SetAttributes(attribute.String("type", track.Kind().String()))
+	telemetry := parentTelemetry.CreateChild(
+		"PublishedTrack",
+		attribute.String("track_id", track.ID()),
+		attribute.String("type", track.Kind().String()),
+	)
 
 	published := &PublishedTrack[SubscriberID]{
 		logger:           logger.WithField("track", track.ID()),
 		info:             webrtc_ext.TrackInfoFromTrack(track),
-		telemetryContext: telemetryContext,
+		telemetry:        telemetry,
 		owner:            trackOwner[SubscriberID]{ownerID, requestKeyFrame},
 		subscriptions:    make(map[SubscriberID]subscription.Subscription),
 		audio:            &audioTrack{outputTrack: nil},
@@ -91,9 +91,8 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 			track.StreamID(),
 		)
 		if err != nil {
-			telemetrySpan.SetStatus(codes.Error, err.Error())
-			telemetrySpan.RecordError(err)
-			telemetrySpan.End()
+			telemetry.Fail(err)
+			telemetry.End()
 			return nil, err
 		}
 
@@ -129,7 +128,7 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 	// Wait for all publishers to stop.
 	go func() {
 		defer close(published.done)
-		defer telemetrySpan.End()
+		defer telemetry.End()
 		published.activePublishers.Wait()
 	}()
 
@@ -202,21 +201,17 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 		layer = getOptimalLayer(layers, p.metadata, requirements.MaxWidth, requirements.MaxHeight)
 	}
 
-	telemetrySpan := trace.SpanFromContext(p.telemetryContext)
-	telemetryAttributes := trace.WithAttributes(
-		attribute.String("id", subscriberID.String()),
-		attribute.String("layer", layer.String()),
-	)
-
-	defer telemetrySpan.AddEvent("new subscriber", telemetryAttributes)
-
 	// If the subscription exists, let's see if we need to update it.
 	if sub := p.subscriptions[subscriberID]; sub != nil {
 		currentLayer := sub.Simulcast()
 
 		// If we do, let's switch the layer.
 		if currentLayer != layer {
-			defer telemetrySpan.AddEvent("switched layer", telemetryAttributes)
+			defer p.telemetry.AddEvent(
+				"switched layer",
+				attribute.String("id", subscriberID.String()),
+				attribute.String("layer", layer.String()),
+			)
 
 			p.video.publishers[currentLayer].RemoveSubscription(sub)
 			sub.SwitchLayer(layer)
@@ -245,8 +240,7 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 
 	// If there was an error, let's return it.
 	if err != nil {
-		telemetrySpan.AddEvent("could not create subscription", telemetryAttributes)
-		telemetrySpan.RecordError(err)
+		p.telemetry.AddError(fmt.Errorf("failed to create subscription: %w", err))
 		return err
 	}
 
@@ -259,6 +253,11 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	}
 
 	p.logger.Info("New subscriber:", subscriberID)
+	p.telemetry.AddEvent(
+		"new subscriber",
+		attribute.String("id", subscriberID.String()),
+		attribute.String("layer", layer.String()),
+	)
 
 	return nil
 }
@@ -268,12 +267,6 @@ func (p *PublishedTrack[SubscriberID]) Unsubscribe(subscriberID SubscriberID) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	telemetrySpan := trace.SpanFromContext(p.telemetryContext)
-	defer telemetrySpan.AddEvent(
-		"unsubscribed",
-		trace.WithAttributes(attribute.String("id", subscriberID.String())),
-	)
-
 	if sub := p.subscriptions[subscriberID]; sub != nil {
 		sub.Unsubscribe()
 		delete(p.subscriptions, subscriberID)
@@ -282,6 +275,8 @@ func (p *PublishedTrack[SubscriberID]) Unsubscribe(subscriberID SubscriberID) {
 			p.video.publishers[sub.Simulcast()].RemoveSubscription(sub)
 		}
 	}
+
+	p.telemetry.AddEvent("unsubscribed", attribute.String("id", subscriberID.String()))
 }
 
 func (p *PublishedTrack[SubscriberID]) Owner() SubscriberID {

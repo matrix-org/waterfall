@@ -5,7 +5,6 @@ import (
 	published "github.com/matrix-org/waterfall/pkg/conference/track"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
-	"go.opentelemetry.io/otel/trace"
 	"maunium.net/go/mautrix/event"
 )
 
@@ -13,8 +12,7 @@ func (c *Conference) processJoinedTheCallMessage(sender participant.ID, message 
 	c.newLogger(sender).Info("Joined the call")
 
 	if p := c.getParticipant(sender); p != nil {
-		telemetrySpan := trace.SpanFromContext(p.TelemetryContext)
-		telemetrySpan.AddEvent("joined the call")
+		p.Telemetry.AddEvent("joined the call")
 		return
 	}
 }
@@ -55,8 +53,7 @@ func (c *Conference) processNewICECandidateMessage(sender participant.ID, msg pe
 	}
 
 	p.Logger.Debug("Received a new local ICE candidate")
-	telemetrySpan := trace.SpanFromContext(p.TelemetryContext)
-	telemetrySpan.AddEvent("received a new local ICE candidate")
+	p.Telemetry.AddEvent("received a new local ICE candidate")
 
 	// Convert WebRTC ICE candidate to Matrix ICE candidate.
 	jsonCandidate := msg.Candidate.ToJSON()
@@ -89,8 +86,7 @@ func (c *Conference) processRenegotiationRequiredMessage(sender participant.ID, 
 
 	streamsMetadata := c.getAvailableStreamsFor(p.ID)
 	p.Logger.Infof("Renegotiating, sending SDP offer (%d streams)", len(streamsMetadata))
-	telemetrySpan := trace.SpanFromContext(p.TelemetryContext)
-	telemetrySpan.AddEvent("renegotiating, sending SDP offer")
+	p.Telemetry.AddEvent("renegotiating, sending SDP offer")
 
 	p.SendDataChannelMessage(event.Event{
 		Type: event.FocusCallNegotiate,
@@ -186,8 +182,7 @@ func (c *Conference) processNegotiateMessage(p *participant.Participant, msg eve
 	case event.CallDataTypeOffer:
 		p.Logger.Info("New offer from peer received")
 		p.Logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP offer over DC")
-		telemetryContext := trace.SpanFromContext(p.TelemetryContext)
-		telemetryContext.AddEvent("new offer from peer received")
+		p.Telemetry.AddEvent("new offer from peer received")
 
 		answer, err := p.Peer.ProcessSDPOffer(msg.Description.SDP)
 		if err != nil {
@@ -210,8 +205,7 @@ func (c *Conference) processNegotiateMessage(p *participant.Participant, msg eve
 	case event.CallDataTypeAnswer:
 		p.Logger.Info("Renegotiation answer received")
 		p.Logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP answer over DC")
-		telemetryContext := trace.SpanFromContext(p.TelemetryContext)
-		telemetryContext.AddEvent("renegotiation answer received")
+		p.Telemetry.AddEvent("renegotiation answer received")
 
 		if err := p.Peer.ProcessSDPAnswer(msg.Description.SDP); err != nil {
 			p.Logger.Errorf("Failed to set SDP answer: %v", err)

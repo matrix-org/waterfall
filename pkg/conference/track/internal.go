@@ -6,7 +6,6 @@ import (
 	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/pion/webrtc/v3"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type trackOwner[SubscriberID comparable] struct {
@@ -54,11 +53,7 @@ func (p *PublishedTrack[SubscriberID]) addVideoPublisher(track *webrtc.TrackRemo
 	simulcast := webrtc_ext.RIDToSimulcastLayer(track.RID())
 	p.video.publishers[simulcast] = pub
 
-	telemetrySpan := trace.SpanFromContext(p.telemetryContext)
-	defer telemetrySpan.AddEvent(
-		"video publisher added",
-		trace.WithAttributes(attribute.String("simulcast", simulcast.String())),
-	)
+	p.telemetry.AddEvent("video publisher added", attribute.String("simulcast", simulcast.String()))
 
 	// Listen on `done` and remove the track once it's done.
 	p.activePublishers.Add(1)
