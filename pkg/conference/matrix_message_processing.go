@@ -24,6 +24,12 @@ type MatrixMessage struct {
 func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.CallInviteEventContent) error {
 	logger := c.newLogger(id)
 	logger.Info("Incoming participant")
+	c.telemetry.AddEvent(
+		"incoming participant",
+		attribute.String("user_id", id.UserID.String()),
+		attribute.String("device_id", id.DeviceID.String()),
+		attribute.String("sdp_offer", inviteEvent.Offer.SDP),
+	)
 
 	// As per MSC3401, when the `session_id` field changes from an incoming `m.call.member` event,
 	// any existing calls from this device in this call should be terminated.
@@ -147,8 +153,8 @@ func (c *Conference) onSelectAnswer(id participant.ID, ev *event.CallSelectAnswe
 // Process a message from the remote peer telling that it wants to hang up the call.
 func (c *Conference) onHangup(id participant.ID, ev *event.CallHangupEventContent) {
 	if participant := c.getParticipant(id); participant != nil {
-		participant.Logger.Info("Received remote hangup")
-		participant.Telemetry.AddEvent("Received remote hangup")
+		participant.Logger.WithField("reason", ev.Reason).Info("Received remote hangup")
+		participant.Telemetry.AddEvent("Received remote hangup", attribute.String("reason", string(ev.Reason)))
 		c.removeParticipant(id)
 	}
 }
