@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"fmt"
 
 	"go.opentelemetry.io/otel"
@@ -78,10 +79,18 @@ func NewResource(pkg, identifier string) (*resource.Resource, error) {
 		return nil, fmt.Errorf("empty resource name or identifier")
 	}
 
-	// TODO: Add the semver of the service here as well as the information about its environment.
-	return resource.NewWithAttributes(
-		semconv.SchemaURL,
-		semconv.ServiceName(pkg),
-		attribute.String("ID", identifier),
-	), nil
+	res, err := resource.New(
+		context.Background(),
+		resource.WithContainer(),
+		resource.WithHost(),
+		resource.WithAttributes(
+			semconv.ServiceName(pkg),
+			attribute.String("ID", identifier),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
