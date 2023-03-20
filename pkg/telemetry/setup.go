@@ -1,7 +1,8 @@
 package telemetry
 
 import (
-	"github.com/google/uuid"
+	"fmt"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -11,16 +12,19 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
+// Global internal tracer that generates spans.
+var tracer = otel.Tracer("undefined")
+
 // A simple helper that configures OpenTelemetry for the SFU.
-func SetupTelemetry(url string) (*tracesdk.TracerProvider, error) {
+func SetupTelemetry(config Config) (*tracesdk.TracerProvider, error) {
 	// Create a new resource.
-	res, err := NewResource()
+	res, err := NewResource(config.Package, config.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a new Jaeger exporter.
-	exp, err := NewJaegerExporter(url)
+	exp, err := NewJaegerExporter(config.JaegerURL)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +34,7 @@ func SetupTelemetry(url string) (*tracesdk.TracerProvider, error) {
 
 	// Set the trace provider as the global trace provider.
 	otel.SetTracerProvider(tp)
-	tracer = otel.Tracer(PACKAGE)
+	tracer = otel.Tracer(config.Package)
 
 	// Context propagation for the OpenTelemetry SDK.
 	otel.SetTextMapPropagator(propagation.TraceContext{})
@@ -56,6 +60,10 @@ func NewTracerProvider(exp *jaeger.Exporter, res *resource.Resource) *tracesdk.T
 
 // Creates Jaeger exporter.
 func NewJaegerExporter(url string) (*jaeger.Exporter, error) {
+	if url == "" {
+		return nil, fmt.Errorf("jaeger url is not set")
+	}
+
 	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(url)))
 	if err != nil {
 		return nil, err
@@ -65,17 +73,15 @@ func NewJaegerExporter(url string) (*jaeger.Exporter, error) {
 }
 
 // Creates a new resource to identify the service instance.
-func NewResource() (*resource.Resource, error) {
-	// Generate random string ID.
-	id, err := uuid.NewRandom()
-	if err != nil {
-		return nil, err
+func NewResource(pkg, identifier string) (*resource.Resource, error) {
+	if pkg == "" || identifier == "" {
+		return nil, fmt.Errorf("empty resource name or identifier")
 	}
 
 	// TODO: Add the semver of the service here as well as the information about its environment.
 	return resource.NewWithAttributes(
 		semconv.SchemaURL,
-		semconv.ServiceName(PACKAGE),
-		attribute.String("ID", id.String()),
+		semconv.ServiceName(pkg),
+		attribute.String("ID", identifier),
 	), nil
 }
