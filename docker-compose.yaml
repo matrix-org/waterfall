@@ -19,3 +19,7 @@ services:
             interval: 30
         webrtc:
           simulcast: true
+        telemetry:
+          jaegerUrl: "http://localhost:14268/api/traces"
+          package: "waterfall"
+          id: "instance_test"

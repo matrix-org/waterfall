@@ -11,3 +11,7 @@ webrtc:
   ipAddresses:
     - 10.0.0.1                           # Your public IP address(es) (if any)
 log: "debug"                             # Debug level
+telemetry:
+  jaegerUrl: "http://localhost:14268/api/traces"
+  package: "waterfall"
+  id: "instance_test"
