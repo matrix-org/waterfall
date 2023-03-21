@@ -138,7 +138,7 @@ func (s *VideoSubscription) readRTCP() {
 			if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
 				layer := webrtc_ext.SimulcastLayer(s.currentLayer.Load())
 				s.logger.Debugf("failed to read RTCP on track: %s (%s): %s", s.info.TrackID, layer, err)
-				s.telemetry.Fail(err)
+				s.telemetry.AddEvent("subscription stopped")
 				s.worker.Stop()
 				return
 			}
