@@ -2,6 +2,7 @@ package publisher
 
 import (
 	"errors"
+	"io"
 	"sync"
 
 	"github.com/pion/rtp"
@@ -54,7 +55,11 @@ func NewPublisher(
 				return
 			default:
 				if err := publisher.forwardPacket(); err != nil {
-					log.Errorf("track ended: %s", err)
+					if err != io.EOF {
+						log.Errorf("Track failed (%s)", err)
+					} else {
+						log.Info("Track stopped (EOF)")
+					}
 					return
 				}
 			}
