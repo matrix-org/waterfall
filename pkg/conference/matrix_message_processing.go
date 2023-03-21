@@ -71,7 +71,7 @@ func (c *Conference) onNewParticipant(id participant.ID, inviteEvent *event.Call
 		heartbeat := participant.HeartbeatConfig{
 			Interval:  time.Duration(c.config.HeartbeatConfig.Interval) * time.Second,
 			Timeout:   time.Duration(c.config.HeartbeatConfig.Timeout) * time.Second,
-			SendPing:  func() bool { return p.SendDataChannelMessage(pingEvent) == nil },
+			SendPing:  func() bool { return p.SendOverDataChannel(pingEvent) == nil },
 			OnTimeout: func() { messageSink.Send(peer.LeftTheCall{event.CallHangupKeepAliveTimeout}) },
 		}
 

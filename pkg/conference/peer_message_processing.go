@@ -93,7 +93,7 @@ func (c *Conference) processRenegotiationRequiredMessage(sender participant.ID, 
 		attribute.String("sdp_offer", msg.Offer.SDP),
 	)
 
-	p.SendDataChannelMessage(event.Event{
+	offerEvent := event.Event{
 		Type: event.FocusCallNegotiate,
 		Content: event.Content{
 			Parsed: event.FocusCallNegotiateEventContent{
@@ -104,7 +104,11 @@ func (c *Conference) processRenegotiationRequiredMessage(sender participant.ID, 
 				SDPStreamMetadata: streamsMetadata,
 			},
 		},
-	})
+	}
+
+	if err := p.SendOverDataChannel(offerEvent); err != nil {
+		p.Logger.Errorf("Failed to send SDP offer: %v", err)
+	}
 }
 
 func (c *Conference) processDataChannelMessage(sender participant.ID, msg peer.DataChannelMessage) {
@@ -148,14 +152,18 @@ func (c *Conference) processDataChannelAvailableMessage(sender participant.ID, m
 	}
 
 	p.Logger.Info("Connected data channel")
-	p.SendDataChannelMessage(event.Event{
+	metadataEvent := event.Event{
 		Type: event.FocusCallSDPStreamMetadataChanged,
 		Content: event.Content{
 			Parsed: event.FocusCallSDPStreamMetadataChangedEventContent{
 				SDPStreamMetadata: c.getAvailableStreamsFor(p.ID),
 			},
 		},
-	})
+	}
+
+	if err := p.SendOverDataChannel(metadataEvent); err != nil {
+		p.Logger.Errorf("Failed to send SDP stream metadata: %v", err)
+	}
 }
 
 // Handle the `FocusEvent` from the DataChannel message.
@@ -197,7 +205,7 @@ func (c *Conference) processNegotiateMessage(p *participant.Participant, msg eve
 			return
 		}
 
-		p.SendDataChannelMessage(event.Event{
+		answerEvent := event.Event{
 			Type: event.FocusCallNegotiate,
 			Content: event.Content{
 				Parsed: event.FocusCallNegotiateEventContent{
@@ -208,7 +216,12 @@ func (c *Conference) processNegotiateMessage(p *participant.Participant, msg eve
 					SDPStreamMetadata: c.getAvailableStreamsFor(p.ID),
 				},
 			},
-		})
+		}
+
+		if err := p.SendOverDataChannel(answerEvent); err != nil {
+			p.Logger.Errorf("Failed to send SDP answer: %v", err)
+			return
+		}
 	case event.CallDataTypeAnswer:
 		p.Logger.Info("Renegotiation answer received")
 		p.Logger.WithField("SDP", msg.Description.SDP).Trace("Received SDP answer over DC")
