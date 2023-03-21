@@ -17,12 +17,16 @@ limitations under the License.
 package conference
 
 import (
+	"context"
+
 	"github.com/matrix-org/waterfall/pkg/channel"
 	"github.com/matrix-org/waterfall/pkg/conference/participant"
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -39,13 +43,20 @@ func StartConference(
 	inviteEvent *event.CallInviteEventContent,
 ) (<-chan struct{}, error) {
 	signalDone := make(chan struct{})
-
 	tracker, publishedTrackStopped := participant.NewParticipantTracker(signalDone)
+
+	telemetry := telemetry.NewTelemetry(
+		context.Background(),
+		"Conference",
+		attribute.String("conference_id", confID),
+	)
+
 	conference := &Conference{
 		id:                    confID,
 		config:                config,
 		connectionFactory:     peerConnectionFactory,
 		logger:                logrus.WithFields(logrus.Fields{"conf_id": confID}),
+		telemetry:             telemetry,
 		matrixWorker:          newMatrixWorker(signaling),
 		tracker:               tracker,
 		streamsMetadata:       make(event.CallSDPStreamMetadata),

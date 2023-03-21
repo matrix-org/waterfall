@@ -7,18 +7,28 @@ import (
 
 	"github.com/matrix-org/waterfall/pkg/conference/publisher"
 	"github.com/matrix-org/waterfall/pkg/conference/subscription"
+	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
 )
+
+// A subscruber identifier is something that is comparable and convertable to a String.
+type SubscriberIdentifier interface {
+	comparable
+	fmt.Stringer
+}
 
 type TrackID = string
 
 // Represents a track that a peer has published (has already started sending to the SFU).
-type PublishedTrack[SubscriberID comparable] struct {
+type PublishedTrack[SubscriberID SubscriberIdentifier] struct {
 	// Logger.
 	logger *logrus.Entry
+	// Telemetry.
+	telemetry *telemetry.Telemetry
 	// Info about the track.
 	info webrtc_ext.TrackInfo
 	// Owner of a published track.
@@ -43,16 +53,24 @@ type PublishedTrack[SubscriberID comparable] struct {
 	done chan struct{}
 }
 
-func NewPublishedTrack[SubscriberID comparable](
+func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 	ownerID SubscriberID,
 	requestKeyFrame func(track *webrtc.TrackRemote) error,
 	track *webrtc.TrackRemote,
 	metadata TrackMetadata,
 	logger *logrus.Entry,
+	telemetryBuilder *telemetry.ChildBuilder,
 ) (*PublishedTrack[SubscriberID], error) {
+	telemetry := telemetryBuilder.Create(
+		"PublishedTrack",
+		attribute.String("track_id", track.ID()),
+		attribute.String("type", track.Kind().String()),
+	)
+
 	published := &PublishedTrack[SubscriberID]{
 		logger:           logger.WithField("track", track.ID()),
 		info:             webrtc_ext.TrackInfoFromTrack(track),
+		telemetry:        telemetry,
 		owner:            trackOwner[SubscriberID]{ownerID, requestKeyFrame},
 		subscriptions:    make(map[SubscriberID]subscription.Subscription),
 		audio:            &audioTrack{outputTrack: nil},
@@ -73,6 +91,8 @@ func NewPublishedTrack[SubscriberID comparable](
 			track.StreamID(),
 		)
 		if err != nil {
+			telemetry.Fail(err)
+			telemetry.End()
 			return nil, err
 		}
 
@@ -98,7 +118,7 @@ func NewPublishedTrack[SubscriberID comparable](
 			},
 		}
 
-		worker := worker.StartWorker[webrtc_ext.SimulcastLayer](workerConfig)
+		worker := worker.StartWorker(workerConfig)
 		published.video.keyframeHandler = worker
 
 		// Start video publisher.
@@ -108,6 +128,7 @@ func NewPublishedTrack[SubscriberID comparable](
 	// Wait for all publishers to stop.
 	go func() {
 		defer close(published.done)
+		defer telemetry.End()
 		published.activePublishers.Wait()
 	}()
 
@@ -137,6 +158,7 @@ func (p *PublishedTrack[SubscriberID]) AddPublisher(track *webrtc.TrackRemote) e
 	// the negotiation when the SSRC changes and Pion fires a new track for the track that has already
 	// been published.
 	if pub := p.video.publishers[simulcast]; pub != nil {
+		p.telemetry.AddEvent("replacing publisher", attribute.String("simulcast", simulcast.String()))
 		pub.ReplaceTrack(&publisher.RemoteTrack{track})
 		return nil
 	}
@@ -151,6 +173,7 @@ func (p *PublishedTrack[SubscriberID]) AddPublisher(track *webrtc.TrackRemote) e
 func (p *PublishedTrack[SubscriberID]) Stop() {
 	// Command all publishers to stop, unless already stopped.
 	if !p.isClosed() {
+		p.telemetry.AddEvent("stopping")
 		close(p.stopPublishers)
 	}
 }
@@ -206,13 +229,21 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 		handler := func(simulcast webrtc_ext.SimulcastLayer) error {
 			return p.video.keyframeHandler.Send(simulcast)
 		}
-		sub, err = subscription.NewVideoSubscription(p.info, layer, controller, handler, logger)
+		sub, err = subscription.NewVideoSubscription(
+			p.info,
+			layer,
+			controller,
+			handler,
+			logger,
+			p.telemetry.ChildBuilder(attribute.String("id", subscriberID.String())),
+		)
 	case webrtc.RTPCodecTypeAudio:
 		sub, err = subscription.NewAudioSubscription(p.audio.outputTrack, controller)
 	}
 
 	// If there was an error, let's return it.
 	if err != nil {
+		p.telemetry.AddError(fmt.Errorf("failed to create subscription: %w", err))
 		return err
 	}
 

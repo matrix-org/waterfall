@@ -3,6 +3,7 @@ package participant
 import (
 	"github.com/matrix-org/waterfall/pkg/peer"
 	"github.com/matrix-org/waterfall/pkg/signaling"
+	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/sirupsen/logrus"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -16,13 +17,19 @@ type ID struct {
 	CallID   string
 }
 
+func (id ID) String() string {
+	return string(id.UserID) + "/" + string(id.DeviceID)
+}
+
 // Participant represents a participant in the conference.
 type Participant struct {
 	ID              ID
-	Logger          *logrus.Entry
 	Peer            *peer.Peer[ID]
 	RemoteSessionID id.SessionID
 	Pong            chan<- Pong
+
+	Logger    *logrus.Entry
+	Telemetry *telemetry.Telemetry
 }
 
 func (p *Participant) AsMatrixRecipient() signaling.MatrixRecipient {

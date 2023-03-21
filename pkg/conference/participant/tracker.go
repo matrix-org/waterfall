@@ -62,6 +62,8 @@ func (t *Tracker) RemoveParticipant(participantID ID) map[string]bool {
 		return make(map[string]bool)
 	}
 
+	defer participant.Telemetry.End()
+
 	// Terminate the participant and remove it from the list.
 	participant.Peer.Terminate()
 	close(participant.Pong)
@@ -113,6 +115,7 @@ func (t *Tracker) AddPublishedTrack(
 		remoteTrack,
 		metadata,
 		participant.Logger,
+		participant.Telemetry.ChildBuilder(),
 	)
 	if err != nil {
 		return err

@@ -14,6 +14,7 @@ func (c *Conference) processMessages(signalDone chan struct{}) {
 	// When the main loop of the conference ends, clean up the resources.
 	defer close(signalDone)
 	defer c.matrixWorker.stop()
+	defer c.telemetry.End()
 
 	for {
 		select {
