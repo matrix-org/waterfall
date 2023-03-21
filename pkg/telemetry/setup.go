@@ -13,9 +13,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
-// Global internal tracer that generates spans.
-var tracer = otel.Tracer("undefined")
-
 // A simple helper that configures OpenTelemetry for the SFU.
 func SetupTelemetry(config Config) (*tracesdk.TracerProvider, error) {
 	// Create a new resource.
@@ -35,7 +32,6 @@ func SetupTelemetry(config Config) (*tracesdk.TracerProvider, error) {
 
 	// Set the trace provider as the global trace provider.
 	otel.SetTracerProvider(tp)
-	tracer = otel.Tracer(config.Package)
 
 	// Context propagation for the OpenTelemetry SDK.
 	otel.SetTextMapPropagator(propagation.TraceContext{})

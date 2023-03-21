@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -14,6 +15,11 @@ type Telemetry struct {
 }
 
 func NewTelemetry(ctx context.Context, name string, attributes ...attribute.KeyValue) *Telemetry {
+	// If the name is an empty string then provider uses default name.
+	// If the telemetry has been set up with the set up with `SetupTelemetry` function,
+	// then it will be set to the name of the resources that has been passed to the function.
+	tracer := otel.Tracer("")
+
 	ctx, span := tracer.Start(ctx, name, trace.WithAttributes(attributes...))
 
 	return &Telemetry{
