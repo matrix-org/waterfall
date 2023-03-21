@@ -20,6 +20,9 @@ services:
         webrtc:
           simulcast: true
         telemetry:
-          jaegerUrl: "http://localhost:14268/api/traces"
           package: "waterfall"
           id: "instance_test"
+          otlp:
+            host: "localhost:4318"
+            secure: false
+          jaegerUrl: "http://localhost:14268/api/traces"
