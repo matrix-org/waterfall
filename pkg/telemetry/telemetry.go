@@ -9,16 +9,17 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const PACKAGE = "waterfall"
-
-var tracer = otel.Tracer(PACKAGE)
-
 type Telemetry struct {
 	span    trace.Span
 	context context.Context //nolint:containedctx
 }
 
 func NewTelemetry(ctx context.Context, name string, attributes ...attribute.KeyValue) *Telemetry {
+	// If the name is an empty string then provider uses default name.
+	// If the telemetry has been set up with the set up with `SetupTelemetry` function,
+	// then it will be set to the name of the resources that has been passed to the function.
+	tracer := otel.Tracer("")
+
 	ctx, span := tracer.Start(ctx, name, trace.WithAttributes(attributes...))
 
 	return &Telemetry{
