@@ -161,7 +161,11 @@ func (t *Tracker) RemovePublishedTrack(id track.TrackID) {
 }
 
 // Subscribes a given participant to the track.
-func (t *Tracker) Subscribe(participantID ID, trackID track.TrackID, requirements track.TrackMetadata) error {
+func (t *Tracker) Subscribe(
+	participantID ID,
+	trackID track.TrackID,
+	desiredWidth, desiredHeight int,
+) error {
 	// Check if the participant exists that wants to subscribe exists.
 	participant := t.participants[participantID]
 	if participant == nil {
@@ -175,7 +179,13 @@ func (t *Tracker) Subscribe(participantID ID, trackID track.TrackID, requirement
 	}
 
 	// Subscribe to the track.
-	if err := published.Subscribe(participantID, participant.Peer, requirements, participant.Logger); err != nil {
+	if err := published.Subscribe(
+		participantID,
+		participant.Peer,
+		desiredWidth,
+		desiredHeight,
+		participant.Logger,
+	); err != nil {
 		return err
 	}
 

@@ -182,7 +182,8 @@ func (p *PublishedTrack[SubscriberID]) Stop() {
 func (p *PublishedTrack[SubscriberID]) Subscribe(
 	subscriberID SubscriberID,
 	controller subscription.SubscriptionController,
-	requirements TrackMetadata,
+	desiredWidth int,
+	desiredHeight int,
 	logger *logrus.Entry,
 ) error {
 	if p.isClosed() {
@@ -200,7 +201,7 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 		for key := range p.video.publishers {
 			layers[key] = struct{}{}
 		}
-		layer = getOptimalLayer(layers, p.metadata, requirements.MaxWidth, requirements.MaxHeight)
+		layer = getOptimalLayer(layers, p.metadata, desiredWidth, desiredHeight)
 	}
 
 	// If the subscription exists, let's see if we need to update it.
@@ -232,6 +233,7 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 		sub, err = subscription.NewVideoSubscription(
 			p.info,
 			layer,
+			p.metadata.Muted,
 			controller,
 			handler,
 			logger,
@@ -297,4 +299,8 @@ func (p *PublishedTrack[SubscriberID]) SetMetadata(metadata TrackMetadata) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	p.metadata = metadata
+
+	for _, sub := range p.subscriptions {
+		sub.UpdateMuteState(metadata.Muted)
+	}
 }

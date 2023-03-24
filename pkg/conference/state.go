@@ -122,9 +122,19 @@ func streamIntoTrackMetadata(
 	tracksMetadata := make(map[published.TrackID]published.TrackMetadata)
 	for _, metadata := range streamMetadata {
 		for id, track := range metadata.Tracks {
+			// Determine if a given track is muted.
+			var muted bool
+			switch track.Kind {
+			case "audio":
+				muted = metadata.AudioMuted
+			case "video":
+				muted = metadata.VideoMuted
+			}
+
 			tracksMetadata[id] = published.TrackMetadata{
 				MaxWidth:  track.Width,
 				MaxHeight: track.Height,
+				Muted:     muted,
 			}
 		}
 	}

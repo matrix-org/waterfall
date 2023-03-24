@@ -25,6 +25,7 @@ type VideoSubscription struct {
 
 	info         webrtc_ext.TrackInfo
 	currentLayer atomic.Int32 // atomic webrtc_ext.SimulcastLayer
+	muted        atomic.Bool
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
@@ -37,6 +38,7 @@ type VideoSubscription struct {
 func NewVideoSubscription(
 	info webrtc_ext.TrackInfo,
 	simulcast webrtc_ext.SimulcastLayer,
+	muted bool,
 	controller SubscriptionController,
 	requestKeyFrameFn RequestKeyFrameFn,
 	logger *logrus.Entry,
@@ -57,11 +59,16 @@ func NewVideoSubscription(
 	var currentLayer atomic.Int32
 	currentLayer.Store(int32(simulcast))
 
+	// By default we assume that the track is not muted.
+	var mutedState atomic.Bool
+	mutedState.Store(muted)
+
 	// Create a subscription.
 	subscription := &VideoSubscription{
 		rtpSender,
 		info,
 		currentLayer,
+		mutedState,
 		controller,
 		requestKeyFrameFn,
 		nil,
@@ -77,16 +84,16 @@ func NewVideoSubscription(
 
 	// Configure the worker for the subscription.
 	workerConfig := worker.Config[rtp.Packet]{
-		ChannelSize: 16,               // We really don't need a large buffer here, just to account for spikes.
-		Timeout:     10 * time.Second, // When do we assume the subscription is stalled.
+		ChannelSize: 16,              // We really don't need a large buffer here, just to account for spikes.
+		Timeout:     3 * time.Second, // When do we assume the subscription is stalled.
 		OnTimeout: func() {
-			// Not receiving RTP packets for 10 seconds can happen either if the video is muted.
-			// Or if something is wrong with the subscription (i.e. this quality is not being sent anymore).
-			layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
-			logger.Infof("No RTP on subscription to %s (%s) for 10 seconds", subscription.info.TrackID, layer)
-
-			// This is susceptible to false-positives for muted videos!
-			subscription.telemetry.Fail(fmt.Errorf("No incoming RTP packets for 10 seconds"))
+			// Not receiving RTP packets for 3 seconds can happen either if we're muted (not an error),
+			// or if the peer does not send any data (that's a problem that potentially means a freeze).
+			if !subscription.muted.Load() {
+				layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
+				logger.Infof("No RTP on subscription to %s (%s) for 3 seconds", subscription.info.TrackID, layer)
+				subscription.telemetry.Fail(fmt.Errorf("No incoming RTP packets for 3 seconds"))
+			}
 		},
 		OnTask: workerState.handlePacket,
 	}
@@ -128,6 +135,10 @@ func (s *VideoSubscription) TrackInfo() webrtc_ext.TrackInfo {
 
 func (s *VideoSubscription) Simulcast() webrtc_ext.SimulcastLayer {
 	return webrtc_ext.SimulcastLayer(s.currentLayer.Load())
+}
+
+func (s *VideoSubscription) UpdateMuteState(muted bool) {
+	s.muted.Store(muted)
 }
 
 // Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.
