@@ -23,9 +23,11 @@ type RequestKeyFrameFn = func(simulcast webrtc_ext.SimulcastLayer) error
 type VideoSubscription struct {
 	rtpSender *webrtc.RTPSender
 
-	info         webrtc_ext.TrackInfo
+	info webrtc_ext.TrackInfo
+
 	currentLayer atomic.Int32 // atomic webrtc_ext.SimulcastLayer
-	muted        atomic.Bool
+	muted        atomic.Bool  // we don't expect any RTP packets
+	stalled      atomic.Bool  // we do expect RTP packets, but haven't received for a while
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
@@ -63,12 +65,16 @@ func NewVideoSubscription(
 	var mutedState atomic.Bool
 	mutedState.Store(muted)
 
+	// Also, the track is not stalled by default.
+	var stalled atomic.Bool
+
 	// Create a subscription.
 	subscription := &VideoSubscription{
 		rtpSender,
 		info,
 		currentLayer,
 		mutedState,
+		stalled,
 		controller,
 		requestKeyFrameFn,
 		nil,
@@ -89,10 +95,12 @@ func NewVideoSubscription(
 		OnTimeout: func() {
 			// Not receiving RTP packets for 3 seconds can happen either if we're muted (not an error),
 			// or if the peer does not send any data (that's a problem that potentially means a freeze).
-			if !subscription.muted.Load() {
+			// Also, we don't want to execute this part if the subscription has already been marked as stalled.
+			if !subscription.muted.Load() && !subscription.stalled.Load() {
 				layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
 				logger.Infof("No RTP on subscription to %s (%s) for 3 seconds", subscription.info.TrackID, layer)
 				subscription.telemetry.Fail(fmt.Errorf("No incoming RTP packets for 3 seconds"))
+				subscription.stalled.Store(true)
 			}
 		},
 		OnTask: workerState.handlePacket,
@@ -118,6 +126,12 @@ func (s *VideoSubscription) Unsubscribe() error {
 }
 
 func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
+	if s.stalled.CompareAndSwap(true, false) {
+		simulcast := webrtc_ext.SimulcastLayer(s.currentLayer.Load())
+		s.logger.Infof("Recovered subscription to %s (%s)", s.info.TrackID, simulcast)
+		s.telemetry.AddEvent("resuming subscription")
+	}
+
 	// Send the packet to the worker.
 	return s.worker.Send(packet)
 }
