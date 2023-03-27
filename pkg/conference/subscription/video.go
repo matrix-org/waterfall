@@ -98,8 +98,8 @@ func NewVideoSubscription(
 			// Also, we don't want to execute this part if the subscription has already been marked as stalled.
 			if !subscription.muted.Load() && !subscription.stalled.Load() {
 				layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
-				logger.Infof("No RTP on subscription to %s (%s) for 3 seconds", subscription.info.TrackID, layer)
-				subscription.telemetry.Fail(fmt.Errorf("No incoming RTP packets for 3 seconds"))
+				logger.Warnf("No RTP on subscription to %s (%s) for 3 seconds", subscription.info.TrackID, layer)
+				subscription.telemetry.Fail(fmt.Errorf("No incoming RTP packets for 3 seconds on %s", layer))
 				subscription.stalled.Store(true)
 			}
 		},
@@ -115,6 +115,8 @@ func NewVideoSubscription(
 	// Request a key frame, so that we can get it from the publisher right after subscription.
 	subscription.requestKeyFrame()
 
+	subscription.telemetry.AddEvent("subscribed", attribute.String("layer", simulcast.String()))
+
 	return subscription, nil
 }
 
@@ -129,7 +131,7 @@ func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
 	if s.stalled.CompareAndSwap(true, false) {
 		simulcast := webrtc_ext.SimulcastLayer(s.currentLayer.Load())
 		s.logger.Infof("Recovered subscription to %s (%s)", s.info.TrackID, simulcast)
-		s.telemetry.AddEvent("resuming subscription")
+		s.telemetry.AddEvent("subscription recovered")
 	}
 
 	// Send the packet to the worker.

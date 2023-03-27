@@ -257,7 +257,7 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 		p.video.publishers[layer].AddSubscription(sub)
 	}
 
-	p.logger.Info("New subscriber:", subscriberID)
+	p.logger.WithField("subscriber", subscriberID).WithField("layer", layer).Info("New subscription")
 
 	return nil
 }
