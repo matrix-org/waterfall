@@ -103,7 +103,7 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 		go func() {
 			defer published.activePublishers.Done()
 			if err := forward(track, localTrack, published.stopPublishers); err != nil {
-				logger.Errorf("audio publisher stopped: %s", err)
+				logger.Infof("audio publisher stopped: %v", err)
 			}
 		}()
 

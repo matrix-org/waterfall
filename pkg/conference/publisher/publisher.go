@@ -55,11 +55,12 @@ func NewPublisher(
 				return
 			default:
 				if err := publisher.forwardPacket(); err != nil {
+					logStoppedFn := log.Infof
 					if err != io.EOF {
-						log.Errorf("Track failed (%s)", err)
-					} else {
-						log.Info("Track stopped (EOF)")
+						logStoppedFn = log.Errorf
 					}
+
+					logStoppedFn("publisher stopped: %v", err)
 					return
 				}
 			}
@@ -113,7 +114,7 @@ func (p *Publisher) forwardPacket() error {
 	// Write the packet to all subscribers.
 	for subscription := range p.subscriptions {
 		if err := subscription.WriteRTP(*packet); err != nil {
-			p.logger.Warnf("packet dropped on the subscription: %s", err)
+			p.logger.Warnf("failed to forward packet to: %v", err)
 		}
 	}
 
