@@ -8,6 +8,7 @@ import (
 // This metadata is only set for video tracks at the moment.
 type TrackMetadata struct {
 	MaxWidth, MaxHeight int
+	Muted               bool
 }
 
 // Calculate the layer that we can use based on the requirements passed as parameters and available layers.

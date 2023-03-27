@@ -11,6 +11,7 @@ type Subscription interface {
 	WriteRTP(packet rtp.Packet) error
 	SwitchLayer(simulcast webrtc_ext.SimulcastLayer)
 	Simulcast() webrtc_ext.SimulcastLayer
+	UpdateMuteState(muted bool)
 }
 
 type SubscriptionController interface {

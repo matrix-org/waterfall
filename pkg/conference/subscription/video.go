@@ -23,8 +23,11 @@ type RequestKeyFrameFn = func(simulcast webrtc_ext.SimulcastLayer) error
 type VideoSubscription struct {
 	rtpSender *webrtc.RTPSender
 
-	info         webrtc_ext.TrackInfo
+	info webrtc_ext.TrackInfo
+
 	currentLayer atomic.Int32 // atomic webrtc_ext.SimulcastLayer
+	muted        atomic.Bool  // we don't expect any RTP packets
+	stalled      atomic.Bool  // we do expect RTP packets, but haven't received for a while
 
 	controller        SubscriptionController
 	requestKeyFrameFn RequestKeyFrameFn
@@ -37,6 +40,7 @@ type VideoSubscription struct {
 func NewVideoSubscription(
 	info webrtc_ext.TrackInfo,
 	simulcast webrtc_ext.SimulcastLayer,
+	muted bool,
 	controller SubscriptionController,
 	requestKeyFrameFn RequestKeyFrameFn,
 	logger *logrus.Entry,
@@ -57,11 +61,20 @@ func NewVideoSubscription(
 	var currentLayer atomic.Int32
 	currentLayer.Store(int32(simulcast))
 
+	// By default we assume that the track is not muted.
+	var mutedState atomic.Bool
+	mutedState.Store(muted)
+
+	// Also, the track is not stalled by default.
+	var stalled atomic.Bool
+
 	// Create a subscription.
 	subscription := &VideoSubscription{
 		rtpSender,
 		info,
 		currentLayer,
+		mutedState,
+		stalled,
 		controller,
 		requestKeyFrameFn,
 		nil,
@@ -77,16 +90,18 @@ func NewVideoSubscription(
 
 	// Configure the worker for the subscription.
 	workerConfig := worker.Config[rtp.Packet]{
-		ChannelSize: 16,               // We really don't need a large buffer here, just to account for spikes.
-		Timeout:     10 * time.Second, // When do we assume the subscription is stalled.
+		ChannelSize: 16,              // We really don't need a large buffer here, just to account for spikes.
+		Timeout:     3 * time.Second, // When do we assume the subscription is stalled.
 		OnTimeout: func() {
-			// Not receiving RTP packets for 10 seconds can happen either if the video is muted.
-			// Or if something is wrong with the subscription (i.e. this quality is not being sent anymore).
-			layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
-			logger.Infof("No RTP on subscription to %s (%s) for 10 seconds", subscription.info.TrackID, layer)
-
-			// This is susceptible to false-positives for muted videos!
-			subscription.telemetry.Fail(fmt.Errorf("No incoming RTP packets for 10 seconds"))
+			// Not receiving RTP packets for 3 seconds can happen either if we're muted (not an error),
+			// or if the peer does not send any data (that's a problem that potentially means a freeze).
+			// Also, we don't want to execute this part if the subscription has already been marked as stalled.
+			if !subscription.muted.Load() && !subscription.stalled.Load() {
+				layer := webrtc_ext.SimulcastLayer(subscription.currentLayer.Load())
+				logger.Warnf("No RTP on subscription to %s (%s) for 3 seconds", subscription.info.TrackID, layer)
+				subscription.telemetry.Fail(fmt.Errorf("No incoming RTP packets for 3 seconds on %s", layer))
+				subscription.stalled.Store(true)
+			}
 		},
 		OnTask: workerState.handlePacket,
 	}
@@ -100,6 +115,8 @@ func NewVideoSubscription(
 	// Request a key frame, so that we can get it from the publisher right after subscription.
 	subscription.requestKeyFrame()
 
+	subscription.telemetry.AddEvent("subscribed", attribute.String("layer", simulcast.String()))
+
 	return subscription, nil
 }
 
@@ -111,6 +128,12 @@ func (s *VideoSubscription) Unsubscribe() error {
 }
 
 func (s *VideoSubscription) WriteRTP(packet rtp.Packet) error {
+	if s.stalled.CompareAndSwap(true, false) {
+		simulcast := webrtc_ext.SimulcastLayer(s.currentLayer.Load())
+		s.logger.Infof("Recovered subscription to %s (%s)", s.info.TrackID, simulcast)
+		s.telemetry.AddEvent("subscription recovered")
+	}
+
 	// Send the packet to the worker.
 	return s.worker.Send(packet)
 }
@@ -128,6 +151,10 @@ func (s *VideoSubscription) TrackInfo() webrtc_ext.TrackInfo {
 
 func (s *VideoSubscription) Simulcast() webrtc_ext.SimulcastLayer {
 	return webrtc_ext.SimulcastLayer(s.currentLayer.Load())
+}
+
+func (s *VideoSubscription) UpdateMuteState(muted bool) {
+	s.muted.Store(muted)
 }
 
 // Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.

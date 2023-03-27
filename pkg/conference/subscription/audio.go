@@ -49,6 +49,10 @@ func (s *AudioSubscription) Simulcast() webrtc_ext.SimulcastLayer {
 	return webrtc_ext.SimulcastLayerNone
 }
 
+func (s *AudioSubscription) UpdateMuteState(muted bool) {
+	// We don't have any business logic at the moment for audio subscriptions.
+}
+
 func (s *AudioSubscription) readRTCP() {
 	// Read incoming RTCP packets. Before these packets are returned they are processed by interceptors.
 	// For things like NACK this needs to be called.

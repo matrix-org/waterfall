@@ -172,8 +172,7 @@ func (c *Conference) processTrackSubscriptionMessage(
 
 	// Now let's handle the subscribe commands.
 	for _, track := range msg.Subscribe {
-		requirements := published.TrackMetadata{track.Width, track.Height}
-		if err := c.tracker.Subscribe(p.ID, track.TrackID, requirements); err != nil {
+		if err := c.tracker.Subscribe(p.ID, track.TrackID, track.Width, track.Height); err != nil {
 			p.Logger.Errorf("Failed to subscribe to track %s: %v", track.TrackID, err)
 			continue
 		}
