@@ -87,15 +87,19 @@ func (c *Conference) getAvailableStreamsFor(forParticipant participant.ID) event
 // Helper that sends current metadata about all available tracks to all participants except a given one.
 func (c *Conference) resendMetadataToAllExcept(exceptMe participant.ID) {
 	c.tracker.ForEachParticipant(func(id participant.ID, participant *participant.Participant) {
-		if id != exceptMe {
-			participant.SendDataChannelMessage(event.Event{
-				Type: event.FocusCallSDPStreamMetadataChanged,
-				Content: event.Content{
-					Parsed: event.FocusCallSDPStreamMetadataChangedEventContent{
-						SDPStreamMetadata: c.getAvailableStreamsFor(id),
-					},
+		metadataEvent := event.Event{
+			Type: event.FocusCallSDPStreamMetadataChanged,
+			Content: event.Content{
+				Parsed: event.FocusCallSDPStreamMetadataChangedEventContent{
+					SDPStreamMetadata: c.getAvailableStreamsFor(id),
 				},
-			})
+			},
+		}
+
+		if id != exceptMe {
+			if err := participant.SendOverDataChannel(metadataEvent); err != nil {
+				c.logger.WithError(err).Errorf("Failed to send metadata to %s", id)
+			}
 		}
 	})
 }

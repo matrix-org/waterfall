@@ -49,8 +49,13 @@ func forward(sender *webrtc.TrackRemote, receiver *webrtc.TrackLocalStaticRTP, s
 }
 
 func (p *PublishedTrack[SubscriberID]) addVideoPublisher(track *webrtc.TrackRemote) {
-	pub, done := publisher.NewPublisher(&publisher.RemoteTrack{track}, p.stopPublishers, p.logger)
 	simulcast := webrtc_ext.RIDToSimulcastLayer(track.RID())
+	pub, done := publisher.NewPublisher(
+		&publisher.RemoteTrack{track},
+		p.stopPublishers,
+		p.logger.WithField("layer", simulcast),
+	)
+
 	p.video.publishers[simulcast] = pub
 
 	defer p.telemetry.AddEvent("video publisher started", attribute.String("simulcast", simulcast.String()))
