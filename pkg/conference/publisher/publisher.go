@@ -8,6 +8,7 @@ import (
 
 	"github.com/pion/rtp"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/exp/maps"
 )
 
 var ErrSubscriptionExists = errors.New("subscription already exists")
@@ -77,21 +78,33 @@ func NewPublisher(
 	return publisher, observer.statusCh
 }
 
-func (p *Publisher) AddSubscription(subscription Subscription) {
+func (p *Publisher) AddSubscription(subscriptions ...Subscription) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if _, ok := p.subscriptions[subscription]; ok {
-		return
-	}
+	for _, s := range subscriptions {
+		if _, ok := p.subscriptions[s]; ok {
+			continue
+		}
 
-	p.subscriptions[subscription] = struct{}{}
+		p.subscriptions[s] = struct{}{}
+	}
 }
 
 func (p *Publisher) RemoveSubscription(subscription Subscription) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	delete(p.subscriptions, subscription)
+}
+
+func (p *Publisher) DrainSubscriptions() []Subscription {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	subscriptions := maps.Keys(p.subscriptions)
+	maps.Clear(p.subscriptions)
+
+	return subscriptions
 }
 
 func (p *Publisher) GetTrack() Track {
