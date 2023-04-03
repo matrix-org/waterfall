@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/pion/rtp"
 	"github.com/sirupsen/logrus"
@@ -30,31 +31,37 @@ type Publisher struct {
 	subscriptions map[Subscription]struct{}
 }
 
+// Starts a new publisher, returns a publisher along with the channel that informs the caller
+// about the status update of the publisher (i.e. stalled, or active). Once the channel is closed,
+// the publisher can be considered stopped.
 func NewPublisher(
 	track Track,
 	stop <-chan struct{},
 	log *logrus.Entry,
-) (*Publisher, <-chan struct{}) {
-	// Create a done channel, so that we can signal the caller when we're done.
-	done := make(chan struct{})
-
+) (*Publisher, <-chan Status) {
 	publisher := &Publisher{
 		logger:        log,
 		track:         track,
 		subscriptions: make(map[Subscription]struct{}),
 	}
 
+	// Start an observer that expects us to inform it every time we receive a packet.
+	// When no packets are received for N seconds, the observer will report the stalled status.
+	observer := newStatusObserver(2 * time.Second)
+
 	// Start a goroutine that will read RTP packets from the remote track.
 	// We run the publisher until we receive a stop signal or an error occurs.
 	go func() {
-		defer close(done)
+		defer observer.stop()
+		reportFrameReceived := func() { observer.packetArrived() }
+
 		for {
 			// Check if we were signaled to stop.
 			select {
 			case <-stop:
 				return
 			default:
-				if err := publisher.forwardPacket(); err != nil {
+				if err := publisher.forwardPacket(reportFrameReceived); err != nil {
 					logStoppedFn := log.Infof
 					if err != io.EOF {
 						logStoppedFn = log.Errorf
@@ -67,7 +74,7 @@ func NewPublisher(
 		}
 	}()
 
-	return publisher, done
+	return publisher, observer.statusCh
 }
 
 func (p *Publisher) AddSubscription(subscription Subscription) {
@@ -100,13 +107,18 @@ func (p *Publisher) ReplaceTrack(track Track) {
 }
 
 // Reads a single packet from the remote track and forwards it to all subscribers.
-func (p *Publisher) forwardPacket() error {
+// The function stops when the remote track is closed or an error occurs when reading.
+// Each time new packet is received, the provided callback is called.
+func (p *Publisher) forwardPacket(reportFrameReceived func()) error {
 	track := p.GetTrack()
 
 	packet, err := track.ReadPacket()
 	if err != nil {
 		return err
 	}
+
+	// Inform the observer that we received a packet.
+	reportFrameReceived()
 
 	p.mu.Lock()
 	defer p.mu.Unlock()

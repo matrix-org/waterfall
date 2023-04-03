@@ -50,7 +50,7 @@ func forward(sender *webrtc.TrackRemote, receiver *webrtc.TrackLocalStaticRTP, s
 
 func (p *PublishedTrack[SubscriberID]) addVideoPublisher(track *webrtc.TrackRemote) {
 	simulcast := webrtc_ext.RIDToSimulcastLayer(track.RID())
-	pub, done := publisher.NewPublisher(
+	pub, statusCh := publisher.NewPublisher(
 		&publisher.RemoteTrack{track},
 		p.stopPublishers,
 		p.logger.WithField("layer", simulcast),
@@ -65,7 +65,14 @@ func (p *PublishedTrack[SubscriberID]) addVideoPublisher(track *webrtc.TrackRemo
 	go func() {
 		defer p.activePublishers.Done()
 		defer p.telemetry.AddEvent("video publisher stopped", attribute.String("simulcast", simulcast.String()))
-		<-done
+
+		// Wait for the channel to be closed. Ignore statuses for now.
+		for {
+			_, closed := <-statusCh
+			if closed {
+				break
+			}
+		}
 
 		p.mutex.Lock()
 		defer p.mutex.Unlock()
