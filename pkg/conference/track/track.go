@@ -181,10 +181,12 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 
 	// Let's calculate the desired simulcast layer (if any).
 	var layer webrtc_ext.SimulcastLayer
-	if p.info.Kind == webrtc.RTPCodecTypeVideo {
+	if p.isSimulcast() {
 		layers := make(map[webrtc_ext.SimulcastLayer]struct{}, len(p.video.publishers))
-		for key := range p.video.publishers {
-			layers[key] = struct{}{}
+		for layer, publisher := range p.video.publishers {
+			if !publisher.IsStalled() {
+				layers[layer] = struct{}{}
+			}
 		}
 		layer = getOptimalLayer(layers, p.metadata, desiredWidth, desiredHeight)
 	}

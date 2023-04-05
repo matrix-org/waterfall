@@ -2,6 +2,7 @@ package track
 
 import (
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
+	"github.com/pion/webrtc/v3"
 )
 
 // Metadata that we have received about this track from a user.
@@ -67,4 +68,18 @@ func calculateDesiredLayer(fullWidth, fullHeight int, desiredWidth, desiredHeigh
 	}
 
 	return webrtc_ext.SimulcastLayerLow
+}
+
+// Does this published track contain any simulcast tracks or is it a non-simulcast published track.
+func (p *PublishedTrack[SubscriberID]) isSimulcast() bool {
+	// The track is a video track.
+	video := p.info.Kind == webrtc.RTPCodecTypeVideo
+
+	// There is at least a single published track.
+	hasPublishers := len(p.video.publishers) > 0
+
+	// We have a track without the RID (simulcast tracks do have RID extension).
+	hasNonSimulcastLayer := p.video.publishers[webrtc_ext.SimulcastLayerNone] != nil
+
+	return video && hasPublishers && !hasNonSimulcastLayer
 }

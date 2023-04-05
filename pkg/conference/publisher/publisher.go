@@ -29,6 +29,8 @@ type Publisher struct {
 	mu            sync.Mutex
 	track         Track
 	subscriptions map[Subscription]struct{}
+
+	observer *statusObserver
 }
 
 // Starts a new publisher, returns a publisher along with the channel that informs the caller
@@ -40,15 +42,16 @@ func NewPublisher(
 	considerStalledAfter time.Duration,
 	log *logrus.Entry,
 ) (*Publisher, <-chan Status) {
+	// Start an observer that expects us to inform it every time we receive a packet.
+	// When no packets are received for N seconds, the observer will report the stalled status.
+	observer := newStatusObserver(considerStalledAfter)
+
 	publisher := &Publisher{
 		logger:        log,
 		track:         track,
 		subscriptions: make(map[Subscription]struct{}),
+		observer:      observer,
 	}
-
-	// Start an observer that expects us to inform it every time we receive a packet.
-	// When no packets are received for N seconds, the observer will report the stalled status.
-	observer := newStatusObserver(considerStalledAfter)
 
 	// Start a goroutine that will read RTP packets from the remote track.
 	// We run the publisher until we receive a stop signal or an error occurs.
@@ -110,6 +113,10 @@ func (p *Publisher) ReplaceTrack(track Track) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.track = track
+}
+
+func (p *Publisher) IsStalled() bool {
+	return p.observer.stalled.Load()
 }
 
 // Reads a single packet from the remote track and forwards it to all subscribers.
