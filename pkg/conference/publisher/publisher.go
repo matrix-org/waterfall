@@ -81,26 +81,33 @@ func NewPublisher(
 	return publisher, observer.statusCh
 }
 
-func (p *Publisher) AddSubscriptions(subscriptions ...Subscription) {
+func (p *Publisher) AddSubscription(subscription Subscription) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	for _, s := range subscriptions {
-		if _, ok := p.subscriptions[s]; ok {
-			continue
-		}
-
-		p.subscriptions[s] = struct{}{}
+	if _, ok := p.subscriptions[subscription]; !ok {
+		p.subscriptions[subscription] = struct{}{}
 	}
 }
 
-func (p *Publisher) RemoveSubscriptions(subscription ...Subscription) {
+func (p *Publisher) RemoveSubscriptions() []Subscription {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	for _, s := range subscription {
-		delete(p.subscriptions, s)
+	subs := make([]Subscription, 0, len(p.subscriptions))
+	for s := range p.subscriptions {
+		subs = append(subs, s)
 	}
+
+	p.subscriptions = make(map[Subscription]struct{})
+	return subs
+}
+
+func (p *Publisher) RemoveSubscription(subscription Subscription) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	delete(p.subscriptions, subscription)
 }
 
 func (p *Publisher) GetTrack() Track {

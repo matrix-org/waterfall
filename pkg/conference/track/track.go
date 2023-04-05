@@ -35,7 +35,7 @@ type PublishedTrack[SubscriberID SubscriberIdentifier] struct {
 	// We must protect the data with a mutex since we want the `PublishedTrack` to remain thread-safe.
 	mutex sync.Mutex
 	// Currently active subscriptions for this track.
-	subscriptions map[SubscriberID]*trackSubscription
+	subscriptions map[SubscriberID]*trackSubscription[SubscriberID]
 	// Audio track data. The content will be `nil` if it's not an audio track.
 	audio *audioTrack
 	// Video track. The content will be `nil` if it's not a video track.
@@ -70,7 +70,7 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 		info:             webrtc_ext.TrackInfoFromTrack(track),
 		telemetry:        telemetry,
 		owner:            trackOwner[SubscriberID]{ownerID, requestKeyFrame},
-		subscriptions:    make(map[SubscriberID]*trackSubscription),
+		subscriptions:    make(map[SubscriberID]*trackSubscription[SubscriberID]),
 		audio:            &audioTrack{outputTrack: nil},
 		video:            &videoTrack{publishers: make(map[webrtc_ext.SimulcastLayer]*publisher.Publisher)},
 		metadata:         metadata,
@@ -195,8 +195,8 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	if sub := p.subscriptions[subscriberID]; sub != nil {
 		// If we do, let's switch the layer.
 		if sub.currentLayer != layer {
-			p.video.publishers[sub.currentLayer].RemoveSubscriptions(sub.subscription)
-			p.video.publishers[layer].AddSubscriptions(sub.subscription)
+			p.video.publishers[sub.currentLayer].RemoveSubscription(sub)
+			p.video.publishers[layer].AddSubscription(sub)
 			sub.currentLayer = layer
 		}
 
@@ -228,12 +228,12 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	}
 
 	// Add the subscription to the list of subscriptions.
-	subscription := &trackSubscription{sub, layer}
+	subscription := &trackSubscription[SubscriberID]{sub, layer, subscriberID}
 	p.subscriptions[subscriberID] = subscription
 
 	// And if it's a video subscription, add it to the list of subscriptions that get the feed from the publisher.
 	if p.info.Kind == webrtc.RTPCodecTypeVideo {
-		p.video.publishers[layer].AddSubscriptions(sub)
+		p.video.publishers[layer].AddSubscription(subscription)
 		go p.processSubscriptionEvents(subscription, ch)
 	}
 
@@ -247,11 +247,11 @@ func (p *PublishedTrack[SubscriberID]) Unsubscribe(subscriberID SubscriberID) {
 	defer p.mutex.Unlock()
 
 	if sub := p.subscriptions[subscriberID]; sub != nil {
-		sub.subscription.Unsubscribe()
+		sub.Unsubscribe()
 		delete(p.subscriptions, subscriberID)
 
 		if p.info.Kind == webrtc.RTPCodecTypeVideo {
-			p.video.publishers[sub.currentLayer].RemoveSubscriptions(sub.subscription)
+			p.video.publishers[sub.currentLayer].RemoveSubscription(sub)
 		}
 	}
 }

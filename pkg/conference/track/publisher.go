@@ -101,21 +101,20 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 			// We assume that the lowest layer is the latest to fail (normally, lowest layer always
 			// receive packets even if other layers are stalled).
 
-			affectedSubscriptions := p.getSubscriptionByLayer(pubLayer)
-			subscriptions := []publisher.Subscription{}
-			for _, sub := range affectedSubscriptions {
-				subscriptions = append(subscriptions, sub.subscription)
+			// Now we just cast it to the actual type of the subscription (since we know the type).
+			// This could have been avoided if we used **generics** with `publisher.Publisher` instead
+			// of an interface. Then we could spare this type assertion.
+			subscriptions := []*trackSubscription[SubscriberID]{}
+			for i, sub := range pub.RemoveSubscriptions() {
+				subscriptions[i] = sub.(*trackSubscription[SubscriberID]) //nolint:forcetypeassert
 			}
 
-			pub.RemoveSubscriptions(subscriptions...)
-
-			lowLayer := p.video.publishers[webrtc_ext.SimulcastLayerLow]
-			if lowLayer != nil {
+			if lowLayer := p.video.publishers[webrtc_ext.SimulcastLayerLow]; lowLayer != nil {
 				pubLogger.Info("Publisher is stalled, switching to the lowest layer")
 				pubTelemetry.AddEvent("stalled, so subscriptions switched to the low layer")
-				lowLayer.AddSubscriptions(subscriptions...)
-				for _, subscription := range affectedSubscriptions {
-					subscription.currentLayer = webrtc_ext.SimulcastLayerLow
+				for _, sub := range subscriptions {
+					lowLayer.AddSubscription(sub)
+					sub.currentLayer = webrtc_ext.SimulcastLayerLow
 				}
 				continue
 			}
@@ -123,8 +122,8 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 			// Otherwise, we have no other layer to switch to. Bummer.
 			pubLogger.Warn("Publisher is stalled and we have no other layer to switch to")
 			pubTelemetry.Fail(fmt.Errorf("stalled"))
-			for _, subscription := range affectedSubscriptions {
-				subscription.currentLayer = webrtc_ext.SimulcastLayerNone
+			for _, sub := range subscriptions {
+				sub.currentLayer = webrtc_ext.SimulcastLayerNone
 			}
 
 		// Publisher is active again (new packets received).
@@ -157,9 +156,9 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 	//
 	// TODO: Do we need to do it? Can publishers **fail** during the call and get created by Pion automatically?
 	for layer, pub := range p.video.publishers {
-		for _, sub := range p.getSubscriptionByLayer(pubLayer) {
-			sub.currentLayer = layer
-			pub.AddSubscriptions(sub.subscription)
+		for _, sub := range pub.RemoveSubscriptions() {
+			sub.(*trackSubscription[SubscriberID]).currentLayer = layer //nolint:forcetypeassert
+			pub.AddSubscription(sub)
 		}
 		break
 	}
@@ -172,18 +171,6 @@ func (p *PublishedTrack[SubscriberID]) isClosed() bool {
 	default:
 		return false
 	}
-}
-
-func (p *PublishedTrack[SubscriberID]) getSubscriptionByLayer(
-	layer webrtc_ext.SimulcastLayer,
-) []*trackSubscription {
-	subscriptions := []*trackSubscription{}
-	for _, sub := range p.subscriptions {
-		if sub.currentLayer == layer {
-			subscriptions = append(subscriptions, sub)
-		}
-	}
-	return subscriptions
 }
 
 // Goes through the subscriptions that are not assigned to any publisher, i.e.
@@ -204,7 +191,7 @@ func (p *PublishedTrack[SubscriberID]) recoverOrphanedSubscriptions(
 	for _, subscription := range p.subscriptions {
 		if subscription.currentLayer == webrtc_ext.SimulcastLayerNone {
 			subscription.currentLayer = pubLayer
-			pub.AddSubscriptions(subscription.subscription)
+			pub.AddSubscription(subscription)
 		}
 	}
 

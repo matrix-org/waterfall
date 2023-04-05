@@ -6,16 +6,31 @@ import (
 	"github.com/matrix-org/waterfall/pkg/conference/publisher"
 	"github.com/matrix-org/waterfall/pkg/conference/subscription"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
 
-type trackSubscription struct {
+// A composite type that wraps the `subscription` along with its related data, such as
+// the layer to which the subscription is subscribed (if any) and the ID of the subscriber
+// that uses this subscription.
+type trackSubscription[SubscriberID SubscriberIdentifier] struct {
 	subscription subscription.Subscription
 	currentLayer webrtc_ext.SimulcastLayer
+	subscriberID SubscriberID
+}
+
+// Implementation of `subscription.Subscription`.
+func (s *trackSubscription[SubscriberID]) Unsubscribe() error {
+	return s.subscription.Unsubscribe()
+}
+
+// Implementation of `subscription.Subscription`.
+func (s *trackSubscription[SubscriberID]) WriteRTP(packet rtp.Packet) error {
+	return s.subscription.WriteRTP(packet)
 }
 
 func (p *PublishedTrack[SubscriberID]) processSubscriptionEvents(
-	sub *trackSubscription,
+	sub *trackSubscription[SubscriberID],
 	events <-chan subscription.KeyFrameRequest,
 ) {
 	for range events {
@@ -30,18 +45,13 @@ func (p *PublishedTrack[SubscriberID]) processSubscriptionEvents(
 	defer p.mutex.Unlock()
 
 	if publisher := p.video.publishers[sub.currentLayer]; publisher != nil {
-		publisher.RemoveSubscriptions(sub.subscription)
+		publisher.RemoveSubscription(sub)
 	}
 
-	for subscriberID, subscription := range p.subscriptions {
-		if subscription == sub {
-			delete(p.subscriptions, subscriberID)
-			break
-		}
-	}
+	delete(p.subscriptions, sub.subscriberID)
 }
 
-func (p *PublishedTrack[SubscriberID]) processKeyFrameRequest(sub *trackSubscription) error {
+func (p *PublishedTrack[SubscriberID]) processKeyFrameRequest(sub *trackSubscription[SubscriberID]) error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
