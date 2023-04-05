@@ -81,7 +81,7 @@ func NewPublisher(
 	return publisher, observer.statusCh
 }
 
-func (p *Publisher) AddSubscription(subscriptions ...Subscription) {
+func (p *Publisher) AddSubscriptions(subscriptions ...Subscription) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -94,7 +94,7 @@ func (p *Publisher) AddSubscription(subscriptions ...Subscription) {
 	}
 }
 
-func (p *Publisher) RemoveSubscription(subscription ...Subscription) {
+func (p *Publisher) RemoveSubscriptions(subscription ...Subscription) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

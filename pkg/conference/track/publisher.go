@@ -107,13 +107,13 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 				subscriptions = append(subscriptions, subscription.subscription)
 			}
 
-			pub.RemoveSubscription(subscriptions...)
+			pub.RemoveSubscriptions(subscriptions...)
 
 			lowLayer := p.video.publishers[webrtc_ext.SimulcastLayerLow]
 			if lowLayer != nil {
 				pubLogger.Info("Publisher is stalled, switching to the lowest layer")
 				pubTelemetry.AddEvent("stalled, so subscriptions switched to the low layer")
-				lowLayer.AddSubscription(subscriptions...)
+				lowLayer.AddSubscriptions(subscriptions...)
 				for _, subscription := range subscriptionsMap {
 					subscription.currentLayer = webrtc_ext.SimulcastLayerLow
 				}
@@ -140,7 +140,7 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 			for _, subscription := range p.subscriptions {
 				if subscription.currentLayer == webrtc_ext.SimulcastLayerNone {
 					subscription.currentLayer = pubLayer
-					pub.AddSubscription(subscription.subscription)
+					pub.AddSubscriptions(subscription.subscription)
 				}
 			}
 		}

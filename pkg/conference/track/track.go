@@ -195,8 +195,8 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	if sub := p.subscriptions[subscriberID]; sub != nil {
 		// If we do, let's switch the layer.
 		if sub.currentLayer != layer {
-			p.video.publishers[sub.currentLayer].RemoveSubscription(sub.subscription)
-			p.video.publishers[layer].AddSubscription(sub.subscription)
+			p.video.publishers[sub.currentLayer].RemoveSubscriptions(sub.subscription)
+			p.video.publishers[layer].AddSubscriptions(sub.subscription)
 			sub.currentLayer = layer
 		}
 
@@ -233,7 +233,7 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 
 	// And if it's a video subscription, add it to the list of subscriptions that get the feed from the publisher.
 	if p.info.Kind == webrtc.RTPCodecTypeVideo {
-		p.video.publishers[layer].AddSubscription(sub)
+		p.video.publishers[layer].AddSubscriptions(sub)
 		go p.processSubscriptionEvents(subscription, ch)
 	}
 
@@ -251,7 +251,7 @@ func (p *PublishedTrack[SubscriberID]) Unsubscribe(subscriberID SubscriberID) {
 		delete(p.subscriptions, subscriberID)
 
 		if p.info.Kind == webrtc.RTPCodecTypeVideo {
-			p.video.publishers[sub.currentLayer].RemoveSubscription(sub.subscription)
+			p.video.publishers[sub.currentLayer].RemoveSubscriptions(sub.subscription)
 		}
 	}
 }

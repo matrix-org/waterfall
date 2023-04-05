@@ -30,7 +30,7 @@ func (p *PublishedTrack[SubscriberID]) processSubscriptionEvents(
 	defer p.mutex.Unlock()
 
 	if publisher := p.video.publishers[sub.currentLayer]; publisher != nil {
-		publisher.RemoveSubscription(sub.subscription)
+		publisher.RemoveSubscriptions(sub.subscription)
 	}
 
 	for subscriberID, subscription := range p.subscriptions {
