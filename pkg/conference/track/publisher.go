@@ -2,6 +2,7 @@ package track
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/matrix-org/waterfall/pkg/conference/publisher"
 	"github.com/matrix-org/waterfall/pkg/telemetry"
@@ -56,7 +57,12 @@ func (p *PublishedTrack[SubscriberID]) addVideoPublisher(track *webrtc.TrackRemo
 	pubTelemetry := p.telemetry.CreateChild("layer", attribute.String("layer", simulcast.String()))
 
 	// Create a new publisher for the track.
-	pub, pubCh := publisher.NewPublisher(&publisher.RemoteTrack{track}, p.stopPublishers, pubLogger)
+	pub, pubCh := publisher.NewPublisher(
+		&publisher.RemoteTrack{track},
+		p.stopPublishers,
+		2*time.Second, // We consider publisher as stalled if there are no packets within 2 seconds.
+		pubLogger,
+	)
 	p.video.publishers[simulcast] = pub
 
 	// Observe the status of the publisher.

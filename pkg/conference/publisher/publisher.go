@@ -37,6 +37,7 @@ type Publisher struct {
 func NewPublisher(
 	track Track,
 	stop <-chan struct{},
+	considerStalledAfter time.Duration,
 	log *logrus.Entry,
 ) (*Publisher, <-chan Status) {
 	publisher := &Publisher{
@@ -47,7 +48,7 @@ func NewPublisher(
 
 	// Start an observer that expects us to inform it every time we receive a packet.
 	// When no packets are received for N seconds, the observer will report the stalled status.
-	observer := newStatusObserver(2 * time.Second)
+	observer := newStatusObserver(considerStalledAfter)
 
 	// Start a goroutine that will read RTP packets from the remote track.
 	// We run the publisher until we receive a stop signal or an error occurs.
