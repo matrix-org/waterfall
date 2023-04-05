@@ -101,10 +101,10 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 			// We assume that the lowest layer is the latest to fail (normally, lowest layer always
 			// receive packets even if other layers are stalled).
 
-			subscriptionsMap := p.getSubscriptionByLayer(pubLayer)
+			affectedSubscriptions := p.getSubscriptionByLayer(pubLayer)
 			subscriptions := []publisher.Subscription{}
-			for _, subscription := range subscriptionsMap {
-				subscriptions = append(subscriptions, subscription.subscription)
+			for _, sub := range affectedSubscriptions {
+				subscriptions = append(subscriptions, sub.subscription)
 			}
 
 			pub.RemoveSubscriptions(subscriptions...)
@@ -114,7 +114,7 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 				pubLogger.Info("Publisher is stalled, switching to the lowest layer")
 				pubTelemetry.AddEvent("stalled, so subscriptions switched to the low layer")
 				lowLayer.AddSubscriptions(subscriptions...)
-				for _, subscription := range subscriptionsMap {
+				for _, subscription := range affectedSubscriptions {
 					subscription.currentLayer = webrtc_ext.SimulcastLayerLow
 				}
 				continue
@@ -123,7 +123,7 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 			// Otherwise, we have no other layer to switch to. Bummer.
 			pubLogger.Warn("Publisher is stalled and we have no other layer to switch to")
 			pubTelemetry.Fail(fmt.Errorf("stalled"))
-			for _, subscription := range subscriptionsMap {
+			for _, subscription := range affectedSubscriptions {
 				subscription.currentLayer = webrtc_ext.SimulcastLayerNone
 			}
 
@@ -137,12 +137,7 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 
 			// Iterate over active subscriptions that don't have any active publisher
 			// and assign them to this publisher.
-			for _, subscription := range p.subscriptions {
-				if subscription.currentLayer == webrtc_ext.SimulcastLayerNone {
-					subscription.currentLayer = pubLayer
-					pub.AddSubscriptions(subscription.subscription)
-				}
-			}
+			p.recoverOrphanedSubscriptions(pub, pubLayer)
 		}
 	}
 
@@ -155,14 +150,18 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 	// Remove the publisher once it's gone.
 	delete(p.video.publishers, pubLayer)
 
-	// Now iterate over all subscriptions and find those that are now lost due to the publisher being away.
-	// It seems like normally when a single track or layer is gone, it's due to failure, so we don't switch
-	// to different layers here, but instead just remove the dependent subscriptions.
-	for subID, sub := range p.subscriptions {
-		if sub.currentLayer == pubLayer {
-			sub.subscription.Unsubscribe()
-			delete(p.subscriptions, subID)
+	// Now iterate over all subscriptions and find those that are now lost due to the publisher being stopped.
+	// Try to find any other available publisher for this subscription (since these are all publishers/layers
+	// of the same track). We do iteration over the publishers map to get a single (random) available publisher.
+	// Golang does not have a function to get a random or "first" element of the map.
+	//
+	// TODO: Do we need to do it? Can publishers **fail** during the call and get created by Pion automatically?
+	for layer, pub := range p.video.publishers {
+		for _, sub := range p.getSubscriptionByLayer(pubLayer) {
+			sub.currentLayer = layer
+			pub.AddSubscriptions(sub.subscription)
 		}
+		break
 	}
 }
 
@@ -177,12 +176,37 @@ func (p *PublishedTrack[SubscriberID]) isClosed() bool {
 
 func (p *PublishedTrack[SubscriberID]) getSubscriptionByLayer(
 	layer webrtc_ext.SimulcastLayer,
-) map[SubscriberID]*trackSubscription {
-	subscriptions := map[SubscriberID]*trackSubscription{}
-	for subID, sub := range p.subscriptions {
+) []*trackSubscription {
+	subscriptions := []*trackSubscription{}
+	for _, sub := range p.subscriptions {
 		if sub.currentLayer == layer {
-			subscriptions[subID] = sub
+			subscriptions = append(subscriptions, sub)
 		}
 	}
 	return subscriptions
+}
+
+// Goes through the subscriptions that are not assigned to any publisher, i.e.
+// those that used to have a publisher, i.e. the track that used to produce the
+// RTP packets and that publisher went stalled (no packets received for a
+// while). Such subscriptions don't receive any packets and so such remote
+// track will be observed by the participant either as a grey frame (if it's a
+// start of a call) or as a freeze (if it's in the middle of a call). We call
+// this function to switch stalled subscriptions to use the given publisher.
+func (p *PublishedTrack[SubscriberID]) recoverOrphanedSubscriptions(
+	pub *publisher.Publisher,
+	pubLayer webrtc_ext.SimulcastLayer,
+) error {
+	if pub.IsStalled() {
+		return fmt.Errorf("publisher is stalled, can't use it to reactivate stalled subscriptions")
+	}
+
+	for _, subscription := range p.subscriptions {
+		if subscription.currentLayer == webrtc_ext.SimulcastLayerNone {
+			subscription.currentLayer = pubLayer
+			pub.AddSubscriptions(subscription.subscription)
+		}
+	}
+
+	return nil
 }
