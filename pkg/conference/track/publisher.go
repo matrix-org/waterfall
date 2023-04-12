@@ -104,8 +104,9 @@ func (p *PublishedTrack[SubscriberID]) processPublisherEvents(
 			// Now we just cast it to the actual type of the subscription (since we know the type).
 			// This could have been avoided if we used **generics** with `publisher.Publisher` instead
 			// of an interface. Then we could spare this type assertion.
-			subscriptions := []*trackSubscription[SubscriberID]{}
-			for i, sub := range pub.RemoveSubscriptions() {
+			removed := pub.RemoveSubscriptions()
+			subscriptions := make([]*trackSubscription[SubscriberID], len(removed))
+			for i, sub := range removed {
 				subscriptions[i] = sub.(*trackSubscription[SubscriberID]) //nolint:forcetypeassert
 			}
 
