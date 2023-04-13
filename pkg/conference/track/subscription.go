@@ -3,11 +3,9 @@ package track
 import (
 	"fmt"
 
-	"github.com/matrix-org/waterfall/pkg/conference/publisher"
 	"github.com/matrix-org/waterfall/pkg/conference/subscription"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
 	"github.com/pion/rtp"
-	"github.com/pion/webrtc/v3"
 )
 
 // A composite type that wraps the `subscription` along with its related data, such as
@@ -45,7 +43,7 @@ func (p *PublishedTrack[SubscriberID]) processSubscriptionEvents(
 	defer p.mutex.Unlock()
 
 	if publisher := p.video.publishers[sub.currentLayer]; publisher != nil {
-		publisher.RemoveSubscription(sub)
+		publisher.removeSubscription(sub)
 	}
 
 	delete(p.subscriptions, sub.subscriberID)
@@ -60,21 +58,5 @@ func (p *PublishedTrack[SubscriberID]) processKeyFrameRequest(sub *trackSubscrip
 		return fmt.Errorf("publisher with simulcast %s not found", sub.currentLayer)
 	}
 
-	track, err := extractRemoteTrack(publisher)
-	if err != nil {
-		return err
-	}
-
-	return p.owner.requestKeyFrame(track)
-}
-
-func extractRemoteTrack(pub *publisher.Publisher) (*webrtc.TrackRemote, error) {
-	// Get the track that we need to request a key frame for.
-	track := pub.GetTrack()
-	remoteTrack, ok := track.(*publisher.RemoteTrack)
-	if !ok {
-		return nil, fmt.Errorf("not a remote track in publisher")
-	}
-
-	return remoteTrack.Track, nil
+	return publisher.requestKeyFrame()
 }

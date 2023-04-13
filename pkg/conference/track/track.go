@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/matrix-org/waterfall/pkg/conference/publisher"
 	"github.com/matrix-org/waterfall/pkg/conference/subscription"
 	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
@@ -72,7 +71,7 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 		owner:            trackOwner[SubscriberID]{ownerID, requestKeyFrame},
 		subscriptions:    make(map[SubscriberID]*trackSubscription[SubscriberID]),
 		audio:            &audioTrack{outputTrack: nil},
-		video:            &videoTrack{publishers: make(map[webrtc_ext.SimulcastLayer]*publisher.Publisher)},
+		video:            &videoTrack{publishers: make(map[webrtc_ext.SimulcastLayer]*trackPublisher)},
 		metadata:         metadata,
 		activePublishers: &sync.WaitGroup{},
 		stopPublishers:   make(chan struct{}),
@@ -144,7 +143,7 @@ func (p *PublishedTrack[SubscriberID]) AddPublisher(track *webrtc.TrackRemote) e
 	// been published.
 	if pub := p.video.publishers[simulcast]; pub != nil {
 		p.telemetry.AddEvent("replacing publisher", attribute.String("simulcast", simulcast.String()))
-		pub.ReplaceTrack(&publisher.RemoteTrack{track})
+		pub.replaceTrack(track)
 		return nil
 	}
 
@@ -184,7 +183,7 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	if p.isSimulcast() {
 		layers := make(map[webrtc_ext.SimulcastLayer]struct{}, len(p.video.publishers))
 		for layer, publisher := range p.video.publishers {
-			if !publisher.IsStalled() {
+			if !publisher.isStalled() {
 				layers[layer] = struct{}{}
 			}
 		}
@@ -195,8 +194,8 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	if sub := p.subscriptions[subscriberID]; sub != nil {
 		// If we do, let's switch the layer.
 		if sub.currentLayer != layer {
-			p.video.publishers[sub.currentLayer].RemoveSubscription(sub)
-			p.video.publishers[layer].AddSubscription(sub)
+			p.video.publishers[sub.currentLayer].removeSubscription(sub)
+			p.video.publishers[layer].addSubscription(sub)
 			sub.currentLayer = layer
 		}
 
@@ -233,7 +232,7 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 
 	// And if it's a video subscription, add it to the list of subscriptions that get the feed from the publisher.
 	if p.info.Kind == webrtc.RTPCodecTypeVideo {
-		p.video.publishers[layer].AddSubscription(subscription)
+		p.video.publishers[layer].addSubscription(subscription)
 		go p.processSubscriptionEvents(subscription, ch)
 	}
 
@@ -251,7 +250,7 @@ func (p *PublishedTrack[SubscriberID]) Unsubscribe(subscriberID SubscriberID) {
 		delete(p.subscriptions, subscriberID)
 
 		if p.info.Kind == webrtc.RTPCodecTypeVideo {
-			p.video.publishers[sub.currentLayer].RemoveSubscription(sub)
+			p.video.publishers[sub.currentLayer].removeSubscription(sub)
 		}
 	}
 }
