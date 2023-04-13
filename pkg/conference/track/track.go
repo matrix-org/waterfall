@@ -279,3 +279,12 @@ func (p *PublishedTrack[SubscriberID]) SetMetadata(metadata TrackMetadata) {
 	defer p.mutex.Unlock()
 	p.metadata = metadata
 }
+
+func (p *PublishedTrack[SubscriberID]) isClosed() bool {
+	select {
+	case <-p.done:
+		return true
+	default:
+		return false
+	}
+}
