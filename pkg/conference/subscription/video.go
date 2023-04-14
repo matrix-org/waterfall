@@ -115,8 +115,9 @@ func (s *VideoSubscription) startReadRTCP() <-chan KeyFrameRequest {
 		for {
 			packets, _, err := s.rtpSender.ReadRTCP()
 			if err != nil {
+				s.logger.Infof("Failed to read RTCP: %v", err)
+
 				if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, io.EOF) {
-					s.logger.Debugf("Failed to read RTCP: %v", err)
 					return
 				}
 			}

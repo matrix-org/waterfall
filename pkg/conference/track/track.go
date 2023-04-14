@@ -276,6 +276,7 @@ func (p *PublishedTrack[SubscriberID]) Metadata() TrackMetadata {
 func (p *PublishedTrack[SubscriberID]) SetMetadata(metadata TrackMetadata) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+
 	p.metadata = metadata
 }
 

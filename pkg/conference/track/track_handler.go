@@ -120,9 +120,13 @@ func (p *PublishedTrack[SubscriberID]) handleStalledPublisher(pub *trackPublishe
 	defer p.mutex.Unlock()
 
 	// Let's check if we're muted. If we are, it's ok to not receive packets.
+	//
+	// FIXME: What if the track gets unmuted? We won't get a "stalled" notification if
+	//        it went to the stalled state right after the unmute, since the track was
+	//        already marked as stalled. Edge-case?
 	if p.metadata.Muted {
-		pub.logger.Info("Publisher is stalled but we're muted, ignoring")
-		pub.telemetry.AddEvent("muted")
+		pub.logger.Info("No RTPs (muted)")
+		pub.telemetry.AddEvent("No RTPs (muted)")
 		return
 	}
 
@@ -139,7 +143,8 @@ func (p *PublishedTrack[SubscriberID]) handleStalledPublisher(pub *trackPublishe
 		subscriptions[i] = sub.(*trackSubscription[SubscriberID]) //nolint:forcetypeassert
 	}
 
-	if lowLayer := p.video.publishers[webrtc_ext.SimulcastLayerLow]; lowLayer != nil {
+	// If low layer is available, switch to it.
+	if lowLayer := p.video.publishers[webrtc_ext.SimulcastLayerLow]; lowLayer != nil && lowLayer != pub {
 		pub.logger.Info("Publisher is stalled, switching to the lowest layer")
 		pub.telemetry.AddEvent("stalled, so subscriptions switched to the low layer")
 		for _, sub := range subscriptions {

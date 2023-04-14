@@ -33,8 +33,9 @@ func newStatusObserver(timeout time.Duration) *statusObserver {
 		ChannelSize: 1,
 		Timeout:     timeout,
 		OnTimeout: func() {
-			stalled.Store(true)
-			statusCh <- StatusStalled
+			if stalled.CompareAndSwap(false, true) {
+				statusCh <- StatusStalled
+			}
 		},
 		OnTask: func(struct{}) {
 			if stalled.CompareAndSwap(true, false) {
