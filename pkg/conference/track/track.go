@@ -114,6 +114,15 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 		defer close(published.done)
 		defer telemetry.End()
 		published.activePublishers.Wait()
+
+		// End any active subscriptions.
+		published.mutex.Lock()
+		published.mutex.Unlock()
+		for _, subscription := range published.subscriptions {
+			if err := subscription.Unsubscribe(); err != nil {
+				published.logger.Errorf("Unsubscribe failed: %v", err)
+			}
+		}
 	}()
 
 	return published, nil
