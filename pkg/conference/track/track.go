@@ -117,7 +117,7 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 
 		// End any active subscriptions.
 		published.mutex.Lock()
-		published.mutex.Unlock()
+		defer published.mutex.Unlock()
 		for _, subscription := range published.subscriptions {
 			if err := subscription.Unsubscribe(); err != nil {
 				published.logger.Errorf("Unsubscribe failed: %v", err)
