@@ -25,6 +25,18 @@ type videoTrack struct {
 	publishers map[webrtc_ext.SimulcastLayer]*trackPublisher
 }
 
+// Get the set of active layers (the tricky return type is a simulation of a `HashSet` in Golang).
+func (t *videoTrack) activeLayers() map[webrtc_ext.SimulcastLayer]struct{} {
+	layers := make(map[webrtc_ext.SimulcastLayer]struct{}, len(t.publishers))
+	for layer, publisher := range t.publishers {
+		if !publisher.isStalled() {
+			layers[layer] = struct{}{}
+		}
+	}
+
+	return layers
+}
+
 // Forward audio packets from the source track to the destination track.
 func forward(sender *webrtc.TrackRemote, receiver *webrtc.TrackLocalStaticRTP, stop <-chan struct{}) error {
 	for {

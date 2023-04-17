@@ -189,27 +189,29 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 
 	// Let's calculate the desired simulcast layer (if any).
 	var layer webrtc_ext.SimulcastLayer
-	if p.isSimulcast() {
-		layers := make(map[webrtc_ext.SimulcastLayer]struct{}, len(p.video.publishers))
-		for layer, publisher := range p.video.publishers {
-			if !publisher.isStalled() {
-				layers[layer] = struct{}{}
+	if p.isSimulcast() { //nolint:nestif
+		layer = getOptimalLayer(p.video.activeLayers(), p.metadata, desiredWidth, desiredHeight)
+
+		// If the subscription exists, let's see if we need to update it.
+		if sub := p.subscriptions[subscriberID]; sub != nil {
+			// If we do, let's switch the layer.
+			if sub.currentLayer != layer {
+				// It could be that all subscriptions are subscribed to `LayerNone` (i.e. to no publisher,
+				// since all the available publishers are stalled). In this case `p.video.publishers[LayerNone]`
+				// would be nil.
+				if currentPublisher := p.video.publishers[sub.currentLayer]; currentPublisher != nil {
+					currentPublisher.removeSubscription(sub)
+				}
+
+				newPublisher := p.video.publishers[layer]
+				newPublisher.addSubscription(sub)
+
+				sub.currentLayer = layer
 			}
-		}
-		layer = getOptimalLayer(layers, p.metadata, desiredWidth, desiredHeight)
-	}
 
-	// If the subscription exists, let's see if we need to update it.
-	if sub := p.subscriptions[subscriberID]; sub != nil {
-		// If we do, let's switch the layer.
-		if sub.currentLayer != layer {
-			p.video.publishers[sub.currentLayer].removeSubscription(sub)
-			p.video.publishers[layer].addSubscription(sub)
-			sub.currentLayer = layer
+			// Subsription is up-to-date, nothing to change.
+			return nil
 		}
-
-		// Subsription is up-to-date, nothing to change.
-		return nil
 	}
 
 	sub, ch, err := func() (subscription.Subscription, <-chan subscription.KeyFrameRequest, error) {
