@@ -3,13 +3,10 @@ package track
 import (
 	"fmt"
 	"sync"
-	"time"
 
-	"github.com/matrix-org/waterfall/pkg/conference/publisher"
 	"github.com/matrix-org/waterfall/pkg/conference/subscription"
 	"github.com/matrix-org/waterfall/pkg/telemetry"
 	"github.com/matrix-org/waterfall/pkg/webrtc_ext"
-	"github.com/matrix-org/waterfall/pkg/worker"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel/attribute"
@@ -37,7 +34,7 @@ type PublishedTrack[SubscriberID SubscriberIdentifier] struct {
 	// We must protect the data with a mutex since we want the `PublishedTrack` to remain thread-safe.
 	mutex sync.Mutex
 	// Currently active subscriptions for this track.
-	subscriptions map[SubscriberID]subscription.Subscription
+	subscriptions map[SubscriberID]*trackSubscription[SubscriberID]
 	// Audio track data. The content will be `nil` if it's not an audio track.
 	audio *audioTrack
 	// Video track. The content will be `nil` if it's not a video track.
@@ -72,9 +69,9 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 		info:             webrtc_ext.TrackInfoFromTrack(track),
 		telemetry:        telemetry,
 		owner:            trackOwner[SubscriberID]{ownerID, requestKeyFrame},
-		subscriptions:    make(map[SubscriberID]subscription.Subscription),
+		subscriptions:    make(map[SubscriberID]*trackSubscription[SubscriberID]),
 		audio:            &audioTrack{outputTrack: nil},
-		video:            &videoTrack{publishers: make(map[webrtc_ext.SimulcastLayer]*publisher.Publisher)},
+		video:            &videoTrack{publishers: make(map[webrtc_ext.SimulcastLayer]*trackPublisher)},
 		metadata:         metadata,
 		activePublishers: &sync.WaitGroup{},
 		stopPublishers:   make(chan struct{}),
@@ -108,19 +105,6 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 		}()
 
 	case webrtc.RTPCodecTypeVideo:
-		// Configure and start a worker to process incoming key frame requests.
-		workerConfig := worker.Config[webrtc_ext.SimulcastLayer]{
-			ChannelSize: 16,
-			Timeout:     1 * time.Hour,
-			OnTimeout:   func() {},
-			OnTask: func(simulcast webrtc_ext.SimulcastLayer) {
-				published.handleKeyFrameRequest(simulcast)
-			},
-		}
-
-		worker := worker.StartWorker(workerConfig)
-		published.video.keyframeHandler = worker
-
 		// Start video publisher.
 		published.addVideoPublisher(track)
 	}
@@ -130,6 +114,15 @@ func NewPublishedTrack[SubscriberID SubscriberIdentifier](
 		defer close(published.done)
 		defer telemetry.End()
 		published.activePublishers.Wait()
+
+		// End any active subscriptions.
+		published.mutex.Lock()
+		defer published.mutex.Unlock()
+		for _, subscription := range published.subscriptions {
+			if err := subscription.Unsubscribe(); err != nil {
+				published.logger.Errorf("Unsubscribe failed: %v", err)
+			}
+		}
 	}()
 
 	return published, nil
@@ -159,7 +152,7 @@ func (p *PublishedTrack[SubscriberID]) AddPublisher(track *webrtc.TrackRemote) e
 	// been published.
 	if pub := p.video.publishers[simulcast]; pub != nil {
 		p.telemetry.AddEvent("replacing publisher", attribute.String("simulcast", simulcast.String()))
-		pub.ReplaceTrack(&publisher.RemoteTrack{track})
+		pub.replaceTrack(track)
 		return nil
 	}
 
@@ -196,69 +189,65 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 
 	// Let's calculate the desired simulcast layer (if any).
 	var layer webrtc_ext.SimulcastLayer
-	if p.info.Kind == webrtc.RTPCodecTypeVideo {
-		layers := make(map[webrtc_ext.SimulcastLayer]struct{}, len(p.video.publishers))
-		for key := range p.video.publishers {
-			layers[key] = struct{}{}
+	if p.isSimulcast() { //nolint:nestif
+		layer = getOptimalLayer(p.video.activeLayers(), p.metadata, desiredWidth, desiredHeight)
+
+		// If the subscription exists, let's see if we need to update it.
+		if sub := p.subscriptions[subscriberID]; sub != nil {
+			// If we do, let's switch the layer.
+			if sub.currentLayer != layer {
+				// It could be that all subscriptions are subscribed to `LayerNone` (i.e. to no publisher,
+				// since all the available publishers are stalled). In this case `p.video.publishers[LayerNone]`
+				// would be nil.
+				if currentPublisher := p.video.publishers[sub.currentLayer]; currentPublisher != nil {
+					currentPublisher.removeSubscription(sub)
+				}
+
+				newPublisher := p.video.publishers[layer]
+				newPublisher.addSubscription(sub)
+
+				sub.currentLayer = layer
+			}
+
+			// Subsription is up-to-date, nothing to change.
+			return nil
 		}
-		layer = getOptimalLayer(layers, p.metadata, desiredWidth, desiredHeight)
 	}
 
-	// If the subscription exists, let's see if we need to update it.
-	if sub := p.subscriptions[subscriberID]; sub != nil {
-		currentLayer := sub.Simulcast()
-
-		// If we do, let's switch the layer.
-		if currentLayer != layer {
-			p.video.publishers[currentLayer].RemoveSubscription(sub)
-			sub.SwitchLayer(layer)
-			p.video.publishers[layer].AddSubscription(sub)
+	sub, ch, err := func() (subscription.Subscription, <-chan subscription.KeyFrameRequest, error) {
+		// Subscription does not exist, so let's create it.
+		switch p.info.Kind {
+		case webrtc.RTPCodecTypeVideo:
+			sub, ch, err := subscription.NewVideoSubscription(
+				p.info,
+				controller,
+				logger.WithField("track", p.info.TrackID),
+				p.telemetry.ChildBuilder(attribute.String("id", subscriberID.String())),
+			)
+			return sub, ch, err
+		case webrtc.RTPCodecTypeAudio:
+			sub, err := subscription.NewAudioSubscription(p.audio.outputTrack, controller)
+			return sub, nil, err
+		default:
+			return nil, nil, fmt.Errorf("unsupported track kind: %v", p.info.Kind)
 		}
-
-		// Subsription is up-to-date, nothing to change.
-		return nil
-	}
-
-	var (
-		sub subscription.Subscription
-		err error
-	)
-
-	// Subscription does not exist, so let's create it.
-	switch p.info.Kind {
-	case webrtc.RTPCodecTypeVideo:
-		handler := func(simulcast webrtc_ext.SimulcastLayer) error {
-			return p.video.keyframeHandler.Send(simulcast)
-		}
-		sub, err = subscription.NewVideoSubscription(
-			p.info,
-			layer,
-			p.metadata.Muted,
-			controller,
-			handler,
-			logger,
-			p.telemetry.ChildBuilder(attribute.String("id", subscriberID.String())),
-		)
-	case webrtc.RTPCodecTypeAudio:
-		sub, err = subscription.NewAudioSubscription(p.audio.outputTrack, controller)
-	}
-
-	// If there was an error, let's return it.
+	}()
 	if err != nil {
 		p.telemetry.AddError(fmt.Errorf("failed to create subscription: %w", err))
 		return err
 	}
 
 	// Add the subscription to the list of subscriptions.
-	p.subscriptions[subscriberID] = sub
+	subscription := &trackSubscription[SubscriberID]{sub, layer, subscriberID}
+	p.subscriptions[subscriberID] = subscription
 
 	// And if it's a video subscription, add it to the list of subscriptions that get the feed from the publisher.
 	if p.info.Kind == webrtc.RTPCodecTypeVideo {
-		p.video.publishers[layer].AddSubscription(sub)
+		p.video.publishers[layer].addSubscription(subscription)
+		go p.processSubscriptionEvents(subscription, ch)
 	}
 
 	p.logger.WithField("subscriber", subscriberID).WithField("layer", layer).Info("New subscription")
-
 	return nil
 }
 
@@ -272,7 +261,7 @@ func (p *PublishedTrack[SubscriberID]) Unsubscribe(subscriberID SubscriberID) {
 		delete(p.subscriptions, subscriberID)
 
 		if p.info.Kind == webrtc.RTPCodecTypeVideo {
-			p.video.publishers[sub.Simulcast()].RemoveSubscription(sub)
+			p.video.publishers[sub.currentLayer].removeSubscription(sub)
 		}
 	}
 }
@@ -298,9 +287,15 @@ func (p *PublishedTrack[SubscriberID]) Metadata() TrackMetadata {
 func (p *PublishedTrack[SubscriberID]) SetMetadata(metadata TrackMetadata) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	p.metadata = metadata
 
-	for _, sub := range p.subscriptions {
-		sub.UpdateMuteState(metadata.Muted)
+	p.metadata = metadata
+}
+
+func (p *PublishedTrack[SubscriberID]) isClosed() bool {
+	select {
+	case <-p.done:
+		return true
+	default:
+		return false
 	}
 }

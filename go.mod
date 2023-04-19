@@ -1,6 +1,6 @@
 module github.com/matrix-org/waterfall
 
-go 1.19
+go 1.20
 
 require github.com/pion/webrtc/v3 v3.1.31
 
