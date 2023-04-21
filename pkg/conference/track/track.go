@@ -187,33 +187,38 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	// Let's calculate the desired simulcast layer (if any).
-	var layer webrtc_ext.SimulcastLayer
-	if p.isSimulcast() { //nolint:nestif
-		layer = getOptimalLayer(p.video.activeLayers(), p.metadata, desiredWidth, desiredHeight)
-
-		// If the subscription exists, let's see if we need to update it.
-		if sub := p.subscriptions[subscriberID]; sub != nil {
-			// If we do, let's switch the layer.
-			if sub.currentLayer != layer {
-				// It could be that all subscriptions are subscribed to `LayerNone` (i.e. to no publisher,
-				// since all the available publishers are stalled). In this case `p.video.publishers[LayerNone]`
-				// would be nil.
-				if currentPublisher := p.video.publishers[sub.currentLayer]; currentPublisher != nil {
-					currentPublisher.removeSubscription(sub)
-				}
-
-				newPublisher := p.video.publishers[layer]
-				newPublisher.addSubscription(sub)
-
-				sub.currentLayer = layer
-			}
-
-			// Subsription is up-to-date, nothing to change.
+	// If the subscription already exists, we don't need to create a new one, but we may need to
+	// change the existing subscription (e.g. if a different simulcast track is desired for a given
+	// subscription).
+	if sub := p.subscriptions[subscriberID]; sub != nil {
+		// Non-simulcast tracks can't be updated, so if the subscription exists already, no need to do anything.
+		if !p.isSimulcast() {
 			return nil
 		}
+
+		// We're dealing with a simulcast track if we're here, so let's calculate the optimal layer.
+		layer := getOptimalLayer(p.video.activeLayers(), p.metadata, desiredWidth, desiredHeight)
+
+		// Let's see if the current layer matches what the subscriber wants.
+		if sub.currentLayer != layer {
+			// It could be that all subscriptions are subscribed to `LayerNone` (i.e. to no publisher,
+			// since all the available publishers are stalled). In this case `p.video.publishers[LayerNone]`
+			// would be nil.
+			if currentPublisher := p.video.publishers[sub.currentLayer]; currentPublisher != nil {
+				currentPublisher.removeSubscription(sub)
+			}
+
+			newPublisher := p.video.publishers[layer]
+			newPublisher.addSubscription(sub)
+
+			sub.currentLayer = layer
+		}
+
+		return nil
 	}
 
+	// If we got here, then we need to create a new subscription.
+	var layer webrtc_ext.SimulcastLayer
 	sub, ch, err := func() (subscription.Subscription, <-chan subscription.KeyFrameRequest, error) {
 		// Subscription does not exist, so let's create it.
 		switch p.info.Kind {
@@ -224,6 +229,7 @@ func (p *PublishedTrack[SubscriberID]) Subscribe(
 				logger.WithField("track", p.info.TrackID),
 				p.telemetry.ChildBuilder(attribute.String("id", subscriberID.String())),
 			)
+			layer = getOptimalLayer(p.video.activeLayers(), p.metadata, desiredWidth, desiredHeight)
 			return sub, ch, err
 		case webrtc.RTPCodecTypeAudio:
 			sub, err := subscription.NewAudioSubscription(p.audio.outputTrack, controller)
