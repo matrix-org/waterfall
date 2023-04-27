@@ -17,7 +17,8 @@ limitations under the License.
 package signaling
 
 import (
-	"github.com/sirupsen/logrus"
+	"fmt"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -27,7 +28,7 @@ const LocalSessionID = "sfu"
 
 // Interface that abstracts sending Send-to-device messages for the conference.
 type MatrixSignaler interface {
-	SendMessage(MatrixMessage)
+	SendMessage(MatrixMessage) error
 	DeviceID() id.DeviceID
 }
 
@@ -73,19 +74,18 @@ func (m *MatrixClient) CreateForConference(conferenceID string) *MatrixForConfer
 	}
 }
 
-func (m *MatrixForConference) SendMessage(message MatrixMessage) {
+func (m *MatrixForConference) SendMessage(message MatrixMessage) error {
 	switch msg := message.Message.(type) {
 	case SdpAnswer:
-		m.sendSdpAnswer(message.Recipient, msg.StreamMetadata, msg.SDP)
+		return m.sendSdpAnswer(message.Recipient, msg.StreamMetadata, msg.SDP)
 	case IceCandidates:
-		m.sendICECandidates(message.Recipient, msg.Candidates)
+		return m.sendICECandidates(message.Recipient, msg.Candidates)
 	case CandidatesGatheringFinished:
-		m.sendCandidatesGatheringFinished(message.Recipient)
+		return m.sendCandidatesGatheringFinished(message.Recipient)
 	case Hangup:
-		m.sendHangup(message.Recipient, msg.Reason)
+		return m.sendHangup(message.Recipient, msg.Reason)
 	default:
-		logrus.Error("Unknown signaling message type")
-		return
+		return fmt.Errorf("unknown message type: %T", msg)
 	}
 }
 
@@ -97,7 +97,7 @@ func (m *MatrixForConference) sendSdpAnswer(
 	recipient MatrixRecipient,
 	streamMetadata event.CallSDPStreamMetadata,
 	sdp string,
-) {
+) error {
 	eventContent := &event.Content{
 		Parsed: event.CallAnswerEventContent{
 			BaseCallEventContent: m.createBaseEventContent(recipient.CallID, recipient.RemoteSessionID),
@@ -109,10 +109,10 @@ func (m *MatrixForConference) sendSdpAnswer(
 		},
 	}
 
-	m.sendToDevice(recipient, event.CallAnswer, eventContent)
+	return m.sendToDevice(recipient, event.CallAnswer, eventContent)
 }
 
-func (m *MatrixForConference) sendICECandidates(recipient MatrixRecipient, candidates []event.CallCandidate) {
+func (m *MatrixForConference) sendICECandidates(recipient MatrixRecipient, candidates []event.CallCandidate) error {
 	eventContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
 			BaseCallEventContent: m.createBaseEventContent(recipient.CallID, recipient.RemoteSessionID),
@@ -120,10 +120,10 @@ func (m *MatrixForConference) sendICECandidates(recipient MatrixRecipient, candi
 		},
 	}
 
-	m.sendToDevice(recipient, event.CallCandidates, eventContent)
+	return m.sendToDevice(recipient, event.CallCandidates, eventContent)
 }
 
-func (m *MatrixForConference) sendCandidatesGatheringFinished(recipient MatrixRecipient) {
+func (m *MatrixForConference) sendCandidatesGatheringFinished(recipient MatrixRecipient) error {
 	eventContent := &event.Content{
 		Parsed: event.CallCandidatesEventContent{
 			BaseCallEventContent: m.createBaseEventContent(recipient.CallID, recipient.RemoteSessionID),
@@ -131,10 +131,10 @@ func (m *MatrixForConference) sendCandidatesGatheringFinished(recipient MatrixRe
 		},
 	}
 
-	m.sendToDevice(recipient, event.CallCandidates, eventContent)
+	return m.sendToDevice(recipient, event.CallCandidates, eventContent)
 }
 
-func (m *MatrixForConference) sendHangup(recipient MatrixRecipient, reason event.CallHangupReason) {
+func (m *MatrixForConference) sendHangup(recipient MatrixRecipient, reason event.CallHangupReason) error {
 	eventContent := &event.Content{
 		Parsed: event.CallHangupEventContent{
 			BaseCallEventContent: m.createBaseEventContent(recipient.CallID, recipient.RemoteSessionID),
@@ -142,7 +142,7 @@ func (m *MatrixForConference) sendHangup(recipient MatrixRecipient, reason event
 		},
 	}
 
-	m.sendToDevice(recipient, event.CallHangup, eventContent)
+	return m.sendToDevice(recipient, event.CallHangup, eventContent)
 }
 
 func (m *MatrixForConference) createBaseEventContent(
@@ -161,12 +161,11 @@ func (m *MatrixForConference) createBaseEventContent(
 }
 
 // Sends a to-device event to the given user.
-func (m *MatrixForConference) sendToDevice(user MatrixRecipient, eventType event.Type, eventContent *event.Content) {
-	logger := logrus.WithFields(logrus.Fields{
-		"user_id":   user.UserID,
-		"device_id": user.DeviceID,
-	})
-
+func (m *MatrixForConference) sendToDevice(
+	user MatrixRecipient,
+	eventType event.Type,
+	eventContent *event.Content,
+) error {
 	sendRequest := &mautrix.ReqSendToDevice{
 		Messages: map[id.UserID]map[id.DeviceID]*event.Content{
 			user.UserID: {
@@ -175,7 +174,6 @@ func (m *MatrixForConference) sendToDevice(user MatrixRecipient, eventType event
 		},
 	}
 
-	if _, err := m.client.SendToDevice(eventType, sendRequest); err != nil {
-		logger.Errorf("failed to send to-device event: %v", err)
-	}
+	_, err := m.client.SendToDevice(eventType, sendRequest)
+	return err
 }

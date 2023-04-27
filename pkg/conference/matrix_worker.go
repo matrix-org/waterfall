@@ -19,7 +19,11 @@ func newMatrixWorker(handler signaling.MatrixSignaler) *matrixWorker {
 		ChannelSize: 128,
 		Timeout:     time.Hour,
 		OnTimeout:   func() {},
-		OnTask:      func(msg signaling.MatrixMessage) { handler.SendMessage(msg) },
+		OnTask: func(msg signaling.MatrixMessage) {
+			if err := handler.SendMessage(msg); err != nil {
+				logrus.Errorf("Failed to send matrix message: %v", err)
+			}
+		},
 	}
 
 	matrixWorker := &matrixWorker{
